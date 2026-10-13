@@ -1,0 +1,51 @@
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Java / Gradle generated files
+.gradle/
+**/build/
+*.class
+
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Generated outputs
+node_modules/
+dist/
+coverage/
+*.log
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local CV inputs and runtime storage
+*.pdf
+/storage/
+/uploads/
+/worker/storage/
+/worker/uploads/
+/worker/sample_cvs/
