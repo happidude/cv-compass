@@ -1,4 +1,4 @@
-package com.cvcompass.backend.ingestion;
+package com.cvcompass.backend.ingestion.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;

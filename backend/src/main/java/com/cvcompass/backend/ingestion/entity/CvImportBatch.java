@@ -1,5 +1,6 @@
-package com.cvcompass.backend.ingestion;
+package com.cvcompass.backend.ingestion.entity;
 
+import com.cvcompass.backend.ingestion.enums.BatchStatus;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

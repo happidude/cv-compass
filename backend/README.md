@@ -1,8 +1,9 @@
 # Database persistence foundation
 
-The `com.cvcompass.backend.ingestion` package contains the five POC entities,
-status/method enums, and plain Spring Data JPA repositories. It is one ingestion
-module for this foundation; no services, controllers, or custom queries are added.
+The `com.cvcompass.backend.ingestion` module organizes the five POC entities in
+`ingestion.entity`, plain Spring Data repositories in `ingestion.repository`,
+and status/method enums in `ingestion.enums`. It remains one ingestion module;
+no services, controllers, custom queries, or named interfaces are added.
 
 Mappings use explicitly quoted uppercase table/column names, `Long` identity IDs,
 `Instant` timestamps, and Hibernate `@JdbcTypeCode(SqlTypes.JSON)` for JSONB.
@@ -28,29 +29,42 @@ drop schemas. Set `TEST_DB_PASSWORD` in your shell; optional `TEST_DB_URL` and
 `TEST_DB_USERNAME` default to the existing local development connection. Do not
 put credentials in source control.
 
-From `backend/`, run:
+Install a JDK 25 and set `JAVA_HOME` to its installation directory using your
+operating system or JDK manager. Gradle's Java toolchain targets Java 25.
+From `backend/`, verify Java and run:
 
 ```powershell
-$env:JAVA_HOME = 'C:\Users\NguyenVanHoang\.jdks\ms-25.0.4.1'
+java -version
 .\gradlew.bat check
 ```
 
-`BackendApplicationTests` creates a randomly named schema, directs Flyway and
-Hibernate to it, migrates V1/V2, validates mappings, and tests repository round
-trips, nullable/lazy associations, nested JSONB, and rejection of a mismatched
-extraction/job document. Each test rolls back its data, and the schema is dropped
-after the class. A missing database password fails explicitly rather than falling
-back to the application's normal schema. No real CV fixtures are used.
+On Linux/macOS, run `./gradlew check` with the same test environment variables.
+
+`BackendApplicationTests` focuses on context startup, migration ordering, and
+Hibernate schema validation. `RepositoryPersistenceIntegrationTests` covers
+repository round trips, nullable/lazy links, JSONB, and mismatch rejection.
+Each class owns a different random schema and declares its own dynamic property
+method, which keeps Spring's cached contexts separate. Schema ownership is
+asserted against `current_schema()` before persistence tests. Test data is rolled
+back, and each class drops only its own schema afterward. Missing credentials
+fail explicitly instead of using the application's normal schema.
+
+`ModulithArchitectureTests` calls `ApplicationModules.verify()` and confirms
+that ingestion remains the only business module; it needs no database. The new
+subpackages organize internal code without changing module boundaries.
+No real CV fixtures are used.
 
 If Windows Java reports `Unable to establish loopback connection` with an
 `UnixDomainSockets.connect` cause, use a short ASCII socket directory for this
-shell invocation (replace the absolute path with your own worktree path):
+shell invocation from `backend/`:
 
 ```powershell
 New-Item -ItemType Directory -Force build/tmp/jvm | Out-Null
-$env:JAVA_TOOL_OPTIONS = '-Djdk.net.unixdomain.tmpdir=E:\cv-compass-persistence\backend\build\tmp\jvm -Duser.timezone=UTC'
+$socketDirectory = (Resolve-Path build/tmp/jvm).Path
+$env:JAVA_TOOL_OPTIONS = "$env:JAVA_TOOL_OPTIONS -Djdk.net.unixdomain.tmpdir=`"$socketDirectory`" -Duser.timezone=UTC"
 .\gradlew.bat check
 ```
 
 This workaround changes only process environment and ignored build output; it
-requires no security or system configuration changes.
+requires no security or system configuration changes. If your workspace path
+is long or contains non-ASCII characters, choose another short local directory.
