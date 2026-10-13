@@ -59,4 +59,6 @@ dependencyManagement {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // PostgreSQL JDBC must use a portable timezone rather than host aliases.
+    systemProperty 'user.timezone', 'UTC'
 }
