@@ -49,3 +49,6 @@ credentials/
 /worker/storage/
 /worker/uploads/
 /worker/sample_cvs/
+
+# Local project documentation
+/docs/
