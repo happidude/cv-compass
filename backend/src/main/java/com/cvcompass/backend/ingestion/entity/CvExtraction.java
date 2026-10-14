@@ -2,13 +2,9 @@ package com.cvcompass.backend.ingestion.entity;
 
 import com.cvcompass.backend.ingestion.enums.ExtractionMethod;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.time.Instant;
-import org.hibernate.annotations.Generated;
-import org.hibernate.generator.EventType;
 import java.util.Map;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -18,13 +14,7 @@ import org.hibernate.type.SqlTypes;
 @NoArgsConstructor
 @Entity
 @Table(name = "\"CV_EXTRACTIONS\"")
-public class CvExtraction {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "\"ID\"")
-    @Setter(AccessLevel.NONE)
-    private Long id;
+public class CvExtraction extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "\"CV_DOCUMENT_ID\"", nullable = false)
@@ -45,8 +35,4 @@ public class CvExtraction {
     @Column(name = "\"EXTRACTION_METHOD\"", nullable = false, length = 30)
     private ExtractionMethod extractionMethod;
 
-    @Generated(event = EventType.INSERT)
-    @Column(name = "\"CREATED_AT\"", nullable = false, insertable = false, updatable = false)
-    @Setter(AccessLevel.NONE)
-    private Instant createdAt;
 }

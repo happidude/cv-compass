@@ -92,6 +92,24 @@ class RepositoryPersistenceIntegrationTests {
     }
 
     @Test
+    void candidateUpdateRetainsInheritedIdentityAndCreationTime() {
+        var candidate = candidates.saveAndFlush(new Candidate());
+        var id = candidate.getId();
+        var createdAt = candidate.getCreatedAt();
+        entityManager.clear();
+        var loaded = candidates.findById(id).orElseThrow();
+        loaded.setSummary("Updated synthetic summary");
+        loaded.setUpdatedAt(Instant.parse("2026-10-14T00:00:00Z"));
+        candidates.saveAndFlush(loaded);
+        entityManager.clear();
+        var updated = candidates.findById(id).orElseThrow();
+        assertThat(updated.getId()).isEqualTo(id);
+        assertThat(updated.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(updated.getUpdatedAt()).isEqualTo(Instant.parse("2026-10-14T00:00:00Z"));
+        assertThat(updated.getSummary()).isEqualTo("Updated synthetic summary");
+    }
+
+    @Test
     void documentsRoundTripWithAndWithoutCandidateAndLazyLinks() {
         var batch = batches.saveAndFlush(batch());
         var candidate = candidates.saveAndFlush(new Candidate());

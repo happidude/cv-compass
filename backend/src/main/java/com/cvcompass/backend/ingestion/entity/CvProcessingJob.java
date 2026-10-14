@@ -2,26 +2,17 @@ package com.cvcompass.backend.ingestion.entity;
 
 import com.cvcompass.backend.ingestion.enums.JobStatus;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.time.Instant;
-import org.hibernate.annotations.Generated;
-import org.hibernate.generator.EventType;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @Entity
 @Table(name = "\"CV_PROCESSING_JOBS\"")
-public class CvProcessingJob {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "\"ID\"")
-    @Setter(AccessLevel.NONE)
-    private Long id;
+public class CvProcessingJob extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "\"CV_DOCUMENT_ID\"", nullable = false)
@@ -43,8 +34,4 @@ public class CvProcessingJob {
     @Column(name = "\"COMPLETED_AT\"")
     private Instant completedAt;
 
-    @Generated(event = EventType.INSERT)
-    @Column(name = "\"CREATED_AT\"", nullable = false, insertable = false, updatable = false)
-    @Setter(AccessLevel.NONE)
-    private Instant createdAt;
 }

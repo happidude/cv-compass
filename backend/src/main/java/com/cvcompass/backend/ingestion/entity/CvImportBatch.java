@@ -2,26 +2,17 @@ package com.cvcompass.backend.ingestion.entity;
 
 import com.cvcompass.backend.ingestion.enums.BatchStatus;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.time.Instant;
-import org.hibernate.annotations.Generated;
-import org.hibernate.generator.EventType;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @Entity
 @Table(name = "\"CV_IMPORT_BATCHES\"")
-public class CvImportBatch {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "\"ID\"")
-    @Setter(AccessLevel.NONE)
-    private Long id;
+public class CvImportBatch extends BaseEntity {
 
     @Column(name = "\"TOTAL_FILES\"", nullable = false)
     private Integer totalFiles;
@@ -39,8 +30,4 @@ public class CvImportBatch {
     @Column(name = "\"COMPLETED_AT\"")
     private Instant completedAt;
 
-    @Generated(event = EventType.INSERT)
-    @Column(name = "\"CREATED_AT\"", nullable = false, insertable = false, updatable = false)
-    @Setter(AccessLevel.NONE)
-    private Instant createdAt;
 }
