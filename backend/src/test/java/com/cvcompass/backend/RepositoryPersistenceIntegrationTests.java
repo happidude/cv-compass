@@ -16,6 +16,10 @@ import com.cvcompass.backend.ingestion.entity.*;
 import com.cvcompass.backend.ingestion.enums.*;
 import com.cvcompass.backend.ingestion.repository.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
+import java.util.stream.Stream;
 import org.springframework.dao.DataIntegrityViolationException;
 import java.time.Instant;
 import java.util.List;
@@ -179,6 +183,88 @@ class RepositoryPersistenceIntegrationTests {
         assertThatThrownBy(() -> extractions.saveAndFlush(extraction(other, job)))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("FK_EXTRACTION_JOB_DOCUMENT");
+    }
+
+    @Test
+    void batchCountersCannotExceedTotalFiles() {
+        var batch = batch();
+        batch.setSuccessCount(10);
+        batch.setFailedCount(1);
+        batches.saveAndFlush(batch); // Equality at the boundary is valid.
+        batch.setFailedCount(2);
+        assertThatThrownBy(() -> batches.saveAndFlush(batch))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("CK_BATCH_COUNTS");
+    }
+
+    @Test
+    void retryCountCannotBeNegative() {
+        var document = documents.saveAndFlush(document(batches.saveAndFlush(batch())));
+        var job = job(document);
+        job.setRetryCount(-1);
+        assertThatThrownBy(() -> jobs.saveAndFlush(job))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("CK_JOB_RETRY_COUNT");
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidSha256Values")
+    void invalidSha256IsRejected(String digest) {
+        var document = document(batches.saveAndFlush(batch()));
+        document.setSha256(digest);
+        assertThatThrownBy(() -> documents.saveAndFlush(document))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("CK_DOCUMENT_SHA256");
+    }
+
+    static Stream<String> invalidSha256Values() {
+        return Stream.of("", "a".repeat(63), "A".repeat(64), "g".repeat(64));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "CV_IMPORT_BATCHES, CK_BATCH_STATUS",
+            "CV_DOCUMENTS, CK_DOCUMENT_STATUS",
+            "CV_PROCESSING_JOBS, CK_JOB_STATUS"
+    })
+    void databaseRejectsInvalidStatus(String table, String constraint) {
+        var batch = batches.saveAndFlush(batch());
+        var document = documents.saveAndFlush(document(batch));
+        var job = jobs.saveAndFlush(job(document));
+        var id = switch (table) {
+            case "CV_IMPORT_BATCHES" -> batch.getId();
+            case "CV_DOCUMENTS" -> document.getId();
+            case "CV_PROCESSING_JOBS" -> job.getId();
+            default -> throw new IllegalArgumentException("Unexpected test table");
+        };
+        // Exercise the DB check directly because Java enums cannot represent invalid values.
+        assertThatThrownBy(() -> jdbc.update("UPDATE \"" + table + "\" SET \"STATUS\" = ? WHERE \"ID\" = ?", "INVALID", id))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining(constraint);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "CV_DOCUMENTS, BATCH_ID, FK_DOCUMENT_BATCH",
+            "CV_DOCUMENTS, CANDIDATE_ID, FK_DOCUMENT_CANDIDATE",
+            "CV_PROCESSING_JOBS, CV_DOCUMENT_ID, FK_JOB_DOCUMENT",
+            "CV_EXTRACTIONS, CV_DOCUMENT_ID, FK_EXTRACTION_DOCUMENT",
+            "CV_EXTRACTIONS, PROCESSING_JOB_ID, FK_EXTRACTION_JOB_DOCUMENT"
+    })
+    void foreignKeysRejectMissingReferences(String table, String column, String constraint) {
+        var document = documents.saveAndFlush(document(batches.saveAndFlush(batch())));
+        var job = jobs.saveAndFlush(job(document));
+
+        var id = switch (table) {
+            case "CV_DOCUMENTS" -> document.getId();
+            case "CV_PROCESSING_JOBS" -> job.getId();
+            case "CV_EXTRACTIONS" -> extractions.saveAndFlush(extraction(document, job)).getId();
+            default -> throw new IllegalArgumentException("Unexpected test table");
+        };
+        // Identifier strings come exclusively from the fixed CsvSource above.
+        assertThatThrownBy(() -> jdbc.update("UPDATE \"" + table + "\" SET \"" + column + "\" = ? WHERE \"ID\" = ?", Long.MAX_VALUE, id))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining(constraint);
     }
 
     private CvImportBatch batch() {

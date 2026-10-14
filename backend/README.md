@@ -73,3 +73,31 @@ $env:JAVA_TOOL_OPTIONS = "$env:JAVA_TOOL_OPTIONS -Djdk.net.unixdomain.tmpdir=`"$
 This workaround changes only process environment and ignored build output; it
 requires no security or system configuration changes. If your workspace path
 is long or contains non-ASCII characters, choose another short local directory.
+
+## CI and constraints
+
+The `Persistence CI` GitHub Actions workflow runs Java 25 and `./gradlew check`
+with a disposable PostgreSQL 17 service and a dedicated `cv_compass_ci` database.
+Its credentials are CI fixtures only. Each integration class still owns a unique
+schema inside that database. The workflow runs on pull requests to main, pushes
+to main, and manual dispatch; it requires no production secrets.
+
+Constraint tests cover counter totals, negative retry counts, malformed SHA256,
+invalid statuses (using JDBC to bypass Java enum validation), every foreign key,
+and extraction/job document consistency. Each rejected statement runs in its own
+rolled-back test transaction; no subsequent query uses an aborted transaction.
+
+## Persistence considerations for Milestone 2
+
+`UPDATED_AT` remains application-managed. Application code must explicitly set it
+when changing a candidate, preferably using a UTC Clock in future services.
+No entity callbacks or automatic auditing have been introduced. Integration tests
+verify updates retain the identity and database-generated creation time.
+
+Concurrent batch completions can lose increments if separate transactions load
+the same counters and save independently: CHECK constraints protect value ranges,
+not lost updates or duplicate completion notifications. Before concurrent job
+processing is implemented, choose transactional atomic counter updates or an
+approved optimistic/pessimistic locking strategy, make job completion idempotent,
+and update counters and derived batch status consistently in one transaction.
+No batch processing or locking is implemented in this foundation PR.
