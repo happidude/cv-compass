@@ -71,7 +71,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 }
             });
         }
-        if (!details.isEmpty()) {
+        if (exception instanceof MethodArgumentNotValidException
+                || exception instanceof HandlerMethodValidationException) {
             return new ApiError("VALIDATION_ERROR", "Invalid request", correlationId, details);
         }
         if (exception instanceof HttpMessageNotReadableException) {
