@@ -13,6 +13,10 @@ final class IsolatedPostgresSchema implements AutoCloseable {
     private boolean created;
     private java.nio.file.Path storageRoot;
 
+    java.nio.file.Path storageRoot() {
+        return storageRoot;
+    }
+
     String schemaName() {
         return schema;
     }

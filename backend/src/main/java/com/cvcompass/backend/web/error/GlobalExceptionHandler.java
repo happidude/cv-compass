@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.RequestAttributes;
@@ -38,6 +39,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
         return super.handleExceptionInternal(exception, error(exception, status, request),
                 responseHeaders, status, request);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<Object> handleMalformedMultipart(MultipartException exception, WebRequest request) {
+        return handleExceptionInternal(exception, null, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
     }
 
     @ExceptionHandler(Exception.class)
@@ -74,6 +80,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (exception instanceof MethodArgumentNotValidException
                 || exception instanceof HandlerMethodValidationException) {
             return new ApiError("VALIDATION_ERROR", "Invalid request", correlationId, details);
+        }
+        if (exception instanceof MultipartException && status.value() == 400) {
+            return new ApiError("INVALID_MULTIPART", "Invalid multipart request", correlationId, List.of());
         }
         if (exception instanceof HttpMessageNotReadableException) {
             return new ApiError("INVALID_REQUEST_BODY", "Request body is missing or malformed", correlationId, List.of());

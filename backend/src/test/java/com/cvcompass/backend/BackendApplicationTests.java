@@ -36,12 +36,12 @@ class BackendApplicationTests {
     @Autowired Flyway flyway;
 
     @Test
-    void contextStartsWithV1V2AndValidatedMappings() {
+    void contextStartsWithV1V2V3AndValidatedMappings() {
         assertThat(jdbc.queryForObject("SELECT current_schema()", String.class)).isEqualTo(DATABASE.schemaName());
         flyway.validate();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2");
+                .containsExactly("1", "2", "3");
         assertThat(entityManager.getMetamodel().getEntities()).extracting(e -> e.getName())
                 .contains("CvImportBatch", "Candidate", "CvDocument", "CvProcessingJob", "CvExtraction");
     }

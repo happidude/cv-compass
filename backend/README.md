@@ -362,3 +362,135 @@ Checks cover round trips, empty/binary/large streams, digests and byte counts,
 stream ownership, missing keys, malformed keys, links, root safety, partial writes,
 collision/concurrency behavior, I/O failures, conditional bean selection, and
 module boundaries. Existing HTTP and persistence suites remain required.
+
+# Milestone 4: Single CV upload
+
+M4 now covers one independently uploaded CV per request and metadata lookup only.
+Batch management is deferred; there are no fake batches, processing jobs, OCR,
+candidate creation, file download, ZIP import, or additional storage providers.
+
+## API contract
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| POST | /api/documents | multipart/form-data, exactly one file part named file; no additional parts or parameters | 201, Location header and DocumentMetadata |
+| GET | /api/documents/{id} | Positive numeric document ID | 200 and DocumentMetadata; missing ID returns 404 |
+
+Example (run against a locally configured application):
+
+~~~sh
+curl -i -F "file=@/path/to/cv.pdf" http://localhost:8080/api/documents
+curl -i http://localhost:8080/api/documents/123
+~~~
+
+Success response (illustrative values):
+
+~~~json
+{
+  "id": 123,
+  "originalFilename": "cv.pdf",
+  "sizeBytes": 2048,
+  "mimeType": "application/pdf",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "status": "PENDING",
+  "createdAt": "2026-10-15T00:00:00Z"
+}
+~~~
+
+Responses contain neither storage keys nor physical paths. Names are display-only:
+client directory components are stripped; blank/control/format-character names and
+names exceeding 255 UTF-16 units are rejected. Physical identifiers are generated
+only by FileStorageService. Client MIME, declared file size and checksum are not
+used to create metadata. Extra checksum/size fields are rejected.
+
+Errors reuse ApiError with correlationId and empty details:
+400 for invalid multipart, empty files, invalid filenames or IDs; 413 for size
+limits; 415 for invalid PDF signatures/trailers; 404 for missing documents;
+generic 500 for storage/database failures. The servlet-level 413 code is
+PAYLOAD_TOO_LARGE, while the independent application guard reports FILE_TOO_LARGE.
+
+## Validation and streaming
+
+The file limit is exactly 10 MiB (10,485,760 bytes, Spring's 10MB setting).
+Multipart total request limit is 11 MiB to allow framing overhead; additional
+parts remain forbidden. A zero multipart file-size-threshold spools file content
+to the servlet's temporary directory instead of keeping the entire file in RAM.
+Provision writable private temporary storage with sufficient disk space.
+
+The application independently counts bytes while the storage adapter consumes a
+borrowed stream, rejecting the first byte above the limit. Actual size and SHA-256
+come only from the successfully published StoredFile result.
+
+Content checks require a header at byte zero identifying PDF 1.0-1.7 or 2.0 and
+a %%EOF marker followed only by PDF whitespace within the final 1024 bytes.
+Validation occurs before publication, including EOF checks during storage reads,
+so rejected streams leave no successful object. A fixed-size buffer/tail is used;
+production does not call MultipartFile.getBytes() or readAllBytes().
+
+These checks identify the supported PDF signature/trailer profile, not structural
+PDF validity, malware safety, encryption support, or OCR readability. Damaged or
+hostile PDFs with plausible markers may still be rejected by a future processor.
+Full parsing/extraction and scanning are outside M4; no PDF SDK is introduced.
+
+## Transaction and compensation
+
+CvDocumentService depends on FileStorageService and CvDocumentRepository through
+constructor injection. Its upload method stores the file outside a database
+transaction. A TransactionTemplate with REQUIRES_NEW then persists metadata and
+completes its own commit before upload returns. This also avoids accidentally
+joining an outer transaction whose later rollback could orphan the file.
+
+Both insert/flush and commit failures are caught outside the transaction boundary.
+The service deletes the newly stored key on failure. If compensation fails, the
+original failure is retained, the cleanup error is suppressed, and an error log
+includes the opaque key, cleanup exception type, and existing MDC correlation ID
+for operator recovery. No original filenames, contents, SQL messages, or absolute
+paths are logged by this code.
+
+Storage and PostgreSQL remain separate resources. Process death and uncertain
+commit outcomes caused by lost database connectivity cannot be made atomic here.
+Operators must reconcile orphan objects or inconsistent records after such events;
+no background cleanup service or distributed transaction is introduced.
+
+## Schema and migration
+
+V3__allow_standalone_cv_documents.sql drops only NOT NULL on CV_DOCUMENTS.BATCH_ID.
+The batch foreign key and existing links remain intact. The JPA association is
+nullable. Existing V1/V2 migrations are unchanged; new uploads leave batch and
+candidate null, status PENDING, and create no processing jobs. PENDING describes
+an uploaded document awaiting future processing, not a successful OCR operation.
+
+## Local setup
+
+Set CV_STORAGE_PROVIDER=local and CV_STORAGE_ROOT to an absolute private directory
+outside Git checkouts, plus the existing datasource environment variables.
+Run the backend from backend/ using Java 25 and ./gradlew bootRun (Windows:
+.\gradlew.bat bootRun).
+
+An optional ignored backend/.env.properties is imported when the working directory
+is backend/. It can contain CV_STORAGE_PROVIDER and CV_STORAGE_ROOT as Java
+properties. It is local configuration and must never be committed. Process
+environment variables take precedence. The requested machine's storage directory
+is configured in that local file, not hardcoded in application source.
+
+Set permissions as described under M3. Starting the app may create its configured
+root; tests always override it with temporary directories and never use local CV
+storage. Backups and recovery remain operational responsibilities.
+
+## Verification
+
+Run .\gradlew.bat check --rerun-tasks (or ./gradlew check --rerun-tasks) with Java 25
+and TEST_DB_PASSWORD for the existing isolated PostgreSQL setup.
+
+CvUploadIntegrationTests starts a real HTTP server and sends multipart requests
+through the servlet parser. It verifies actual persisted content/metadata, lookup,
+10 MiB acceptance, oversized rejection, duplicate/extra parts, empty/invalid data,
+404/ID validation, no batch/job/candidate creation, nullable batch schema and
+retained FK. A genuinely deferred PostgreSQL constraint trigger verifies cleanup
+after commit failure, not merely a repository mock.
+
+Service tests cover storage, insert and commit failure compensation, cleanup failure
+and safe recovery logging. Stream tests cover exact byte limits, invalid markers,
+single/bulk reads, skip/reset behavior and caller stream ownership. Existing
+persistence/HTTP/storage/Modulith checks remain required. All integration data and
+file roots are isolated and removed after the tests.
