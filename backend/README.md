@@ -217,3 +217,148 @@ Environment configuration remains `SPRING_PROFILES_ACTIVE` (defaults to dev),
 these datasource values externally. Keep credentials in environment configuration;
 CI uses only its disposable service database credentials. No authentication,
 file storage, background processing, tracing service, or business API is added.
+
+# Milestone 3: File storage foundation
+
+## Scope and revised roadmap
+
+| Milestone | Boundary |
+| --- | --- |
+| 1 | Database persistence (complete) |
+| 2 | Backend application foundation (complete) |
+| 3 | Generic file storage infrastructure (this change) |
+| 4 | CV upload and batch management, including file validation and orchestration (developer-owned Java) |
+| 5 | Python OCR worker |
+| 6 | Java/Python integration |
+| 7 | POC evaluation |
+
+The approximately 100 sample CVs and initial 10 files per upload request are POC
+evaluation/upload settings, not limits imposed by storage. No endpoints, upload
+orchestration, persistence changes, format validation, cloud SDKs, or business
+services are introduced.
+
+## Module and contract
+
+The closed storage Modulith module exports FileStorageService, StorageKey,
+StoredFile, and StorageException at its root. storage.local and storage.config
+are internal; storage declares no application-module dependencies.
+It has no ingestion, web, JPA, multipart, or PDF dependency. Future application
+services use constructor injection of FileStorageService, never the adapter.
+
+| Operation | Contract |
+| --- | --- |
+| store(InputStream) | Streams from the current position to EOF. Caller owns and closes the input even on failure. Generates a new key; returns actual byte size and lowercase SHA-256 after publication. |
+| read(StorageKey) | Opens a caller-owned InputStream; use try-with-resources. Missing objects raise NOT_FOUND. Open failures raise StorageException; subsequent stream reads/close can throw IOException. |
+| delete(StorageKey) | Idempotent when absent; other failures raise DELETE_FAILED. |
+| exists(StorageKey) | False only when absent; errors raise READ_FAILED. |
+
+Keys are opaque, case-sensitive 32-character lowercase hex identifiers. This is a
+storage contract, not a filename, absolute path, provider name, or content hash.
+Callers persist key.value() and reconstruct with new StorageKey(value).
+Invalid values raise INVALID_KEY without echoing the supplied key. No caller-chosen
+write key, original filename, or metadata persistence is accepted by the adapter.
+Empty files and arbitrary binary content are supported. There is no whole-file
+byte array: production copying uses a fixed 64 KiB buffer and incremental SHA-256.
+
+StorageException has a small reason enum (INVALID_KEY, NOT_FOUND, UNAVAILABLE,
+WRITE_FAILED, READ_FAILED, DELETE_FAILED), safe summary messages, and internal
+technical causes. Do not expose/log causes to clients: OS exceptions may include
+absolute paths. There are no new HTTP-specific error mappings.
+
+## Configuration and DI
+
+Explicit configuration is required in every environment:
+
+~~~yaml
+cv:
+  storage:
+    provider: ${CV_STORAGE_PROVIDER:}
+    local:
+      root-directory: ${CV_STORAGE_ROOT:}
+~~~
+
+Set CV_STORAGE_PROVIDER=local and CV_STORAGE_ROOT to a private, absolute,
+normalized storage directory outside any Git checkout. There is no machine-specific
+path or automatic production fallback. Missing/blank settings, relative paths,
+filesystem roots, linked ancestors, roots inside a Git checkout, or unsupported
+providers prevent startup with an actionable configuration summary.
+
+StorageConfiguration uses validated configuration properties and
+@ConditionalOnProperty to select one FileStorageService bean. Only local is
+implemented. Provider-specific root configuration stays inside the local adapter
+package. No factories, service locators, cloud configuration, or SDKs are added.
+
+## Local filesystem security and reliability
+
+Use a dedicated local volume/directory controlled exclusively by the application
+service account and trusted operators. Restrict all ancestor directories against
+untrusted replacement. On POSIX, a new root is owner-only (0700); existing roots
+must have owner rwx and no group/other permissions. On Windows, provision and
+verify an NTFS ACL that permits only the service account and trusted administrators;
+the adapter does not provision or comprehensively audit Windows ACLs.
+
+The adapter rejects malformed keys, existing symlinks/reparse-point directories,
+nonregular objects, and linked root ancestors. Reads open with NOFOLLOW_LINKS.
+**OS access control is a required security boundary:** Java path checks cannot
+prevent a hostile local writer from racing directory replacement, changing files,
+or injecting hard links. Do not share the root with untrusted writers. This
+limitation applies to Windows and POSIX. Untrusted request keys alone cannot
+select paths or escape the managed root.
+
+The root is initialized at startup, creating missing directories. Startup probes
+hard-link support and create-if-absent behavior. Objects use a flat layout in this
+POC. Files are streamed to private .write-*.tmp files, forced to disk, then
+published via an atomic non-overwriting hard link in the same directory. Readers
+can access only complete, published key names. Existing targets (even on a UUID
+collision) are never replaced. Concurrent stores have separate staging files and
+generated keys. There is no unsafe copy/move fallback: filesystems without hard
+links are rejected, including providers/shares that cannot offer the guarantee.
+
+Ordinary I/O failures retain causes and attempt staging cleanup. Cleanup failures
+are suppressed on the original cause. A staging cleanup failure after publication
+triggers best-effort rollback of the published key and reports failure, not success.
+Do not treat a failed operation as proof that no file remains when the filesystem
+also refuses cleanup.
+
+File content is forced before publication, but directory fsync and transactional
+durability across power loss are not portable here. A process/power failure may
+leave staging files or a published object whose metadata was never returned.
+There is no automatic scavenger, backup task, migration task, or file/database
+transaction. Trusted operators should inspect stale staging files only while
+writers are stopped and use an approved recovery procedure. Do not delete active
+staging files. Retain and back up both the object volume and database metadata,
+coordinate backups, and test restoration. No CV file contents are logged.
+
+## Future providers and existing document metadata
+
+A future S3-compatible adapter can implement the same streaming interface and
+extend conditional configuration without changing business code that depends
+only on FileStorageService. It must preserve missing/delete/write semantics and
+the stable key contract. No cloud provider is currently selectable.
+
+CV_DOCUMENTS.STORAGE_PATH is TEXT and can later hold the opaque key string rather
+than an absolute local path; FILE_SIZE and SHA256 can hold returned metadata.
+No mapping/schema or existing data is changed in this milestone. Previously stored
+paths must not be assumed to satisfy the new key grammar.
+
+Changing the selected provider **does not migrate existing objects** or preserve
+access to local files. Before a future switch, choose either a coordinated complete
+migration (copy, verify checksum/size, update existing metadata where needed, then
+switch) or an explicitly designed per-object provider identity/routing scheme.
+Mixed providers could require approved schema/contract changes; keys alone do not
+identify which backend holds an object. S3/MinIO SDKs and migration tools are deferred.
+
+## Tests and operation
+
+Run ./gradlew check --rerun-tasks or .\gradlew.bat check --rerun-tasks with
+Java 25 and the existing PostgreSQL test configuration. Integration tests supply
+temporary roots and explicit provider settings; they never touch application CV
+storage. Direct storage tests use temporary directories. Windows directory link
+tests use unprivileged NTFS junctions; POSIX uses symbolic links. Permission and
+publication failures are also injected deterministically so administrator/root
+privileges cannot make those cases pass spuriously.
+
+Checks cover round trips, empty/binary/large streams, digests and byte counts,
+stream ownership, missing keys, malformed keys, links, root safety, partial writes,
+collision/concurrency behavior, I/O failures, conditional bean selection, and
+module boundaries. Existing HTTP and persistence suites remain required.

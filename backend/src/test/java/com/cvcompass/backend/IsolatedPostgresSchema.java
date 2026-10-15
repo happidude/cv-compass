@@ -11,6 +11,7 @@ final class IsolatedPostgresSchema implements AutoCloseable {
     private final String username = System.getenv().getOrDefault("TEST_DB_USERNAME", "cvcompass");
     private final String password = System.getenv("TEST_DB_PASSWORD");
     private boolean created;
+    private java.nio.file.Path storageRoot;
 
     String schemaName() {
         return schema;
@@ -27,6 +28,11 @@ final class IsolatedPostgresSchema implements AutoCloseable {
                 created = true;
             }
         }
+        if (storageRoot == null) {
+            storageRoot = java.nio.file.Files.createTempDirectory("cv-storage-test-");
+        }
+        registry.add("cv.storage.provider", () -> "local");
+        registry.add("cv.storage.local.root-directory", () -> storageRoot.toString());
         registry.add("spring.datasource.url", () -> url);
         registry.add("spring.datasource.username", () -> username);
         registry.add("spring.datasource.password", () -> password);
@@ -40,6 +46,10 @@ final class IsolatedPostgresSchema implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
+        if (storageRoot != null) {
+            java.nio.file.Files.delete(storageRoot);
+            storageRoot = null;
+        }
         if (created) {
             try (var connection = DriverManager.getConnection(url, username, password);
                  var statement = connection.createStatement()) {
