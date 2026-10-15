@@ -15,8 +15,8 @@ import org.hibernate.type.SqlTypes;
 @Table(name = "\"CV_DOCUMENTS\"")
 public class CvDocument extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"BATCH_ID\"", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "\"BATCH_ID\"", nullable = true)
     private CvImportBatch batch;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = true)

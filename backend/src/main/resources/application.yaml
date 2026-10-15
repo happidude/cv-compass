@@ -1,7 +1,14 @@
 spring:
+  config:
+    import: "optional:file:.env.properties"
   application:
     name: cv-compass-backend
 
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+      file-size-threshold: 0
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 logging:
