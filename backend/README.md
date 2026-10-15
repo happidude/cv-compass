@@ -101,3 +101,119 @@ processing is implemented, choose transactional atomic counter updates or an
 approved optimistic/pessimistic locking strategy, make job completion idempotent,
 and update counters and derived batch status consistently in one transaction.
 No batch processing or locking is implemented in this foundation PR.
+
+# Milestone 2: Backend application foundation
+
+## Packages and module boundaries
+
+```text
+com.cvcompass.backend
+|-- BackendApplication
+|-- ingestion                 (cohesive POC business/persistence module)
+|   |-- entity                (JPA entities and mapped superclasses)
+|   |-- enums
+|   `-- repository
+`-- web                       (HTTP infrastructure module)
+    |-- ApiResponse           (optional success envelope)
+    |-- ApiError               (standard error contract)
+    |-- FieldViolation
+    |-- error                 (internal MVC advice)
+    `-- logging               (internal correlation filter)
+```
+
+Spring Modulith discovers `ingestion` and `web` as closed modules. `web` declares
+no allowed dependencies on application modules. Its root records are its public
+API; exception handling/filter implementations remain internal. Ingestion stays
+cohesive because document, candidate, job, and extraction mappings share direct
+JPA relationships. There is no cross-module entity access, new candidate module,
+or worker module. Future controllers can use the web contracts; extracting new
+business modules requires a separate architecture decision. Architecture tests
+verify both module discovery and `ApplicationModules.verify()`.
+
+## HTTP contracts
+
+No production demo or business endpoints are added. Controllers may return DTOs,
+`ResponseEntity`, or an optional `ApiResponse<T>` (`{"data": ...}`), as appropriate.
+There is no automatic wrapping; 204 responses retain an empty body.
+
+MVC errors have this shape:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid request",
+  "correlationId": "example-request-123",
+  "details": [
+    {"field": "label", "message": "must not be blank"}
+  ]
+}
+```
+
+`details` is empty when no field-level validation applies. Correlation ID is null
+only when handling occurs outside the correlation filter. Validation uses request
+DTOs and Jakarta Bean Validation; the test-only controller demonstrates `@Valid`,
+`@NotBlank`, `@NotNull`, `@Size`, nested values, and method parameter validation.
+Rejected values are never included in error metadata. Validation messages should
+remain generic and must not interpolate sensitive request values.
+
+The advice extends Spring MVC's `ResponseEntityExceptionHandler`, preserving
+framework status codes and headers (including `Allow` for 405). Standard cases:
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 400 | VALIDATION_ERROR | Bean Validation failure, with field details |
+| 400 | INVALID_REQUEST_BODY | Missing, malformed, or unreadable JSON body |
+| 400 | INVALID_REQUEST | Invalid/missing request parameters and other bad requests |
+| 404 | NOT_FOUND | Missing handler/resource |
+| 405 | METHOD_NOT_ALLOWED | Unsupported method |
+| 406 | NOT_ACCEPTABLE | Unsupported response representation |
+| 413 | PAYLOAD_TOO_LARGE | Request exceeds supported size |
+| 415 | UNSUPPORTED_MEDIA_TYPE | Unsupported input content type |
+| other 4xx | REQUEST_ERROR | Framework status preserved, generic reason |
+| 5xx | INTERNAL_ERROR | Generic server failure without internal details |
+
+Unexpected failures log their exception class and stack locations, with the MDC
+correlation ID. Exception messages and causes are intentionally excluded because
+they can contain SQL, credentials, request content, or personal data. API errors
+never include stack traces, exception names, SQL, or raw framework exception
+messages. No request/response body or authorization header logging is introduced.
+
+## Correlation IDs and logging
+
+A servlet filter accepts one `X-Correlation-ID` header matching
+`[A-Za-z0-9][A-Za-z0-9._-]{0,63}` (1-64 ASCII characters). Missing, duplicate,
+blank, oversized, non-ASCII, or otherwise invalid IDs are replaced with a UUID.
+The ID is stored in a request attribute and MDC `correlationId`, included in the
+response header, and included in standardized error responses. The log level
+pattern displays it. The filter removes its MDC key in `finally`, including when
+the downstream servlet throws, and preserves unrelated MDC entries.
+
+This is synchronous request correlation. Propagating MDC into future executor,
+async servlet, or worker tasks is not implemented. Correlation IDs are diagnostic
+identifiers supplied by clients, not trusted identity or authorization claims.
+The advice covers MVC dispatch errors; container/network failures outside MVC
+and future security filter errors need their own integration when introduced.
+
+## Verification and environment
+
+The existing Java 25, Spring Boot 4.1.1, Modulith 2.1.1, and Gradle dependencies
+are reused. Database configuration, Flyway migrations, and persistence behavior
+are unchanged. Existing CI runs the full check with PostgreSQL 17.
+
+From `backend/`, run only the HTTP/filter/architecture tests without a database:
+
+```powershell
+.\gradlew.bat test --tests '*HttpFoundationTests' --tests '*CorrelationIdFilterTests' --tests '*ModulithArchitectureTests'
+```
+
+The HTTP tests use a `@WebMvcTest` slice and test-only controller; no datasource,
+repositories, Flyway, or real business endpoint is needed. For all tests, set
+`TEST_DB_PASSWORD` (and optional `TEST_DB_URL`/`TEST_DB_USERNAME`) as described
+above, then run `./gradlew check` or `.\gradlew.bat check`. PostgreSQL tests retain
+their per-class isolated schema ownership and rollback/cleanup behavior.
+
+Environment configuration remains `SPRING_PROFILES_ACTIVE` (defaults to dev),
+`DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` for the application. Production requires
+these datasource values externally. Keep credentials in environment configuration;
+CI uses only its disposable service database credentials. No authentication,
+file storage, background processing, tracing service, or business API is added.

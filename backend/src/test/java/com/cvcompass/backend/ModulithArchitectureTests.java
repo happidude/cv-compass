@@ -6,10 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ModulithArchitectureTests {
     @Test
-    void ingestionRemainsOneModuleAndObeysModuleBoundaries() {
+    void businessAndHttpInfrastructureObeyModuleBoundaries() {
         var modules = ApplicationModules.of(BackendApplication.class);
         assertThat(modules.stream().map(module -> module.getIdentifier().toString()))
-                .containsExactly("ingestion");
+                .containsExactlyInAnyOrder("ingestion", "web");
         modules.verify();
     }
 }
