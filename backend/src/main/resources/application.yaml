@@ -7,3 +7,10 @@ spring:
 logging:
   pattern:
     level: "%5p [correlationId=%X{correlationId:-}]"
+
+# Explicit provider selection and root are mandatory; no production storage default.
+cv:
+  storage:
+    provider: ${CV_STORAGE_PROVIDER:}
+    local:
+      root-directory: ${CV_STORAGE_ROOT:}
