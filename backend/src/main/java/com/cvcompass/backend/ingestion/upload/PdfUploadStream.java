@@ -1,12 +1,14 @@
 package com.cvcompass.backend.ingestion.upload;
 
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
+
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
 
-import static com.cvcompass.backend.ingestion.upload.UploadRejectedException.Reason.*;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.*;
 
 /**
  * Bounded, borrowed stream with signature/trailer validation, not a PDF parser or malware scanner.

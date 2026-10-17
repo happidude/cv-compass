@@ -1,7 +1,5 @@
-package com.cvcompass.backend.ingestion.api;
+package com.cvcompass.backend.ingestion.exception;
 
-import com.cvcompass.backend.ingestion.upload.DocumentNotFoundException;
-import com.cvcompass.backend.ingestion.upload.UploadRejectedException;
 import com.cvcompass.backend.web.ApiError;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.Ordered;
@@ -13,9 +11,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.List;
 
-@RestControllerAdvice(assignableTypes = {CvDocumentController.class, CvBatchController.class})
+@RestControllerAdvice(basePackages = "com.cvcompass.backend.ingestion.controller")
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class CvDocumentExceptionHandler {
+class IngestionExceptionHandler {
     @ExceptionHandler(UploadRejectedException.class)
     public ResponseEntity<ApiError> rejected(UploadRejectedException exception, HttpServletResponse response) {
         HttpStatus status = switch (exception.reason()) {
@@ -27,7 +25,7 @@ public class CvDocumentExceptionHandler {
                 exception.getMessage(), response.getHeader("X-Correlation-ID"), List.of()));
     }
 
-    @ExceptionHandler({DocumentNotFoundException.class, com.cvcompass.backend.ingestion.batch.BatchNotFoundException.class})
+    @ExceptionHandler({DocumentNotFoundException.class, BatchNotFoundException.class})
     public ResponseEntity<ApiError> notFound(RuntimeException exception, HttpServletResponse response) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError("NOT_FOUND",
                 exception.getMessage(), response.getHeader("X-Correlation-ID"), List.of()));

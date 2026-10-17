@@ -1,4 +1,7 @@
-package com.cvcompass.backend.ingestion.upload;
+package com.cvcompass.backend.ingestion.service;
+
+import com.cvcompass.backend.ingestion.exception.DocumentNotFoundException;
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 
 import com.cvcompass.backend.ingestion.repository.CvDocumentRepository;
 import com.cvcompass.backend.storage.*;

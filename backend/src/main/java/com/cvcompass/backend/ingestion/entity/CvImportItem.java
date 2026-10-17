@@ -1,6 +1,5 @@
-package com.cvcompass.backend.ingestion.batch;
+package com.cvcompass.backend.ingestion.entity;
 
-import com.cvcompass.backend.ingestion.entity.*;
 import jakarta.persistence.*;
 import lombok.*;
 

@@ -1,4 +1,4 @@
-package com.cvcompass.backend.ingestion.batch;
+package com.cvcompass.backend.ingestion.config;
 
 import jakarta.servlet.MultipartConfigElement;
 import org.springframework.beans.factory.annotation.Value;
@@ -6,7 +6,7 @@ import org.springframework.context.annotation.*;
 
 /** A finite parser ceiling; individual file limits are enforced by streaming validation. */
 @Configuration(proxyBeanMethods = false)
-public class BatchMultipartConfiguration {
+class BatchMultipartConfiguration {
     @Bean
     MultipartConfigElement multipartConfigElement(
             @Value("${cv.batch.max-files:10}") int files,

@@ -601,3 +601,62 @@ isolated PostgreSQL test environment described above. CvBatchIntegrationTests us
 real HTTP multipart parsing, a unique PostgreSQL schema, temporary storage,
 synthetic PDFs, and deferred constraint triggers for genuine commit failures.
 Existing M4 tests and Modulith verification remain in the full check suite.
+
+# Backend package organization after M5
+
+The application keeps exactly three Spring Modulith modules: ingestion, storage,
+and web. Responsibility packages inside ingestion are internal to that closed
+module; no named interfaces or new application modules are introduced.
+
+```text
+com.cvcompass.backend
+|-- BackendApplication
+|-- ingestion
+|   |-- controller   CvBatchController, CvDocumentController
+|   |-- exception    IngestionExceptionHandler, BatchNotFoundException,
+|   |                DocumentNotFoundException, UploadRejectedException
+|   |-- service      CvBatchService, CvDocumentService
+|   |-- dto          BatchDetails, BatchItem, DocumentMetadata, ImportResult, PageResult
+|   |-- entity       BaseEntity, UpdatableEntity, Candidate, CvDocument,
+|   |                CvExtraction, CvImportBatch, CvImportItem, CvProcessingJob
+|   |-- repository   CandidateRepository, CvDocumentRepository, CvExtractionRepository,
+|   |                CvImportBatchRepository, CvImportItemRepository, CvProcessingJobRepository
+|   |-- enums        BatchStatus, DocumentStatus, ExtractionMethod, JobStatus
+|   |-- config       BatchMultipartConfiguration
+|   `-- upload       PdfUploadStream, PdfUploadValidation, UploadFilename
+|-- storage          FileStorageService, StorageException, StorageKey, StoredFile
+|   |-- config       StorageConfiguration, StorageProperties
+|   `-- local        LocalFileStorageService, LocalStorageProperties
+`-- web              ApiError, ApiResponse, FieldViolation
+    |-- error        GlobalExceptionHandler
+    `-- logging      CorrelationIdFilter
+```
+
+Controllers call services and return DTOs. The package-private ingestion advice
+selects the controller package, preserving document/batch error codes, HTTP status,
+correlation IDs and safe messages without a controller/exception dependency cycle.
+Shared framework errors remain in web. JPA entities and repositories remain under
+the existing application scanning root. BatchMultipartConfiguration and
+PdfUploadStream stay package-private; PdfUploadValidation exposes only a borrowed
+InputStream factory and the existing default limit. UploadFilename contains the
+unchanged display-name validation shared by both services. Persistence callbacks
+on CvDocumentService are private or package-private within service.
+
+ImportResult is a standalone DTO with the same `batch` and `items` JSON components.
+All endpoint, multipart, processing-order, partial-failure, transaction, rollback,
+compensation, mapping and schema behavior is unchanged from M5 commit 60a1599.
+No V1–V4 migration, runtime configuration or dependency is changed by this refactor.
+
+BackendPackageStructureTests enforces responsibility placement, acyclic ingestion
+subpackage dependencies, controller/persistence separation, internal implementation
+visibility and advice scope. Existing ModulithArchitectureTests still verifies
+exactly ingestion/storage/web and calls ApplicationModules.verify(). Run
+`.\gradlew.bat clean check` (or `./gradlew clean check`) after a package move so stale
+class files cannot hide scanning, duplicate bean, repository or serialization errors.
+
+Focused M5 risk review: the configurable parser ceiling is at most 101 MiB, while
+Tomcat's fixed 101 MiB drain budget is independent of lower configured limits.
+This bounds draining; arbitrarily oversized bodies may still reset the connection.
+DB interruption can leave PROCESSING batches; unknown commit outcomes can produce
+file/metadata mismatches under compensation. These are the documented M5 limitations,
+not new package-refactor behavior. No recovery, reconciliation or retry was added.

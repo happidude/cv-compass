@@ -1,7 +1,12 @@
-package com.cvcompass.backend.ingestion.api;
+package com.cvcompass.backend.ingestion.controller;
 
-import com.cvcompass.backend.ingestion.batch.*;
-import com.cvcompass.backend.ingestion.upload.UploadRejectedException;
+import com.cvcompass.backend.ingestion.dto.BatchDetails;
+import com.cvcompass.backend.ingestion.dto.BatchItem;
+import com.cvcompass.backend.ingestion.service.CvBatchService;
+import com.cvcompass.backend.ingestion.dto.ImportResult;
+import com.cvcompass.backend.ingestion.dto.PageResult;
+
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import jakarta.servlet.ServletException;
 import jakarta.validation.constraints.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,7 +26,7 @@ public class CvBatchController {
         this.service = service; this.maxFiles = maxFiles;
     }
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CvBatchService.ImportResult> upload(MultipartHttpServletRequest request)
+    public ResponseEntity<ImportResult> upload(MultipartHttpServletRequest request)
             throws ServletException, IOException {
         var map = request.getMultiFileMap();
         var files = map.get("files");

@@ -1,4 +1,4 @@
-package com.cvcompass.backend.ingestion.upload;
+package com.cvcompass.backend.ingestion.exception;
 
 public class DocumentNotFoundException extends RuntimeException {
     public DocumentNotFoundException() {

@@ -1,8 +1,8 @@
-package com.cvcompass.backend.ingestion.api;
+package com.cvcompass.backend.ingestion.controller;
 
-import com.cvcompass.backend.ingestion.upload.CvDocumentService;
-import com.cvcompass.backend.ingestion.upload.DocumentMetadata;
-import com.cvcompass.backend.ingestion.upload.UploadRejectedException;
+import com.cvcompass.backend.ingestion.service.CvDocumentService;
+import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import jakarta.servlet.ServletException;
 import jakarta.validation.constraints.Positive;
 import org.springframework.http.MediaType;

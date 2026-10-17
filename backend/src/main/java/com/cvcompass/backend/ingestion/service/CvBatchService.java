@@ -1,4 +1,11 @@
-package com.cvcompass.backend.ingestion.batch;
+package com.cvcompass.backend.ingestion.service;
+
+import com.cvcompass.backend.ingestion.dto.BatchDetails;
+import com.cvcompass.backend.ingestion.dto.BatchItem;
+import com.cvcompass.backend.ingestion.exception.BatchNotFoundException;
+import com.cvcompass.backend.ingestion.dto.ImportResult;
+import com.cvcompass.backend.ingestion.dto.PageResult;
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 
 import com.cvcompass.backend.ingestion.entity.*;
 import com.cvcompass.backend.ingestion.enums.BatchStatus;
@@ -36,8 +43,6 @@ public class CvBatchService {
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    public record ImportResult(BatchDetails batch, List<BatchItem> items) { }
-
     public ImportResult upload(List<MultipartFile> files) {
         long id = Objects.requireNonNull(transaction.execute(status -> {
             var batch = new CvImportBatch();
@@ -50,7 +55,7 @@ public class CvBatchService {
             int order = index + 1;
             BatchItem result;
             String name;
-            try { name = CvDocumentService.safeFilename(file.getOriginalFilename()); }
+            try { name = UploadFilename.safeFilename(file.getOriginalFilename()); }
             catch (UploadRejectedException ignored) { name = "file-" + order; }
             final String display = name;
             try {

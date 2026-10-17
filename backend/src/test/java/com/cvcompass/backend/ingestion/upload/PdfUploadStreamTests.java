@@ -1,5 +1,7 @@
 package com.cvcompass.backend.ingestion.upload;
 
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
