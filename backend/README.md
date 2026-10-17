@@ -222,15 +222,23 @@ file storage, background processing, tracing service, or business API is added.
 
 ## Scope and revised roadmap
 
+Developer-approved scope decision (2026-10-17): M4 originally grouped Single CV
+Upload and Batch Management. The developer split them into independent M4 and M5
+milestones so each feature could be implemented, reviewed and tested separately.
+This approved change is not scope deviation or a workflow violation. The table
+below supersedes the old M5 OCR-worker / M6 Java–Python integration numbering.
+It does not waive other workflow requirements, authorize starting M6, or authorize
+merging PR #6.
+
 | Milestone | Boundary |
 | --- | --- |
 | 1 | Database persistence (complete) |
 | 2 | Backend application foundation (complete) |
 | 3 | Generic file storage infrastructure (this change) |
-| 4 | CV upload and batch management, including file validation and orchestration (developer-owned Java) |
-| 5 | Python OCR worker |
-| 6 | Java/Python integration |
-| 7 | POC evaluation |
+| 4 | Single CV Upload — PR #5 |
+| 5 | Batch Management — PR #6; implemented, reviewed and tested independently of M4 |
+| 6 | OCR Worker Integration — next milestone; detailed scope approval required before implementation |
+| Future | POC evaluation — number, timing and scope require separate approval |
 
 The approximately 100 sample CVs and initial 10 files per upload request are POC
 evaluation/upload settings, not limits imposed by storage. No endpoints, upload
@@ -366,7 +374,8 @@ module boundaries. Existing HTTP and persistence suites remain required.
 # Milestone 4: Single CV upload
 
 M4 now covers one independently uploaded CV per request and metadata lookup only.
-Batch management is deferred; there are no fake batches, processing jobs, OCR,
+Batch management is handled separately by M5 (PR #6). M4 creates no fake batches,
+processing jobs, OCR,
 candidate creation, file download, ZIP import, or additional storage providers.
 
 ## API contract
@@ -497,8 +506,10 @@ file roots are isolated and removed after the tests.
 
 # Milestone 5: Synchronous batch management
 
-M5 in this change is Batch Management (superseding the older OCR milestone plan).
-It creates no candidate, job or extraction and does not attach standalone uploads.
+M5 is the developer-approved Batch Management milestone (PR #6), separated from
+M4 Single CV Upload (PR #5) for independent implementation, review and tests.
+M6 is OCR Worker Integration; its detailed scope must be confirmed before implementation.
+M5 creates no candidate, job or extraction and does not attach standalone uploads.
 
 | Method | Endpoint | Result |
 | --- | --- | --- |
