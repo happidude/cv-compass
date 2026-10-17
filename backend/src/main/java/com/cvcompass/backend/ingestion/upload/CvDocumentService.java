@@ -35,8 +35,19 @@ public class CvDocumentService {
 
     /** Borrows content; the caller closes it. File I/O is outside the metadata transaction. */
     public DocumentMetadata upload(String originalFilename, InputStream content) throws IOException {
+        return upload(originalFilename, content, document -> DocumentMetadata.from(documents.saveAndFlush(document)));
+    }
+
+    /** Persistence callback runs inside the compensated metadata transaction. */
+    public <T> T upload(String originalFilename, InputStream content,
+                        java.util.function.Function<CvDocument, T> persist) throws IOException {
+        return upload(originalFilename, content, PdfUploadStream.MAX_BYTES, persist);
+    }
+
+    public <T> T upload(String originalFilename, InputStream content, long maxBytes,
+                        java.util.function.Function<CvDocument, T> persist) throws IOException {
         String filename = safeFilename(originalFilename);
-        var validated = PdfUploadStream.open(Objects.requireNonNull(content));
+        var validated = PdfUploadStream.open(Objects.requireNonNull(content), maxBytes);
         final com.cvcompass.backend.storage.StoredFile stored;
         try {
             stored = storage.store(validated);
@@ -56,7 +67,7 @@ public class CvDocumentService {
                 document.setMimeType("application/pdf");
                 document.setStatus(DocumentStatus.PENDING);
                 // Batch, candidate and processing job creation are explicitly outside M4.
-                return DocumentMetadata.from(documents.saveAndFlush(document));
+                return persist.apply(document);
             }));
         } catch (RuntimeException | Error primary) {
             try {
@@ -77,7 +88,7 @@ public class CvDocumentService {
                 .orElseThrow(DocumentNotFoundException::new);
     }
 
-    private static String safeFilename(String original) {
+    public static String safeFilename(String original) {
         if (original == null) {
             throw new UploadRejectedException(UploadRejectedException.Reason.INVALID_FILENAME,
                     "A filename is required");

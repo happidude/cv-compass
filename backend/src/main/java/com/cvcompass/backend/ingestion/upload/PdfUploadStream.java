@@ -14,11 +14,16 @@ import static com.cvcompass.backend.ingestion.upload.UploadRejectedException.Rea
  */
 final class PdfUploadStream extends FilterInputStream {
     static final long MAX_BYTES = 10L * 1024 * 1024;
+    private final long maxBytes;
     private final byte[] tail = new byte[1024];
     private long count;
     private boolean validated;
 
     static PdfUploadStream open(InputStream source) throws IOException {
+        return open(source, MAX_BYTES);
+    }
+
+    static PdfUploadStream open(InputStream source, long maxBytes) throws IOException {
         var input = new PushbackInputStream(source, 8);
         byte[] header = input.readNBytes(8);
         if (header.length == 0) {
@@ -29,11 +34,12 @@ final class PdfUploadStream extends FilterInputStream {
             throw new UploadRejectedException(INVALID_PDF, "File must have a supported PDF signature");
         }
         input.unread(header);
-        return new PdfUploadStream(input);
+        return new PdfUploadStream(input, maxBytes);
     }
 
-    private PdfUploadStream(InputStream input) {
+    private PdfUploadStream(InputStream input, long maxBytes) {
         super(input);
+        this.maxBytes = maxBytes;
     }
 
     @Override
@@ -52,7 +58,7 @@ final class PdfUploadStream extends FilterInputStream {
     public int read(byte[] bytes, int offset, int length) throws IOException {
         java.util.Objects.checkFromIndexSize(offset, length, bytes.length);
         if (length == 0) return 0;
-        int requested = (int) Math.min(length, MAX_BYTES - count + 1);
+        int requested = (int) Math.min(length, maxBytes - count + 1);
         int read = in.read(bytes, offset, requested);
         if (read == -1) {
             validateEnd();
@@ -66,7 +72,7 @@ final class PdfUploadStream extends FilterInputStream {
     }
 
     private void checkSize(int read) {
-        if (read > MAX_BYTES - count) {
+        if (read > maxBytes - count) {
             throw new UploadRejectedException(FILE_TOO_LARGE, "File exceeds the 10 MiB limit");
         }
     }

@@ -494,3 +494,110 @@ and safe recovery logging. Stream tests cover exact byte limits, invalid markers
 single/bulk reads, skip/reset behavior and caller stream ownership. Existing
 persistence/HTTP/storage/Modulith checks remain required. All integration data and
 file roots are isolated and removed after the tests.
+
+# Milestone 5: Synchronous batch management
+
+M5 in this change is Batch Management (superseding the older OCR milestone plan).
+It creates no candidate, job or extraction and does not attach standalone uploads.
+
+| Method | Endpoint | Result |
+| --- | --- | --- |
+| POST | /api/batches | 201 + Location + batch and all item outcomes |
+| GET | /api/batches/{id} | 200 batch summary, 404 if missing |
+| GET | /api/batches/{id}/items?page=0&size=20 | 200 paginated outcomes ordered by fileOrder |
+| GET | /api/batches?page=0&size=20 | 200 batches ordered by createdAt DESC, id DESC |
+
+Pages are zero based; size is 1–100. Invalid IDs/parameters/part structure return
+400, unsupported request media 415, total parser limit 413, infrastructure errors
+500. A completed import returns 201 even when every file fails. No 202 is used.
+
+```sh
+curl -i -F 'files=@/path/to/one.pdf' -F 'files=@/path/to/two.pdf' http://localhost:8080/api/batches
+curl http://localhost:8080/api/batches/42
+curl 'http://localhost:8080/api/batches/42/items?page=0&size=20'
+curl 'http://localhost:8080/api/batches?page=0&size=20'
+```
+
+Illustrative partial import response:
+
+```json
+{
+  "batch": {"id":42,"totalFiles":2,"successCount":1,"failedCount":1,
+    "status":"PARTIAL_FAILED","createdAt":"2026-10-17T01:00:00Z",
+    "completedAt":"2026-10-17T01:00:01Z"},
+  "items":[
+    {"fileOrder":1,"displayName":"one.pdf","documentId":123,"errorCode":null},
+    {"fileOrder":2,"displayName":"two.pdf","documentId":null,"errorCode":"INVALID_PDF"}
+  ]
+}
+```
+
+Item queries return `{content:[...],page:0,size:20,totalElements:2,totalPages:1}`.
+Display names reuse M4 sanitization; an invalid name is represented as `file-N`
+and fails with INVALID_FILENAME. Outcomes expose only safe error codes, never
+internal exception messages, physical paths or storage keys.
+
+## Limits and validation
+
+`CV_BATCH_MAX_FILES` defaults to 10 (allowed 1–10), and
+`CV_BATCH_MAX_FILE_BYTES` defaults to 10485760 (allowed 1–10485760). Invalid values
+fail startup. The single upload limit remains exactly 10 MiB independently.
+BatchMultipartConfiguration derives both servlet parser ceilings from
+`max(10 MiB, maxFiles * maxFileBytes) + 1 MiB`, defaults to 101 MiB, and always
+spools files to disk (threshold zero). Do not separately override servlet limits;
+this bean is authoritative. Tomcat has a finite 101 MiB swallow budget to deliver 413
+for moderately oversized chunked requests; a client sending beyond that drain budget
+may observe a connection reset. Parser file ceiling deliberately equals request ceiling
+so an individually oversized file below the request ceiling can be recorded as an
+independent failure. Application streaming validation enforces each actual limit.
+The M4 endpoint still rejects duplicate/extra parts and uses PAYLOAD_TOO_LARGE
+for declared oversized parts, with its independent FILE_TOO_LARGE stream guard.
+
+Only file parts named `files` are accepted in a batch, with no text parts or query
+parameters. Parsing, count and structure validation finish before batch creation.
+A malformed or oversized total request creates no batch. Files are processed in
+request order, one at a time, with bounded streaming buffers; no production whole
+file byte array, ZIP, OCR, queue, scheduler or background execution is used.
+A valid request's TOTAL_FILES includes every received file, including rejected PDFs.
+These limits bound each request, not aggregate disk/concurrency usage. Provision
+private servlet temp storage and local object storage accordingly.
+
+## Persistence, errors and recovery limits
+
+V4 adds CV_IMPORT_ITEMS with batch FK, positive one-based FILE_ORDER unique within
+batch, safe DISPLAY_NAME, nullable document FK and ERROR_CODE. Exactly one of
+DOCUMENT_ID / ERROR_CODE must be set. Failed files have no document placeholder.
+V1–V3 are unchanged; CV_IMPORT_BATCHES already exists and retains its status enum.
+
+The initial PROCESSING batch commits independently. Storage uses M4 validation
+and compensation outside DB transactions. For each success, document + batch link
++ item + counter (and final status/time when appropriate) commit in one REQUIRES_NEW
+transaction. Failure item + failed counter + final state also commit together.
+There is one writer per batch and no API that resumes or mutates an existing batch.
+No transaction spans the file stream. Final counters sum to TOTAL_FILES and status
+is COMPLETED / PARTIAL_FAILED / FAILED for all / some / zero successful imports.
+These counters describe file ingestion, not OCR.
+
+Validation, input I/O and individual storage write failures are recorded and the
+next file continues. Storage UNAVAILABLE and DB/transaction errors abort with 500;
+previously committed successes remain. If DB cannot record a failure, no result is
+fabricated. An aborted batch may remain PROCESSING with fewer items than total;
+GET exposes the committed subset. The POST may fail without delivering its batch
+ID; operators can inspect the batch list. Retrying POST creates another batch and
+can duplicate files; there is no idempotency or automatic retry.
+
+M4 compensation deletes the new object after insert/flush/commit failure; cleanup
+failure preserves the primary error and emits the existing safe recovery log.
+Connection loss around commit can leave an unknown commit outcome: compensation
+may delete an object whose DB transaction actually committed. Process death can
+leave staging/orphan files or PROCESSING batches. There is no crash recovery,
+reconciliation scheduler, or distributed atomicity guarantee. Trusted operators
+must inspect and reconcile database/object storage after those failures.
+
+## Verification
+
+Run `./gradlew check` (Windows `.\gradlew.bat check`) with JDK 25 and the existing
+isolated PostgreSQL test environment described above. CvBatchIntegrationTests uses
+real HTTP multipart parsing, a unique PostgreSQL schema, temporary storage,
+synthetic PDFs, and deferred constraint triggers for genuine commit failures.
+Existing M4 tests and Modulith verification remain in the full check suite.

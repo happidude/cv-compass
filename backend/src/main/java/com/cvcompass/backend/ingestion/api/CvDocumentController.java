@@ -32,6 +32,10 @@ public class CvDocumentController {
                     "Exactly one multipart file named file is required");
         }
         var file = files.get("file").getFirst();
+        // The shared parser ceiling accommodates batch imports; retain M4's public 413 contract.
+        if (file.getSize() > 10485760L) {
+            throw new org.springframework.web.multipart.MaxUploadSizeExceededException(10485760L);
+        }
         try (var content = file.getInputStream()) {
             var metadata = service.upload(file.getOriginalFilename(), content);
             return ResponseEntity.created(URI.create("/api/documents/" + metadata.id())).body(metadata);

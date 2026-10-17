@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.List;
 
-@RestControllerAdvice(assignableTypes = CvDocumentController.class)
+@RestControllerAdvice(assignableTypes = {CvDocumentController.class, CvBatchController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class CvDocumentExceptionHandler {
     @ExceptionHandler(UploadRejectedException.class)
@@ -27,8 +27,8 @@ public class CvDocumentExceptionHandler {
                 exception.getMessage(), response.getHeader("X-Correlation-ID"), List.of()));
     }
 
-    @ExceptionHandler(DocumentNotFoundException.class)
-    public ResponseEntity<ApiError> notFound(DocumentNotFoundException exception, HttpServletResponse response) {
+    @ExceptionHandler({DocumentNotFoundException.class, com.cvcompass.backend.ingestion.batch.BatchNotFoundException.class})
+    public ResponseEntity<ApiError> notFound(RuntimeException exception, HttpServletResponse response) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError("NOT_FOUND",
                 exception.getMessage(), response.getHeader("X-Correlation-ID"), List.of()));
     }
