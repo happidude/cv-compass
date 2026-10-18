@@ -16,6 +16,17 @@ logging:
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
+  import:
+    enabled: ${CV_IMPORT_ENABLED:false}
+    provider: ${CV_IMPORT_PROVIDER:local}
+    source-directory: ${CV_IMPORT_SOURCE_DIRECTORY:}
+    processed-directory: ${CV_IMPORT_PROCESSED_DIRECTORY:}
+    failed-directory: ${CV_IMPORT_FAILED_DIRECTORY:}
+    batch-size: ${CV_IMPORT_BATCH_SIZE:10}
+    scan-interval: ${CV_IMPORT_SCAN_INTERVAL:30s}
+    stability-interval: ${CV_IMPORT_STABILITY_INTERVAL:10s}
+    retry-backoff: ${CV_IMPORT_RETRY_BACKOFF:30s}
+    max-attempts: ${CV_IMPORT_MAX_ATTEMPTS:3}
   batch:
     max-files: ${CV_BATCH_MAX_FILES:10}
     max-file-bytes: ${CV_BATCH_MAX_FILE_BYTES:10485760}

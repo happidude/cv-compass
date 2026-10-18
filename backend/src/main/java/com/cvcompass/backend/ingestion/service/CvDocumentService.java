@@ -58,6 +58,7 @@ public class CvDocumentService {
         try {
             stored = storage.store(validated);
         } catch (StorageException failure) {
+            if (failure.getCause() instanceof com.cvcompass.backend.ingestion.exception.SourceChangedException changed) throw changed;
             if (failure.getCause() instanceof UploadRejectedException rejected) {
                 throw rejected;
             }

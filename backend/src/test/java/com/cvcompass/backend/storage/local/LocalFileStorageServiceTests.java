@@ -383,6 +383,19 @@ class LocalFileStorageServiceTests {
         }
         assertNoTemporaryFiles();
     }
+    @Test
+    void availabilityProbePublishesNothingAndDetectsWriteSetupFailure() throws Exception {
+        var storage=storage(); storage.verifyAvailable(1);
+        try(var files=Files.list(root())) { assertThat(files.count()).isZero(); }
+        var failure=new IOException("synthetic full disk");
+        try(var files=mockStatic(Files.class, invocation -> {
+            if(invocation.getMethod().getName().equals("createTempFile")) throw failure;
+            return invocation.callRealMethod();
+        })) {
+            assertThatThrownBy(storage::verifyAvailable).isInstanceOf(StorageException.class).hasCause(failure);
+            assertReason(storage::verifyAvailable,UNAVAILABLE);
+        }
+    }
     private static void createDirectoryLink(Path link, Path target) throws Exception {
         if (System.getProperty("os.name").startsWith("Windows")) {
             // NTFS junctions need no symlink privilege; exercise Windows reparse points reliably.

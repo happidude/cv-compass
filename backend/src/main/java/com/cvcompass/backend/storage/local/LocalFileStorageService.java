@@ -75,6 +75,26 @@ public class LocalFileStorageService implements FileStorageService {
     }
 
     @Override
+    public void verifyAvailable() {
+        try {
+            verifyRoot();
+            verifyPublicationSupport();
+        } catch (IOException | UnsupportedOperationException | SecurityException failure) {
+            throw new StorageException(UNAVAILABLE, "File storage is unavailable", failure);
+        }
+    }
+    @Override
+    public void verifyAvailable(long requiredBytes) {
+        verifyAvailable();
+        try {
+            if (requiredBytes < 0 || Files.getFileStore(root).getUsableSpace() < requiredBytes) {
+                throw new IOException("Insufficient storage capacity");
+            }
+        } catch (IOException | SecurityException failure) {
+            throw new StorageException(UNAVAILABLE, "File storage is unavailable", failure);
+        }
+    }
+    @Override
     public StoredFile store(InputStream content) {
         Objects.requireNonNull(content, "content");
         Path temporary = null;
@@ -227,6 +247,11 @@ public class LocalFileStorageService implements FileStorageService {
         Path probe = Files.createTempFile(root, ".probe-", ".tmp");
         Path link = root.resolve(".probe-link-" + UUID.randomUUID());
         try {
+            try (var output = FileChannel.open(probe, StandardOpenOption.WRITE)) {
+                var bytes = ByteBuffer.wrap(new byte[] {0});
+                while (bytes.hasRemaining()) output.write(bytes);
+                output.force(true);
+            }
             Files.createLink(link, probe);
             try {
                 Files.createLink(link, probe);

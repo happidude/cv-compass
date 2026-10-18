@@ -724,3 +724,169 @@ commit thất bại, storage không khả dụng, cleanup thất bại, lỗi HT
 hình storage không hợp lệ. Không xóa test hoặc che log này. Nếu gate yêu cầu không
 có bất kỳ dòng WARN/ERROR nào, kết quả vẫn BLOCKED dù mọi assertion đều pass;
 chỉ developer mới có thể quyết định thay đổi điều kiện chuyển milestone.
+# M5.1 — Tự động nhập PDF từ đĩa
+
+Importer mặc định **tắt** (`CV_IMPORT_ENABLED=false`). Đây là nhập file đồng bộ
+trong từng batch trên thread scheduler, không phải OCR và không gọi HTTP vào
+chính backend. API upload đơn và batch thủ công giữ nguyên contract. Sau mỗi batch
+hoàn tất nhập file, runner xử lý nhóm tiếp theo; khi hết file thì chờ tick mới.
+Lượt quét đầu sau scan-interval; file cần ít nhất hai lần quan sát ổn định mới được chọn.
+
+## DI và cấu hình local/VPS
+
+`ImportScheduler` chỉ kích hoạt `DiskImportService`. Service nhận `ImportSource`,
+repository, batch service, storage và Clock qua constructor. Local adapter được
+chọn bằng `@ConditionalOnProperty`; `@ConfigurationProperties` được validation khi
+bật. Không thêm broker, distributed scheduler hoặc framework batch.
+
+| Biến | Mặc định / giới hạn |
+|---|---|
+| CV_IMPORT_ENABLED | false |
+| CV_IMPORT_PROVIDER | local; provider khác bị từ chối khi bật |
+| CV_IMPORT_SOURCE_DIRECTORY | Bắt buộc khi bật; inbox riêng tư, đường dẫn tuyệt đối đã chuẩn hóa |
+| CV_IMPORT_PROCESSED_DIRECTORY | `<inbox>/processed`; nếu đổi phải là đường dẫn tuyệt đối của thư mục con trực tiếp |
+| CV_IMPORT_FAILED_DIRECTORY | `<inbox>/failed`; thư mục con trực tiếp khác processed |
+| CV_IMPORT_BATCH_SIZE | 10; 1–10 và không vượt CV_BATCH_MAX_FILES |
+| CV_IMPORT_SCAN_INTERVAL | 30s |
+| CV_IMPORT_STABILITY_INTERVAL | 10s |
+| CV_IMPORT_RETRY_BACKOFF | 30s; nhập/move tăng gấp đôi, hệ số tối đa 1024 |
+| CV_IMPORT_MAX_ATTEMPTS | 3 tổng lần xử lý, không phải 1 lần đầu + 3 retry |
+| CV_STORAGE_PROVIDER / CV_STORAGE_ROOT | local / thư mục đối tượng riêng, không trùng hoặc lồng nhau với inbox |
+
+Các Duration phải từ 1ms đến 1 ngày; max-attempts cho phép 1–100. Inbox phải tồn
+tại; importer có thể tạo processed/failed dưới inbox. Source, processed, failed
+phải nằm trên cùng filesystem local hỗ trợ hard link và file lock; không hỗ trợ
+NFS/SMB hoặc chạy phân tán nhiều host. Tài khoản dịch vụ phải sở hữu và bảo vệ
+inbox, thư mục đích cùng mọi ancestor. Không chia sẻ với local writer không đáng
+tin cậy. Không dùng Git checkout làm inbox/storage. Windows cần ACL riêng tư;
+Linux cần quyền phù hợp cho tài khoản dịch vụ.
+
+Đường dẫn máy thật chỉ đặt trong `.env.properties` đã ignore, không đưa vào Git.
+File local đã chuẩn bị với importer **tắt**. Không tự chạy lệnh dưới đây trên bộ
+CV thật trước khi người dùng kiểm tra datasource, source, processed/failed và
+storage. Khi chủ động muốn nhập, từ `backend/` với Java 25:
+
+```powershell
+$env:CV_IMPORT_ENABLED = 'true'
+.\gradlew.bat bootRun
+```
+
+Để tắt, đặt `CV_IMPORT_ENABLED=false` rồi khởi động lại backend. Shutdown không
+nhận batch tự động mới; callback chờ lượt đang chạy trả về trước khi giải phóng
+source và các dependency. Kill cưỡng bức không có bảo đảm hoàn tất.
+
+VPS chỉ đổi cấu hình, ví dụ inbox `/srv/cv-compass/inbox`, storage
+`/srv/cv-compass/objects`, cùng `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` và profile
+ứng dụng từ môi trường riêng. Dùng `./gradlew bootRun` hoặc executable JAR được
+build; không thay mã Java theo OS. Không commit credentials. Các test/smoke phải
+luôn dùng schema, source và storage tạm; không bật importer trên schema dev để test.
+
+## Scan, file đang copy và bộ nhớ
+
+Chỉ quét PDF thường trực tiếp trong inbox, không đệ quy; bỏ thư mục, symlink /
+reparse point, tên bắt đầu bằng dấu chấm, `.tmp.pdf`, `.part.pdf`, `.copying.pdf`
+và file không có đuôi PDF. Chọn theo tên với PostgreSQL `COLLATE "C"`. Inventory
+được ghi từng dòng vào DB; truy vấn theo cursor và LIMIT batch-size, không sort
+hoặc nạp toàn bộ 100.000 file vào RAM. Mỗi tick vẫn phải duyệt inventory và ghi
+DB theo số file; chưa benchmark 100.000 file hoặc tự dọn lịch sử lâu dài.
+
+Size/mtime/fileKey phải giống nhau qua các lần quan sát cách ít nhất stability
+interval. Kiểm tra snapshot lại trước và trong đọc; hash được tính theo luồng với
+buffer 64 KiB. File thay đổi được hoãn, không tiêu lượt nhập; byte thực lưu cũng
+phải khớp SHA-256 của snapshot trước khi commit metadata. Đây là **heuristic**:
+không thể loại bỏ hoàn toàn race với producer thay đổi/thay thế file sau kiểm tra.
+Producer nên ghi tên `.tmp`, đóng file rồi atomic rename thành `.pdf`, sau đó
+không sửa file đã công bố. Không dùng chung inbox với writer không tuân thủ quy ước.
+Fingerprint đọc toàn bộ file để xác định identity, kể cả file quá giới hạn nhập;
+RAM hữu hạn nhưng file rất lớn có thể tốn I/O trước khi validation từ chối.
+
+## Identity, history và transaction
+
+V5 thêm `CV_DISK_OBSERVATIONS` và `CV_DISK_IMPORT_FILES`; không sửa V1–V4.
+Identity là `(SHA-256 của đường dẫn inbox canonical, tên file, SHA-256 nội dung)`.
+Hai file khác tên có nội dung giống nhau vẫn là hai lần nhập độc lập. Cùng tên và
+nội dung sau restart được nhận diện; dùng lại tên với nội dung khác tạo identity
+mới. Đổi đường dẫn inbox làm thay đổi source identity; cần đối soát khi di chuyển inbox/VPS.
+Đây không phải deduplication SHA-256 toàn hệ thống. Lịch sử chứa snapshot,
+attempts, batch/document gần nhất, lỗi an toàn, target name và lịch retry/move.
+
+Các boundary:
+
+1. Scan/fingerprint/open/stream không giữ transaction DB. Quan sát và history được
+   ghi bền vững bằng các transaction ngắn.
+2. Claim `QUEUED` commit trước khi tạo batch, tính một attempt chuẩn bị nhập. Tạo
+   batch + attach history vào batch cùng transaction. `IMPORTING` được commit
+   trước khi mở stream. Lỗi đọc chuẩn bị cũng tính vào cùng ngân sách tổng khi
+   identity xác định được; khi không đọc được identity sau giới hạn, observations
+   giữ `SOURCE_READ_NEEDS_ATTENTION` và source được giữ nguyên.
+3. Document + item + batch counter/status + history outcome **cùng transaction**.
+   History update lỗi thì rollback tất cả và M4 xóa bù file. Không có hai commit
+   độc lập cho document và history outcome. Lỗi cleanup không che lỗi chính.
+4. Chỉ sau outcome commit mới xử lý move. Mỗi tick chỉ có một lượt active; OS file
+   lock trên `.cv-compass-import.lock` từ chối runner/instance thứ hai cùng inbox,
+   kể cả dùng datasource khác. Không xóa lock file bằng tay; lock được OS giải
+   phóng khi đóng/kết thúc tiến trình, file marker được giữ lại.
+
+| State | Hành vi |
+|---|---|
+| PENDING / RETRY_WAIT | Chưa nhập / chờ đến hạn, không chặn identity khác |
+| QUEUED | Claim chuẩn bị batch; chưa mở file |
+| IMPORTING | Có attempt đang chạy, outcome chưa được ghi nhận |
+| SUCCEEDED_MOVE / FAILED_MOVE | Đã commit outcome; chỉ còn công việc move |
+| PROCESSED / FAILED | Đã chuyển source vào đích tương ứng |
+| NEEDS_ATTENTION | Dừng tự động cho identity này; cần operator đối chiếu |
+
+PDF sai/rỗng/quá dung lượng/tên sai là lỗi vĩnh viễn, không retry vô ích. Lỗi I/O
+riêng file/storage WRITE_FAILED được retry có giới hạn và backoff; future retry
+không tạo vòng lặp bận hoặc chặn file khác. Storage được probe bằng kiểm tra root và link/unlink tạm trước lượt chạy, và probe lại
+sau WRITE_FAILED để phân biệt storage-wide outage với lỗi input/file riêng. Probe ghi/force
+một byte, kiểm tra link/unlink và dung lượng trống theo file vừa lỗi; không giữ chỗ dung lượng.
+Probe lỗi
+không ghi failed item cho mọi file. DB/storage UNAVAILABLE dừng lượt hiện
+tại; không ghi kết quả giả cho mọi file. Attempts bao gồm claim chuẩn bị và lỗi
+đọc đã biết; detection SOURCE_CHANGED trả lại lượt claim. Move có bộ đếm riêng,
+tối đa max-attempts lần, không làm tăng attempts nhập.
+
+## Move và restart
+
+Đích là UUID `.pdf` được lưu trước vào history, giữ tên hiển thị gốc trong DB.
+Không ghi đè khi đích trùng. Move dùng **hard-link rồi unlink** cùng filesystem,
+không có copy/delete fallback. Nếu unlink lỗi thì còn cả hai hard link; lần sau
+đối chiếu cùng file để hoàn tất. Nếu đã unlink nhưng DB chưa cập nhật, đối chiếu
+hash file đích để ghi nhận hoàn tất. Lỗi move giữ source, có backoff và counter
+riêng; hết lượt giữ ở NEEDS_ATTENTION. Thành công nhập rồi tuyệt đối không upload
+lại chỉ vì move lỗi. Nếu phát hiện storage object đã mất, giữ source và chuyển
+STORED_FILE_MISSING sang NEEDS_ATTENTION.
+
+Sau restart hoặc lượt bị gián đoạn:
+
+- QUEUED chưa mở stream nên có thể retry chuẩn bị với backoff và ngân sách còn
+  lại; hết lượt chuyển NEEDS_ATTENTION, không tạo batch vô hạn.
+- IMPORTING chưa có outcome bền vững chuyển NEEDS_ATTENTION / INTERRUPTED. Không
+  tự retry mù. Operator phải đối chiếu batch/items/document/storage/source.
+- SUCCEEDED_MOVE/FAILED_MOVE tiếp tục phần move, không nhập lại. Outcome bền vững
+  được đối chiếu qua history vì nó commit cùng document/item/counter. Unknown
+  commit outcome có thể khiến compensation M4 đã xóa object dù DB commit thành
+  công; missing object được giữ lại để xử lý thủ công, không tự dựng document mới.
+
+Không tuyên bố exactly-once hoặc khôi phục tự động mọi crash: có thể còn object
+mồ côi sau kill giữa stream và metadata, batch PROCESSING chưa đủ item, hoặc hai
+hard link sau lỗi move. Operator cần dừng importer, backup/đối chiếu các bảng và
+source/storage trước khi sửa state. Không cung cấp nút reset/retry vô điều kiện
+hoặc SQL reset hàng loạt; chỉ tiếp tục sau khi xác nhận outcome thật. Không tự
+xóa bản ghi lịch sử để ép nhập lại; thay đổi tên/nội dung làm thay đổi identity.
+
+## Kiểm chứng M5.1
+
+Dùng schema/storage/source tạm và PDF tổng hợp. Chạy full local trên source cuối:
+
+```powershell
+.\gradlew.bat check --rerun-tasks --console=plain --warning-mode=all
+```
+
+Đọc terminal, XML mới và problems report nếu được sinh mới. Test có scan/stability,
+layout/link guards, lock/second context, batching/order/partial failure, retry và
+move retry, source thay đổi, history/batch commit failure + compensation, shutdown,
+và restart qua hai application context thật. Regression M1–M5 vẫn bắt buộc.
+Giữ negative-test WARN/ERROR và đối chiếu với assertion; không che log tạo PASS.
+CI Linux phải kiểm chứng đúng source cuối; CV thật không thuộc test/smoke.

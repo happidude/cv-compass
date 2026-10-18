@@ -7,6 +7,11 @@ import java.io.InputStream;
  * Implementations are selected by configuration and injected through this interface.
  */
 public interface FileStorageService {
+    /** Checks usable read/write/publication support without publishing a user object. */
+    void verifyAvailable();
+    /** Optional size hint; implementations may detect insufficient local capacity without reserving it. */
+    default void verifyAvailable(long requiredBytes) { verifyAvailable(); }
+
     /**
      * Reads from the current stream position through EOF, leaving the caller's stream open
      * on success and failure. Generates a new key; never replaces an existing object.
