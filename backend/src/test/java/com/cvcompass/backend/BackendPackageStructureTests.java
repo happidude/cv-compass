@@ -26,7 +26,7 @@ class BackendPackageStructureTests {
     @Test
     void ingestionTypesResideInTheirResponsibilityPackages() {
         var packages = Set.of("controller", "exception", "service", "dto", "entity",
-                "repository", "enums", "config", "upload");
+                "repository", "enums", "config", "upload", "source");
         for (var type : CLASSES) {
             Class<?> actual = type.reflect();
             String pkg = actual.getPackageName();
@@ -44,6 +44,9 @@ class BackendPackageStructureTests {
 
     @Test
     void responsibilityPackagesHaveNoCyclesAndControllersDoNotAccessPersistence() {
+        noClasses().that().resideInAPackage(INGESTION + ".service..")
+                .should().dependOnClassesThat().resideInAnyPackage("org.springframework.web.multipart..", "java.net.http..")
+                .check(CLASSES);
         slices().matching(INGESTION + ".(*)..").should().beFreeOfCycles().check(CLASSES);
         noClasses().that().resideInAPackage(INGESTION + ".controller..")
                 .should().dependOnClassesThat().resideInAnyPackage(

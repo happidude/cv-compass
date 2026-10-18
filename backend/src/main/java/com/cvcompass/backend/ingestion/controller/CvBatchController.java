@@ -35,7 +35,9 @@ public class CvBatchController {
             throw new UploadRejectedException(UploadRejectedException.Reason.INVALID_MULTIPART,
                     "Expected between 1 and the configured maximum file parts named files");
         }
-        var result = service.upload(files);
+        var inputs = files.stream().map(file -> new com.cvcompass.backend.ingestion.dto.ImportFile(
+                file.getOriginalFilename(), file.getSize(), file::getInputStream, null)).toList();
+        var result = service.upload(inputs);
         return ResponseEntity.created(URI.create("/api/batches/" + result.batch().id())).body(result);
     }
     @GetMapping("/{id}")

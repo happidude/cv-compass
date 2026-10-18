@@ -18,7 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.*;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.web.multipart.MultipartFile;
+import com.cvcompass.backend.ingestion.dto.ImportFile;
+import com.cvcompass.backend.ingestion.exception.SourceChangedException;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
@@ -43,11 +44,21 @@ public class CvBatchService {
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    public ImportResult upload(List<MultipartFile> files) {
+    public ImportResult upload(List<ImportFile> files) {
+        return upload(files, new BatchImportObserver() {
+            public void started(int order, long batchId) { }
+            public void recorded(int order, BatchItem result) { }
+        });
+    }
+
+    public ImportResult upload(List<ImportFile> files, BatchImportObserver observer) {
+        if (files.isEmpty() || files.size() > 10) throw new IllegalArgumentException("Invalid file count");
         long id = Objects.requireNonNull(transaction.execute(status -> {
             var batch = new CvImportBatch();
             batch.setTotalFiles(files.size()); batch.setStatus(BatchStatus.PROCESSING);
-            return batches.saveAndFlush(batch).getId();
+            long batchId = batches.saveAndFlush(batch).getId();
+            observer.created(batchId);
+            return batchId;
         }));
         var results = new ArrayList<BatchItem>();
         for (int index = 0; index < files.size(); index++) {
@@ -55,35 +66,42 @@ public class CvBatchService {
             int order = index + 1;
             BatchItem result;
             String name;
-            try { name = UploadFilename.safeFilename(file.getOriginalFilename()); }
+            try { name = UploadFilename.safeFilename(file.name()); }
             catch (UploadRejectedException ignored) { name = "file-" + order; }
             final String display = name;
+            observer.started(order, id);
             try {
-                if (file.getSize() > maxFileBytes) {
+                if (file.size() > maxFileBytes) {
                     throw new UploadRejectedException(UploadRejectedException.Reason.FILE_TOO_LARGE, "File exceeds limit");
                 }
-                // Multipart content is spooled by the container; upload streams one file at a time.
+                // The producer supplies a borrowed stream; process one file at a time.
                 // Upload borrows the stream and performs the compensated transaction itself.
-                var stream = file.getInputStream();
+                var stream = file.opener().open();
                 try {
-                    result = uploads.upload(file.getOriginalFilename(), stream, maxFileBytes, document -> {
+                    result = uploads.upload(file.name(), stream, maxFileBytes, document -> {
+                        if (file.expectedSha256() != null && !file.expectedSha256().equals(document.getSha256())) throw new SourceChangedException();
                         var batch = batches.findById(id).orElseThrow(BatchNotFoundException::new);
                         document.setBatch(batch);
                         documents.saveAndFlush(document);
-                        return record(batch, order, display, document, null);
+                        var item = record(batch, order, display, document, null);
+                        observer.recorded(order, item);
+                        return item;
                     });
                 } finally {
                     try { stream.close(); } catch (IOException cleanup) {
-                        org.slf4j.LoggerFactory.getLogger(CvBatchService.class).warn("Multipart stream close failed type={}", cleanup.getClass().getName());
+                        org.slf4j.LoggerFactory.getLogger(CvBatchService.class).warn("Import stream close failed type={}", cleanup.getClass().getName());
                     }
                 }
+            } catch (SourceChangedException changed) {
+                result = failure(id, order, display, "SOURCE_CHANGED", observer);
             } catch (UploadRejectedException rejected) {
-                result = failure(id, order, display, rejected.reason().name());
+                result = failure(id, order, display, rejected.reason().name(), observer);
             } catch (StorageException failure) {
                 if (failure.reason() == StorageException.Reason.UNAVAILABLE) throw failure;
-                result = failure(id, order, display, "FILE_STORAGE_ERROR");
+                observer.storageFailed(file.size());
+                result = failure(id, order, display, "FILE_STORAGE_ERROR", observer);
             } catch (IOException failure) {
-                result = failure(id, order, display, "FILE_STORAGE_ERROR");
+                result = failure(id, order, display, "FILE_STORAGE_ERROR", observer);
             }
             // DB and transaction errors intentionally escape: no reliable result can be recorded.
             results.add(result);
@@ -91,9 +109,10 @@ public class CvBatchService {
         return new ImportResult(find(id), List.copyOf(results));
     }
 
-    private BatchItem failure(long id, int order, String name, String code) {
+    private BatchItem failure(long id, int order, String name, String code, BatchImportObserver observer) {
         return Objects.requireNonNull(transaction.execute(status ->
-                record(batches.findById(id).orElseThrow(BatchNotFoundException::new), order, name, null, code)));
+                { var item = record(batches.findById(id).orElseThrow(BatchNotFoundException::new), order, name, null, code);
+                  observer.recorded(order, item); return item; }));
     }
 
     private BatchItem record(CvImportBatch batch, int order, String name, CvDocument document, String code) {
