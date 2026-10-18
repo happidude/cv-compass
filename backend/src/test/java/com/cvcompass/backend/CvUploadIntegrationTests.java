@@ -1,7 +1,9 @@
 package com.cvcompass.backend;
 
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
+
 import com.cvcompass.backend.ingestion.repository.CvDocumentRepository;
-import com.cvcompass.backend.ingestion.upload.CvDocumentService;
+import com.cvcompass.backend.ingestion.service.CvDocumentService;
 import com.cvcompass.backend.ingestion.upload.PdfUploadStreamTests;
 import com.cvcompass.backend.storage.FileStorageService;
 import com.cvcompass.backend.storage.StorageKey;
@@ -124,7 +126,7 @@ class CvUploadIntegrationTests {
     void serviceSizeGuardAlsoCleansPartialStorageIndependentlyOfServlet() {
         assertThatThrownBy(() -> service.upload("oversize.pdf",
                 PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024 + 1)))
-                .isInstanceOf(com.cvcompass.backend.ingestion.upload.UploadRejectedException.class);
+                .isInstanceOf(UploadRejectedException.class);
         assertNoFilesOrMetadata();
     }
 

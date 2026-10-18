@@ -1,4 +1,4 @@
-package com.cvcompass.backend.ingestion.upload;
+package com.cvcompass.backend.ingestion.dto;
 
 import com.cvcompass.backend.ingestion.entity.CvDocument;
 import com.cvcompass.backend.ingestion.enums.DocumentStatus;

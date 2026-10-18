@@ -1,4 +1,10 @@
-package com.cvcompass.backend.ingestion.upload;
+package com.cvcompass.backend.ingestion.service;
+
+import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
+import com.cvcompass.backend.ingestion.exception.DocumentNotFoundException;
+import com.cvcompass.backend.ingestion.upload.PdfUploadValidation;
+import com.cvcompass.backend.ingestion.upload.UploadFilename;
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 
 import com.cvcompass.backend.ingestion.entity.CvDocument;
 import com.cvcompass.backend.ingestion.enums.DocumentStatus;
@@ -35,8 +41,19 @@ public class CvDocumentService {
 
     /** Borrows content; the caller closes it. File I/O is outside the metadata transaction. */
     public DocumentMetadata upload(String originalFilename, InputStream content) throws IOException {
-        String filename = safeFilename(originalFilename);
-        var validated = PdfUploadStream.open(Objects.requireNonNull(content));
+        return upload(originalFilename, content, document -> DocumentMetadata.from(documents.saveAndFlush(document)));
+    }
+
+    /** Persistence callback runs inside the compensated metadata transaction. */
+    private <T> T upload(String originalFilename, InputStream content,
+                        java.util.function.Function<CvDocument, T> persist) throws IOException {
+        return upload(originalFilename, content, PdfUploadValidation.MAX_BYTES, persist);
+    }
+
+    <T> T upload(String originalFilename, InputStream content, long maxBytes,
+                        java.util.function.Function<CvDocument, T> persist) throws IOException {
+        String filename = UploadFilename.safeFilename(originalFilename);
+        var validated = PdfUploadValidation.open(Objects.requireNonNull(content), maxBytes);
         final com.cvcompass.backend.storage.StoredFile stored;
         try {
             stored = storage.store(validated);
@@ -56,7 +73,7 @@ public class CvDocumentService {
                 document.setMimeType("application/pdf");
                 document.setStatus(DocumentStatus.PENDING);
                 // Batch, candidate and processing job creation are explicitly outside M4.
-                return DocumentMetadata.from(documents.saveAndFlush(document));
+                return persist.apply(document);
             }));
         } catch (RuntimeException | Error primary) {
             try {
@@ -77,19 +94,4 @@ public class CvDocumentService {
                 .orElseThrow(DocumentNotFoundException::new);
     }
 
-    private static String safeFilename(String original) {
-        if (original == null) {
-            throw new UploadRejectedException(UploadRejectedException.Reason.INVALID_FILENAME,
-                    "A filename is required");
-        }
-        String name = original.replace('\\', '/');
-        name = name.substring(name.lastIndexOf('/') + 1).strip();
-        if (name.isBlank() || name.equals(".") || name.equals("..") || name.length() > 255
-                || name.codePoints().anyMatch(value -> Character.isISOControl(value)
-                        || Character.getType(value) == Character.FORMAT)) {
-            throw new UploadRejectedException(UploadRejectedException.Reason.INVALID_FILENAME,
-                    "Filename is invalid");
-        }
-        return name;
-    }
 }

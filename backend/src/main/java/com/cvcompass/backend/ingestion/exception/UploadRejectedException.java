@@ -1,4 +1,4 @@
-package com.cvcompass.backend.ingestion.upload;
+package com.cvcompass.backend.ingestion.exception;
 
 /** Safe client-facing validation failure; never include request content or filenames. */
 public class UploadRejectedException extends RuntimeException {

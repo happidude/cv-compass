@@ -222,15 +222,23 @@ file storage, background processing, tracing service, or business API is added.
 
 ## Scope and revised roadmap
 
+Developer-approved scope decision (2026-10-17): M4 originally grouped Single CV
+Upload and Batch Management. The developer split them into independent M4 and M5
+milestones so each feature could be implemented, reviewed and tested separately.
+This approved change is not scope deviation or a workflow violation. The table
+below supersedes the old M5 OCR-worker / M6 Java–Python integration numbering.
+It does not waive other workflow requirements, authorize starting M6, or authorize
+merging PR #6.
+
 | Milestone | Boundary |
 | --- | --- |
 | 1 | Database persistence (complete) |
 | 2 | Backend application foundation (complete) |
 | 3 | Generic file storage infrastructure (this change) |
-| 4 | CV upload and batch management, including file validation and orchestration (developer-owned Java) |
-| 5 | Python OCR worker |
-| 6 | Java/Python integration |
-| 7 | POC evaluation |
+| 4 | Single CV Upload — PR #5 |
+| 5 | Batch Management — PR #6; implemented, reviewed and tested independently of M4 |
+| 6 | OCR Worker Integration — next milestone; detailed scope approval required before implementation |
+| Future | POC evaluation — number, timing and scope require separate approval |
 
 The approximately 100 sample CVs and initial 10 files per upload request are POC
 evaluation/upload settings, not limits imposed by storage. No endpoints, upload
@@ -366,7 +374,8 @@ module boundaries. Existing HTTP and persistence suites remain required.
 # Milestone 4: Single CV upload
 
 M4 now covers one independently uploaded CV per request and metadata lookup only.
-Batch management is deferred; there are no fake batches, processing jobs, OCR,
+Batch management is handled separately by M5 (PR #6). M4 creates no fake batches,
+processing jobs, OCR,
 candidate creation, file download, ZIP import, or additional storage providers.
 
 ## API contract
@@ -494,3 +503,171 @@ and safe recovery logging. Stream tests cover exact byte limits, invalid markers
 single/bulk reads, skip/reset behavior and caller stream ownership. Existing
 persistence/HTTP/storage/Modulith checks remain required. All integration data and
 file roots are isolated and removed after the tests.
+
+# Milestone 5: Synchronous batch management
+
+M5 is the developer-approved Batch Management milestone (PR #6), separated from
+M4 Single CV Upload (PR #5) for independent implementation, review and tests.
+M6 is OCR Worker Integration; its detailed scope must be confirmed before implementation.
+M5 creates no candidate, job or extraction and does not attach standalone uploads.
+
+| Method | Endpoint | Result |
+| --- | --- | --- |
+| POST | /api/batches | 201 + Location + batch and all item outcomes |
+| GET | /api/batches/{id} | 200 batch summary, 404 if missing |
+| GET | /api/batches/{id}/items?page=0&size=20 | 200 paginated outcomes ordered by fileOrder |
+| GET | /api/batches?page=0&size=20 | 200 batches ordered by createdAt DESC, id DESC |
+
+Pages are zero based; size is 1–100. Invalid IDs/parameters/part structure return
+400, unsupported request media 415, total parser limit 413, infrastructure errors
+500. A completed import returns 201 even when every file fails. No 202 is used.
+
+```sh
+curl -i -F 'files=@/path/to/one.pdf' -F 'files=@/path/to/two.pdf' http://localhost:8080/api/batches
+curl http://localhost:8080/api/batches/42
+curl 'http://localhost:8080/api/batches/42/items?page=0&size=20'
+curl 'http://localhost:8080/api/batches?page=0&size=20'
+```
+
+Illustrative partial import response:
+
+```json
+{
+  "batch": {"id":42,"totalFiles":2,"successCount":1,"failedCount":1,
+    "status":"PARTIAL_FAILED","createdAt":"2026-10-17T01:00:00Z",
+    "completedAt":"2026-10-17T01:00:01Z"},
+  "items":[
+    {"fileOrder":1,"displayName":"one.pdf","documentId":123,"errorCode":null},
+    {"fileOrder":2,"displayName":"two.pdf","documentId":null,"errorCode":"INVALID_PDF"}
+  ]
+}
+```
+
+Item queries return `{content:[...],page:0,size:20,totalElements:2,totalPages:1}`.
+Display names reuse M4 sanitization; an invalid name is represented as `file-N`
+and fails with INVALID_FILENAME. Outcomes expose only safe error codes, never
+internal exception messages, physical paths or storage keys.
+
+## Limits and validation
+
+`CV_BATCH_MAX_FILES` defaults to 10 (allowed 1–10), and
+`CV_BATCH_MAX_FILE_BYTES` defaults to 10485760 (allowed 1–10485760). Invalid values
+fail startup. The single upload limit remains exactly 10 MiB independently.
+BatchMultipartConfiguration derives both servlet parser ceilings from
+`max(10 MiB, maxFiles * maxFileBytes) + 1 MiB`, defaults to 101 MiB, and always
+spools files to disk (threshold zero). Do not separately override servlet limits;
+this bean is authoritative. Tomcat has a finite 101 MiB swallow budget to deliver 413
+for moderately oversized chunked requests; a client sending beyond that drain budget
+may observe a connection reset. Parser file ceiling deliberately equals request ceiling
+so an individually oversized file below the request ceiling can be recorded as an
+independent failure. Application streaming validation enforces each actual limit.
+The M4 endpoint still rejects duplicate/extra parts and uses PAYLOAD_TOO_LARGE
+for declared oversized parts, with its independent FILE_TOO_LARGE stream guard.
+
+Only file parts named `files` are accepted in a batch, with no text parts or query
+parameters. Parsing, count and structure validation finish before batch creation.
+A malformed or oversized total request creates no batch. Files are processed in
+request order, one at a time, with bounded streaming buffers; no production whole
+file byte array, ZIP, OCR, queue, scheduler or background execution is used.
+A valid request's TOTAL_FILES includes every received file, including rejected PDFs.
+These limits bound each request, not aggregate disk/concurrency usage. Provision
+private servlet temp storage and local object storage accordingly.
+
+## Persistence, errors and recovery limits
+
+V4 adds CV_IMPORT_ITEMS with batch FK, positive one-based FILE_ORDER unique within
+batch, safe DISPLAY_NAME, nullable document FK and ERROR_CODE. Exactly one of
+DOCUMENT_ID / ERROR_CODE must be set. Failed files have no document placeholder.
+V1–V3 are unchanged; CV_IMPORT_BATCHES already exists and retains its status enum.
+
+The initial PROCESSING batch commits independently. Storage uses M4 validation
+and compensation outside DB transactions. For each success, document + batch link
++ item + counter (and final status/time when appropriate) commit in one REQUIRES_NEW
+transaction. Failure item + failed counter + final state also commit together.
+There is one writer per batch and no API that resumes or mutates an existing batch.
+No transaction spans the file stream. Final counters sum to TOTAL_FILES and status
+is COMPLETED / PARTIAL_FAILED / FAILED for all / some / zero successful imports.
+These counters describe file ingestion, not OCR.
+
+Validation, input I/O and individual storage write failures are recorded and the
+next file continues. Storage UNAVAILABLE and DB/transaction errors abort with 500;
+previously committed successes remain. If DB cannot record a failure, no result is
+fabricated. An aborted batch may remain PROCESSING with fewer items than total;
+GET exposes the committed subset. The POST may fail without delivering its batch
+ID; operators can inspect the batch list. Retrying POST creates another batch and
+can duplicate files; there is no idempotency or automatic retry.
+
+M4 compensation deletes the new object after insert/flush/commit failure; cleanup
+failure preserves the primary error and emits the existing safe recovery log.
+Connection loss around commit can leave an unknown commit outcome: compensation
+may delete an object whose DB transaction actually committed. Process death can
+leave staging/orphan files or PROCESSING batches. There is no crash recovery,
+reconciliation scheduler, or distributed atomicity guarantee. Trusted operators
+must inspect and reconcile database/object storage after those failures.
+
+## Verification
+
+Run `./gradlew check` (Windows `.\gradlew.bat check`) with JDK 25 and the existing
+isolated PostgreSQL test environment described above. CvBatchIntegrationTests uses
+real HTTP multipart parsing, a unique PostgreSQL schema, temporary storage,
+synthetic PDFs, and deferred constraint triggers for genuine commit failures.
+Existing M4 tests and Modulith verification remain in the full check suite.
+
+# Backend package organization after M5
+
+The application keeps exactly three Spring Modulith modules: ingestion, storage,
+and web. Responsibility packages inside ingestion are internal to that closed
+module; no named interfaces or new application modules are introduced.
+
+```text
+com.cvcompass.backend
+|-- BackendApplication
+|-- ingestion
+|   |-- controller   CvBatchController, CvDocumentController
+|   |-- exception    IngestionExceptionHandler, BatchNotFoundException,
+|   |                DocumentNotFoundException, UploadRejectedException
+|   |-- service      CvBatchService, CvDocumentService
+|   |-- dto          BatchDetails, BatchItem, DocumentMetadata, ImportResult, PageResult
+|   |-- entity       BaseEntity, UpdatableEntity, Candidate, CvDocument,
+|   |                CvExtraction, CvImportBatch, CvImportItem, CvProcessingJob
+|   |-- repository   CandidateRepository, CvDocumentRepository, CvExtractionRepository,
+|   |                CvImportBatchRepository, CvImportItemRepository, CvProcessingJobRepository
+|   |-- enums        BatchStatus, DocumentStatus, ExtractionMethod, JobStatus
+|   |-- config       BatchMultipartConfiguration
+|   `-- upload       PdfUploadStream, PdfUploadValidation, UploadFilename
+|-- storage          FileStorageService, StorageException, StorageKey, StoredFile
+|   |-- config       StorageConfiguration, StorageProperties
+|   `-- local        LocalFileStorageService, LocalStorageProperties
+`-- web              ApiError, ApiResponse, FieldViolation
+    |-- error        GlobalExceptionHandler
+    `-- logging      CorrelationIdFilter
+```
+
+Controllers call services and return DTOs. The package-private ingestion advice
+selects the controller package, preserving document/batch error codes, HTTP status,
+correlation IDs and safe messages without a controller/exception dependency cycle.
+Shared framework errors remain in web. JPA entities and repositories remain under
+the existing application scanning root. BatchMultipartConfiguration and
+PdfUploadStream stay package-private; PdfUploadValidation exposes only a borrowed
+InputStream factory and the existing default limit. UploadFilename contains the
+unchanged display-name validation shared by both services. Persistence callbacks
+on CvDocumentService are private or package-private within service.
+
+ImportResult is a standalone DTO with the same `batch` and `items` JSON components.
+All endpoint, multipart, processing-order, partial-failure, transaction, rollback,
+compensation, mapping and schema behavior is unchanged from M5 commit 60a1599.
+No V1–V4 migration, runtime configuration or dependency is changed by this refactor.
+
+BackendPackageStructureTests enforces responsibility placement, acyclic ingestion
+subpackage dependencies, controller/persistence separation, internal implementation
+visibility and advice scope. Existing ModulithArchitectureTests still verifies
+exactly ingestion/storage/web and calls ApplicationModules.verify(). Run
+`.\gradlew.bat clean check` (or `./gradlew clean check`) after a package move so stale
+class files cannot hide scanning, duplicate bean, repository or serialization errors.
+
+Focused M5 risk review: the configurable parser ceiling is at most 101 MiB, while
+Tomcat's fixed 101 MiB drain budget is independent of lower configured limits.
+This bounds draining; arbitrarily oversized bodies may still reset the connection.
+DB interruption can leave PROCESSING batches; unknown commit outcomes can produce
+file/metadata mismatches under compensation. These are the documented M5 limitations,
+not new package-refactor behavior. No recovery, reconciliation or retry was added.

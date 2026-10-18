@@ -1,8 +1,8 @@
-package com.cvcompass.backend.ingestion.api;
+package com.cvcompass.backend.ingestion.controller;
 
-import com.cvcompass.backend.ingestion.upload.CvDocumentService;
-import com.cvcompass.backend.ingestion.upload.DocumentMetadata;
-import com.cvcompass.backend.ingestion.upload.UploadRejectedException;
+import com.cvcompass.backend.ingestion.service.CvDocumentService;
+import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import jakarta.servlet.ServletException;
 import jakarta.validation.constraints.Positive;
 import org.springframework.http.MediaType;
@@ -32,6 +32,10 @@ public class CvDocumentController {
                     "Exactly one multipart file named file is required");
         }
         var file = files.get("file").getFirst();
+        // The shared parser ceiling accommodates batch imports; retain M4's public 413 contract.
+        if (file.getSize() > 10485760L) {
+            throw new org.springframework.web.multipart.MaxUploadSizeExceededException(10485760L);
+        }
         try (var content = file.getInputStream()) {
             var metadata = service.upload(file.getOriginalFilename(), content);
             return ResponseEntity.created(URI.create("/api/documents/" + metadata.id())).body(metadata);

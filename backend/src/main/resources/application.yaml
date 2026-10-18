@@ -6,8 +6,7 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 11MB
+      # Parser limits are derived from cv.batch by BatchMultipartConfiguration.
       file-size-threshold: 0
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -17,7 +16,15 @@ logging:
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
+  batch:
+    max-files: ${CV_BATCH_MAX_FILES:10}
+    max-file-bytes: ${CV_BATCH_MAX_FILE_BYTES:10485760}
   storage:
     provider: ${CV_STORAGE_PROVIDER:}
     local:
       root-directory: ${CV_STORAGE_ROOT:}
+
+# Finite drain budget lets clients receive 413 after a moderately oversized chunked request.
+server:
+  tomcat:
+    max-swallow-size: 101MB
