@@ -30,6 +30,7 @@ jobs:
           POSTGRES_DB: cv_compass_ci
           POSTGRES_USER: cvcompass_ci
           POSTGRES_PASSWORD: ci_test_only
+          POSTGRES_INITDB_ARGS: "--auth-local=scram-sha-256 --auth-host=scram-sha-256"
         ports:
           - 5432:5432
         options: >-
@@ -39,7 +40,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Java 25
         uses: actions/setup-java@v5
         with:

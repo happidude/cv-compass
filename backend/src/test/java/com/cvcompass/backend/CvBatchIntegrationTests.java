@@ -30,13 +30,18 @@ class CvBatchIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
     @DynamicPropertySource static void resources(DynamicPropertyRegistry registry) throws Exception { DATABASE.configure(registry); }
+    @BeforeEach void assertIsolation() {
+        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class)).isEqualTo(DATABASE.schemaName());
+        assertThat(DATABASE.storageRoot().getFileName().toString()).startsWith("cv-storage-test-");
+    }
     @AfterEach void clean() throws Exception {
         jdbc.execute("DELETE FROM \"CV_IMPORT_ITEMS\"");
         jdbc.execute("DELETE FROM \"CV_DOCUMENTS\"");
         jdbc.execute("DELETE FROM \"CV_IMPORT_BATCHES\"");
         try (var files = Files.list(DATABASE.storageRoot())) { for (var file : files.toList()) Files.delete(file); }
     }
-    @AfterAll static void shutdown() throws Exception { CLIENT.close(); DATABASE.close(); }
+    @AfterAll static void shutdown() throws Exception { new org.springframework.test.context.TestContextManager(CvBatchIntegrationTests.class).getTestContext()
+                .markApplicationContextDirty(org.springframework.test.annotation.DirtiesContext.HierarchyMode.EXHAUSTIVE); CLIENT.close(); DATABASE.close(); }
 
     @ParameterizedTest @ValueSource(ints={1,10})
     void importsBoundaryCountsWithAtomicCountersAndRelations(int count) throws Exception {
@@ -90,6 +95,7 @@ class CvBatchIntegrationTests {
     @Test void stablePaginationAndValidation() throws Exception {
         long first=json.readTree(upload(List.of(PDF),"files").body()).get("batch").get("id").asLong();
         long second=json.readTree(upload(List.of(PDF),"files").body()).get("batch").get("id").asLong();
+        jdbc.update("UPDATE \"CV_IMPORT_BATCHES\" SET \"CREATED_AT\" = ?", java.sql.Timestamp.from(java.time.Instant.parse("2026-01-01T00:00:00Z")));
         assertThat(json.readTree(get("/api/batches?size=1").body()).get("content").get(0).get("id").asLong()).isEqualTo(second);
         assertThat(json.readTree(get("/api/batches?size=1&page=1").body()).get("content").get(0).get("id").asLong()).isEqualTo(first);
         for (var path:List.of("/api/batches/99999999","/api/batches/99999999/items")) assertThat(get(path).statusCode()).isEqualTo(404);
