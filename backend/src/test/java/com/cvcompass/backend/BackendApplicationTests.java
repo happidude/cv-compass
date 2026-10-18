@@ -28,6 +28,8 @@ class BackendApplicationTests {
 
     @AfterAll
     static void removeIsolatedSchema() throws Exception {
+        new org.springframework.test.context.TestContextManager(BackendApplicationTests.class).getTestContext()
+                .markApplicationContextDirty(org.springframework.test.annotation.DirtiesContext.HierarchyMode.EXHAUSTIVE);
         DATABASE.close();
     }
 

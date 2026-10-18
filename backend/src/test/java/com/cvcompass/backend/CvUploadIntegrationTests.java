@@ -66,6 +66,8 @@ class CvUploadIntegrationTests {
 
     @AfterAll
     static void removeIsolatedResources() throws Exception {
+        new org.springframework.test.context.TestContextManager(CvUploadIntegrationTests.class).getTestContext()
+                .markApplicationContextDirty(org.springframework.test.annotation.DirtiesContext.HierarchyMode.EXHAUSTIVE);
         CLIENT.close();
         DATABASE.close();
     }

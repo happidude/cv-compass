@@ -17,7 +17,7 @@ class IngestionExceptionHandler {
     @ExceptionHandler(UploadRejectedException.class)
     public ResponseEntity<ApiError> rejected(UploadRejectedException exception, HttpServletResponse response) {
         HttpStatus status = switch (exception.reason()) {
-            case FILE_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
+            case FILE_TOO_LARGE -> HttpStatus.CONTENT_TOO_LARGE;
             case INVALID_PDF -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
             default -> HttpStatus.BAD_REQUEST;
         };

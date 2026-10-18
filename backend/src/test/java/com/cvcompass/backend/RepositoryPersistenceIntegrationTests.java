@@ -40,6 +40,8 @@ class RepositoryPersistenceIntegrationTests {
 
     @AfterAll
     static void removeIsolatedSchema() throws Exception {
+        new org.springframework.test.context.TestContextManager(RepositoryPersistenceIntegrationTests.class).getTestContext()
+                .markApplicationContextDirty(org.springframework.test.annotation.DirtiesContext.HierarchyMode.EXHAUSTIVE);
         DATABASE.close();
     }
 
@@ -267,6 +269,55 @@ class RepositoryPersistenceIntegrationTests {
                 .hasMessageContaining(constraint);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "CV_IMPORT_BATCHES, TOTAL_FILES, 0, CK_BATCH_TOTAL_FILES",
+            "CV_IMPORT_BATCHES, SUCCESS_COUNT, -1, CK_BATCH_SUCCESS_COUNT",
+            "CV_IMPORT_BATCHES, FAILED_COUNT, -1, CK_BATCH_FAILED_COUNT",
+            "CV_DOCUMENTS, FILE_SIZE, -1, CK_DOCUMENT_FILE_SIZE",
+            "CV_EXTRACTIONS, EXTRACTION_METHOD, INVALID, CK_EXTRACTION_METHOD"
+    })
+    void databaseRejectsInvalidCountsSizesAndExtractionMethods(String table, String column,
+                                                               String invalid, String constraint) {
+        var batch = batches.saveAndFlush(batch());
+        var document = documents.saveAndFlush(document(batch));
+        var extraction = extractions.saveAndFlush(extraction(document, jobs.saveAndFlush(job(document))));
+        long id = switch (table) {
+            case "CV_IMPORT_BATCHES" -> batch.getId();
+            case "CV_DOCUMENTS" -> document.getId();
+            case "CV_EXTRACTIONS" -> extraction.getId();
+            default -> throw new IllegalArgumentException("Unexpected test table");
+        };
+        Object value = column.equals("EXTRACTION_METHOD") ? invalid : Integer.valueOf(invalid);
+        assertThatThrownBy(() -> jdbc.update("UPDATE \"" + table + "\" SET \"" + column + "\"=? WHERE \"ID\"=?", value, id))
+                .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining(constraint);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void importItemRequiresExactlyOneOutcome(boolean both) {
+        var batch = batches.saveAndFlush(batch());
+        var document = documents.saveAndFlush(document(batch));
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO \"CV_IMPORT_ITEMS\" "
+                + "(\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"DOCUMENT_ID\",\"ERROR_CODE\") VALUES (?,1,'fixture.pdf',?,?)",
+                batch.getId(), both ? document.getId() : null, both ? "INVALID_PDF" : null))
+                .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("CK_IMPORT_ITEM_RESULT");
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"order", "duplicate", "batch", "document"})
+    void importItemOrderAndReferencesAreProtected(String invalid) {
+        var batch = batches.saveAndFlush(batch());
+        jdbc.update("INSERT INTO \"CV_IMPORT_ITEMS\" (\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"ERROR_CODE\") "
+                + "VALUES (?,1,'fixture.pdf','INVALID_PDF')", batch.getId());
+        long batchId = invalid.equals("batch") ? Long.MAX_VALUE : batch.getId();
+        int order = invalid.equals("order") ? 0 : invalid.equals("duplicate") ? 1 : 2;
+        Long documentId = invalid.equals("document") ? Long.MAX_VALUE : null;
+        String code = documentId == null ? "INVALID_PDF" : null;
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO \"CV_IMPORT_ITEMS\" "
+                + "(\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"DOCUMENT_ID\",\"ERROR_CODE\") VALUES (?,?,'fixture.pdf',?,?)",
+                batchId, order, documentId, code)).isInstanceOf(DataIntegrityViolationException.class);
+    }
     private CvImportBatch batch() {
         var batch = new CvImportBatch();
         batch.setTotalFiles(11);

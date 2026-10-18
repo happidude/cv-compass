@@ -22,6 +22,10 @@ ext {
     set('springModulithVersion', "2.1.1")
 }
 
+configurations {
+    mockitoAgent
+}
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-batch'
@@ -39,6 +43,7 @@ dependencies {
     runtimeOnly 'org.springframework.modulith:spring-modulith-observability-core'
     runtimeOnly 'org.springframework.modulith:spring-modulith-runtime'
     annotationProcessor 'org.projectlombok:lombok'
+    mockitoAgent('org.mockito:mockito-core') { transitive = false }
     testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-batch-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
@@ -59,6 +64,16 @@ dependencyManagement {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Load instrumentation at startup instead of Mockito dynamically attaching.
+    jvmArgs "-javaagent:${configurations.mockitoAgent.asPath}"
+    // Inline Mockito appends MockMethodDispatcher to the bootstrap loader.
+    // CDS is incompatible with that setup; disable class sharing only in test JVMs.
+    jvmArgs '-Xshare:off'
     // PostgreSQL JDBC must use a portable timezone rather than host aliases.
     systemProperty 'user.timezone', 'UTC'
+}
+
+// Report the exact deprecated API and source location on each Java compilation.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.add('-Xlint:deprecation')
 }
