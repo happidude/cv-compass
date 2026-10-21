@@ -1,0 +1,11 @@
+FROM cv-compass-m62-clean-deps:local
+USER 0:0
+COPY --chmod=0755 docker /usr/local/bin/docker
+COPY run_worker.py /opt/worker/run_worker.py
+COPY src/ /opt/worker/src/
+COPY design/ /opt/worker/design/
+COPY tests/ /opt/worker/tests/
+COPY spikes/ /opt/worker/spikes/
+COPY fixture-font.ttf /fixture-font.ttf
+ENV PYTHONPATH=/opt/worker/src OCR_TEST_TESSERACT=/usr/local/bin/tesseract OCR_TEST_MODELS=/models OCR_TEST_FONT=/fixture-font.ttf HOME=/tmp
+USER 65532:65532

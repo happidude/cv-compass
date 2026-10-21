@@ -1,0 +1,5 @@
+{
+  "schema_version": "cv-compass.ocr/1.0",
+  "max_pages": 50,
+  "max_text_code_points_per_field": 50000
+}
