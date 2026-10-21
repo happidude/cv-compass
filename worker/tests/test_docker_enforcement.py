@@ -9,7 +9,7 @@ import tempfile
 import time
 import unittest
 from cv_compass_worker.config import Config
-from cv_compass_worker.docker_sandbox import run_scope, create_scope, prepare_control, execute_scope, command, docker_env
+from cv_compass_worker.docker_sandbox import run_scope, create_scope, prepare_control, execute_scope, command, docker_env, docker_cli
 from test_pipeline import config, request
 from fixtures import native
 
@@ -37,6 +37,14 @@ class DockerEnforcementTests(unittest.TestCase):
             target.parent.mkdir(parents=True,exist_ok=True)
             target.write_text(json.dumps(result,indent=2),encoding='utf-8')
         return result
+
+    def test_real_staging_source_failure_reaps_writer_and_volume(self):
+        before_writers=command(['ps','-aq','--filter','label=cv-compass.scope=ocr-writer'])
+        before_volumes=command(['volume','ls','-q','--filter','label=cv-compass.scope=ocr-input'])
+        with self.assertRaises(FileNotFoundError):
+            prepare_control({},self.root/'missing.pdf',scope_config(),self.root)
+        self.assertEqual(command(['ps','-aq','--filter','label=cv-compass.scope=ocr-writer']),before_writers)
+        self.assertEqual(command(['volume','ls','-q','--filter','label=cv-compass.scope=ocr-input']),before_volumes)
 
     def test_limits_readonly_network_and_environment(self):
         result=self.probe('permissions')
@@ -98,8 +106,9 @@ class DockerEnforcementTests(unittest.TestCase):
               'config':dict(max_engine_output_bytes=cfg.max_engine_output_bytes),'wall_timeout':1.5}
         volume=prepare_control(task,None,cfg)
         name=create_scope(cfg,volume)
-        script='import subprocess,sys; subprocess.run(["docker","start","--attach",sys.argv[1]],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)'
-        supervisor=subprocess.Popen([sys.executable,'-c',script,name],env=os.environ.copy())
+        cli,env=docker_cli(['start','--attach',name])
+        script='import subprocess,sys; subprocess.run(sys.argv[1:],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)'
+        supervisor=subprocess.Popen([sys.executable,'-c',script,*cli],env=env)
         try:
             deadline=time.monotonic()+8
             while time.monotonic()<deadline:

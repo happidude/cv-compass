@@ -1,4 +1,4 @@
-> M6.1 design/historical snapshot; các đoạn hiện trạng là thời điểm khảo sát. Quyết định hardening được giao sau đó nằm tại [M6_2_HARDENING_DECISIONS.md](M6_2_HARDENING_DECISIONS.md); exit codes đã được đồng bộ theo quyết định mới.
+> LỊCH SỬ M6.1: không dùng như mô tả source/acceptance hiện tại. Xem [handoff hiện hành](M6_BASELINE_HANDOFF.md) và [PR9 revision](M6_PR9_REVISION.md). Target quality bên dưới là đề xuất lịch sử; OCR accuracy chưa đánh giá, GCC unresolved chặn production riêng.
 
 # M6.1 — Thiết kế Python OCR worker độc lập
 

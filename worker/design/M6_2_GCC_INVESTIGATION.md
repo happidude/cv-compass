@@ -1,3 +1,5 @@
+> BẰNG CHỨNG LỊCH SỬ GCC, không phải kết quả build source PR9 mới. Kết luận unresolved vẫn chặn production. Trạng thái/lệnh hiện hành: [handoff](M6_BASELINE_HANDOFF.md), [revision](M6_PR9_REVISION.md).
+
 # M6.2 — Điều tra GCC/Tesseract (2026-10-18)
 
 **Production binary BLOCKED — chưa kết luận warning vô hại.** Không suppress warning,

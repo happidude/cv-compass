@@ -1,3 +1,5 @@
+> LỊCH SỬ: review source/thiết kế cũ. Hiện hành: [handoff](M6_BASELINE_HANDOFF.md), [PR9 revision](M6_PR9_REVISION.md). Không tái sử dụng số tests cũ cho source mới.
+
 # M6.1 — Review và bằng chứng thiết kế
 
 > HISTORICAL SNAPSHOT: các mục bên dưới trước phụ lục ghi đợt thiết kế ban đầu. Kết quả hiện tại và ba quyết định mới nằm ở phụ lục cuối và M6_1_STACK_SPIKE.md; không dùng số5examples/13checks cũ làm evidence cuối.

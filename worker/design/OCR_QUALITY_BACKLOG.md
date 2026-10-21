@@ -1,5 +1,8 @@
 # OCR quality evaluation/improvement — backlog riêng
 
+Trạng thái baseline/kiến trúc/lệnh hiện hành: [handoff](M6_BASELINE_HANDOFF.md) và
+[PR9 revision](M6_PR9_REVISION.md). Backlog này không là technical evidence.
+
 Quyết định developer2026-10-21: corpus, ground truth, CER/WER và tuning chưa thuộc
 nghiệm thu M6 baseline PDF → text theo trang. **OCR accuracy chưa đánh giá.**
 Backlog này ghi việc cần làm khi có yêu cầu riêng, không tự cho phép đọc CV thật,

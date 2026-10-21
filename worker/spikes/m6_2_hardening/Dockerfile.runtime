@@ -1,0 +1,12 @@
+# Diagnostic baseline provisioning; GCC warnings do NOT open production gate.
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive OMP_THREAD_LIMIT=1
+RUN apt-get -o Acquire::ForceIPv4=true update && apt-get -o Acquire::ForceIPv4=true install -y --no-install-recommends build-essential cmake pkg-config ca-certificates xz-utils libssl-dev zlib1g-dev libffi-dev libbz2-dev liblzma-dev libreadline-dev libsqlite3-dev uuid-dev libleptonica-dev fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+COPY artifacts/ /artifacts/
+RUN cd /artifacts && sha256sum -c SHA256SUMS && mkdir -p /provenance && cp SHA256SUMS /provenance/artifacts.sha256 && c++ --version > /provenance/compiler.txt && cmake --version > /provenance/cmake.txt
+RUN tar -xJf /artifacts/python.tar.xz -C /tmp && cd /tmp/Python-3.14.8 && ./configure --prefix=/opt/python --with-ensurepip=install && make -j2 && make install && rm -rf /tmp/Python-3.14.8
+RUN tar -xzf /artifacts/tesseract.tar.gz -C /tmp && cmake -S /tmp/tesseract-5.5.3 -B /tmp/tess-build -DCMAKE_BUILD_TYPE=Release -DBUILD_TRAINING_TOOLS=OFF -DBUILD_TESTS=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build /tmp/tess-build -j2 2>&1 | tee /provenance/tesseract-build.log
+RUN cp /tmp/tess-build/compile_commands.json /tmp/tess-build/CMakeCache.txt /provenance/ && cmake --install /tmp/tess-build && ldconfig && rm -rf /tmp/tesseract-5.5.3 /tmp/tess-build && mkdir /models && cp /artifacts/*.traineddata /models/ && cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /fixture-font.ttf && echo 'ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280  /fixture-font.ttf' | sha256sum -c - && rm -rf /artifacts
+ENV PATH=/opt/python/bin:/usr/local/bin:/usr/bin:/bin PYTHONDONTWRITEBYTECODE=1
+USER 65532:65532

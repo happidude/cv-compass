@@ -1,4 +1,5 @@
-FROM cv-compass-m61-spike:local
+ARG RUNTIME_IMAGE=cvcompass-m6-runtime:build
+FROM ${RUNTIME_IMAGE}
 USER 0:0
 RUN /opt/python/bin/python3 -m venv /opt/cv-venv && mkdir /request /opt/worker && chown -R 65532:65532 /opt/cv-venv
 COPY wheels/ /wheels/

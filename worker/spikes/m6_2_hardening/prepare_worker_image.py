@@ -1,18 +1,29 @@
-"""Copy only explicit non-sensitive source files into a dedicated Docker context."""
+"""Fresh allowlisted context: runtime imports design/, probes live in tests/spikes."""
 from pathlib import Path
 import shutil
-root=Path(__file__).resolve().parents[2]
-ctx=root/'build/m6-2-hardening/worker-context'
-for folder in ('src','design','tests'):
-    for source in (root/folder).rglob('*'):
-        if source.is_file() and source.suffix in ('.py','.json') and '__pycache__' not in source.parts:
-            target=ctx/source.relative_to(root)
-            target.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(source,target)
-for source in [*(root/'spikes/m6_1').glob('*.py'), *(root/'spikes/m6_2_hardening').glob('*.py')]:
-    target=ctx/source.relative_to(root)
-    target.parent.mkdir(parents=True,exist_ok=True)
-    shutil.copyfile(source,target)
-shutil.copyfile(root/'spikes/m6_2_hardening/Dockerfile.worker',ctx/'Dockerfile')
-shutil.copyfile(root/'run_worker.py',ctx/'run_worker.py')
-print('Prepared explicit source-only runtime context')
+
+
+def prepare(root, context):
+    root, context = Path(root).resolve(), Path(context).resolve()
+    if not context.is_relative_to(root/'build') or context == root/'build':
+        raise ValueError('Context must be a dedicated directory inside worker/build')
+    if context.exists():
+        shutil.rmtree(context)
+    context.mkdir(parents=True)
+    sources = []
+    for folder in ('src','design','tests','spikes'):
+        sources.extend(p for p in (root/folder).rglob('*') if p.is_file()
+                       and p.suffix in ('.py','.json') and '__pycache__' not in p.parts)
+    sources.append(root/'run_worker.py')
+    for source in sources:
+        target=context/source.relative_to(root)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(source,target)
+    shutil.copyfile(root/'spikes/m6_2_hardening/Dockerfile.worker',context/'Dockerfile')
+    return context
+
+
+if __name__ == '__main__':
+    root=Path(__file__).resolve().parents[2]
+    prepare(root,root/'build/m6-2-hardening/worker-context')
+    print('Prepared fresh explicit source-only runtime context')

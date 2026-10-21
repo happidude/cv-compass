@@ -1,3 +1,5 @@
+> LỊCH SỬ component spike. Không dùng các lệnh/image cũ này để build baseline PR9. Hiện hành: [handoff](../../design/M6_BASELINE_HANDOFF.md), [revision](../../design/M6_PR9_REVISION.md).
+
 # M6.1 — component spike, không phải production worker
 
 Chỉ sinh một native PDF và một scan PDF tổng hợp thông thường vào TemporaryDirectory. Không có tham số input PDF/CV ngoài. Không dùng resource bomb. Không suy luận OCR quality từ fixture này.

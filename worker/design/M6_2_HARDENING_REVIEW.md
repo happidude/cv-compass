@@ -1,3 +1,5 @@
+> REVIEW LỊCH SỬ đến ee6d4a7. Review/evidence đợt PR9 mới ở [M6_PR9_REVISION.md](M6_PR9_REVISION.md), tối đa3vòng riêng theo yêu cầu cập nhật PR.
+
 # M6.2 Hardening — Review record
 
 Base5c06070955e2313f041be47ac313d97b2c079bea, feature/ocr-worker,

@@ -1,0 +1,53 @@
+name: Python worker baseline
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/worker-ci.yml']
+  push:
+    branches: [main, feature/ocr-worker]
+    paths: ['worker/**', '.github/workflows/worker-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-full:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.8'
+      - name: Host runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends liblept5
+          python --version
+          docker version
+          test "$(docker info --format '{{.OSType}} {{.CgroupVersion}}')" = 'linux 2'
+      - name: Build all images from this checkout and verify provisioning hashes
+        run: python worker/spikes/m6_2_hardening/build_baseline.py
+      - name: Fresh hash-locked install, pip check, syntax and full technical suite
+        run: python worker/spikes/m6_2_hardening/verify_baseline.py
+      - name: Cleanup test resources even on failure
+        if: always()
+        run: python worker/spikes/m6_2_hardening/verify_baseline.py --cleanup-only
+      - name: Upload JUnit, full logs and source/image provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-baseline-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            worker/build/baseline/*.log
+            worker/build/baseline/*.json
+            worker/build/baseline/verification/*.xml
+            worker/build/baseline/verification/*.log
+            worker/build/baseline/verification/*.json
+            worker/build/baseline/verification/*.sha256
+            worker/build/baseline/verification/provenance/

@@ -1,3 +1,5 @@
+> LỊCH SỬ quyết định đến baseline ee6d4a7. Endpoint/staging/build/CI hiện hành ở [PR9 revision](M6_PR9_REVISION.md), cách chạy ở [handoff](M6_BASELINE_HANDOFF.md).
+
 # M6.2 hardening — quyết định trước triển khai (2026-10-18)
 
 ## Điều chỉnh nghiệm thu được developer duyệt — 2026-10-21

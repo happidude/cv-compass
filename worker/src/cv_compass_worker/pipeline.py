@@ -71,6 +71,20 @@ def empty_result(request, config):
 
 
 def process(request, workspace, config, diagnostics=None):
+    if config.adapter == 'docker':
+        from .docker_sandbox import docker_session
+        try:
+            with docker_session():
+                return _process(request,workspace,config,diagnostics)
+        except ChildFailure as exc:
+            result=empty_result(request,config)
+            result['errors']=[{'code':exc.code,'stage':'preflight'}]
+            result['timings_ms']['total']=0
+            return result
+    return _process(request,workspace,config,diagnostics)
+
+
+def _process(request, workspace, config, diagnostics=None):
     validate_request(request)
     # Fail closed irrespective of operator-provided booleans: no production
     # adapter or reviewed replacement binary has been implemented/approved.
@@ -93,6 +107,7 @@ def process(request, workspace, config, diagnostics=None):
         source = snapshot(workspace, request, root, config)
         info = run_child(dict(action='preflight', source=str(source)), root/'preflight', config,
                          min(config.preflight_timeout, max(.001, deadline-time.monotonic())))
+        scope_cleanup_failed |= getattr(info,'cleanup_failed',False)
         if diagnostics is not None and (root/'preflight/isolation.json').is_file():
             diagnostics.append({'stage':'preflight','isolation':json.loads((root/'preflight/isolation.json').read_text())})
         count = info['page_count']
@@ -123,6 +138,7 @@ def process(request, workspace, config, diagnostics=None):
             try:
                 item = run_child(dict(action='page', source=str(source), number=n), directory,
                                  config, min(config.page_timeout, remaining))
+                scope_cleanup_failed |= getattr(item,'cleanup_failed',False)
                 # Check structure/status before accepting IPC. Result validation
                 # also checks semantic page order and configured text ceilings.
                 try:
@@ -170,6 +186,7 @@ def process(request, workspace, config, diagnostics=None):
         result['errors'].append({'code': exc.code, 'stage': stage})
         mark_pending(result, exc.code, stage)
     except Exception as exc:
+        scope_cleanup_failed |= getattr(exc,'cleanup_failed',False)
         from .contracts import SCHEMA
         codes = SCHEMA['$defs']['error']['properties']['code']['enum']
         code = str(exc) if isinstance(exc, ValueError) and str(exc) in codes else (

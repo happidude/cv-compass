@@ -1,3 +1,5 @@
+> REVIEW LỊCH SỬ, không đại diện source PR9 hiện tại. Xem [PR9 revision](M6_PR9_REVISION.md) và [handoff](M6_BASELINE_HANDOFF.md).
+
 # M6.2 — Developer/Reviewer record
 
 Base: `5c06070955e2313f041be47ac313d97b2c079bea`, branch `feature/ocr-worker`,

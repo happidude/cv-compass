@@ -1,3 +1,5 @@
+> BÁO CÁO LỊCH SỬ source manifest 594844…e5d4, commit ee6d4a7. Số80/80 bên dưới không xác minh source PR9 sửa đổi. Evidence mới: [PR9 revision](M6_PR9_REVISION.md); cách chạy hiện tại: [handoff](M6_BASELINE_HANDOFF.md).
+
 # M6.2 Hardening — verification report
 
 Ngày2026-10-18, cập nhật nghiệm thu2026-10-21. **M6 baseline dùng thử: đủ evidence

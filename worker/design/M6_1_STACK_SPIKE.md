@@ -1,3 +1,5 @@
+> LỊCH SỬ: component spike; không phải lệnh build/gate hiện tại. Xem [handoff](M6_BASELINE_HANDOFF.md) và [PR9 revision](M6_PR9_REVISION.md).
+
 # M6.1 — Contract review đã chốt và component spike
 
 Ngày2026-10-18. Branch docs/m6-1-ocr-design, worktree E:/cv-compass-ocr-design.

@@ -1,141 +1,107 @@
-# CV Compass — Python OCR worker M6.2
+# CV Compass — M6 offline PDF → page text baseline
 
-PDF → text theo từng trang, offline; không business mapping, database hoặc M7.
-**M6 baseline dùng thử: đủ evidence kỹ thuật. OCR accuracy chưa đánh giá.**
-**Production-ready: BLOCKED do GCC/Tesseract unresolved. Chưa chạy CV thật.**
+PR [#9](https://github.com/hoangnguyen229/cv-compass/pull/9), branch `feature/ocr-worker`.
+Baseline dùng thử với fixture tổng hợp. **OCR accuracy chưa đánh giá. Production vẫn
+BLOCKED do GCC/Tesseract unresolved.** Technical CI pass không mở production gate.
 
-Phạm vi nghiệm thu điều chỉnh ngày 2026-10-21: baseline PDF → text theo trang với
-pipeline hiện có; corpus/ground truth/CER-WER/quality tuning chuyển backlog riêng.
-Xem [bản bàn giao và cách chạy](design/M6_BASELINE_HANDOFF.md) và
-[quality backlog](design/OCR_QUALITY_BACKLOG.md). Chế độ dùng thử hiện tại vẫn là
-`diagnostic` với fixture tổng hợp; quyết định này không mở production gate.
+Pipeline hiện có: snapshot/hash PDF → child preflight → native text theo trang →
+PDFium render/Tesseract vie+eng khi cần → validated page results → cleanup/publication.
+Không mapping business fields, candidate parsing, DB, HTTP integration hoặc M7.
 
-## Chạy và contract
+## Build và full gate từ checkout sạch
 
-Dùng CPython3.14.8 riêng, Tesseract5.5.3, model eng/vie/osd từ revision
-`87416418657359cb625c412a48b6e1d6d41c29bd`. Runtime kiểm tra version/model SHA256;
-không cài dependency/model khi đọc PDF. Giữ license/notices của binary và dependency.
+Linux/Ubuntu24.04 x86_64 (Windows dùng Ubuntu WSL), CPython3.14.8 có pip/venv, Git,
+Docker local Linux cgroupv2. Host cần Leptonica runtime (`sudo apt-get install liblept5`).
+Docker build cần mạng để cài Ubuntu build libraries và tải artifact chính thức; PDF
+children chạy offline/networknone. Không thay Python/PATH global Windows.
 
-```powershell
-python -m pip install --only-binary=:all: --require-hashes -r worker/requirements.lock -r worker/requirements-test.lock
-python worker/run_worker.py --config <private-config.toml> --workspace <private-workspace> --request <request.json> --output <new-result.json> --verification-report <new-verification.json> --synthetic-only
+Từ repository root:
+
+```sh
+python3.14 worker/spikes/m6_2_hardening/build_baseline.py
+python3.14 worker/spikes/m6_2_hardening/verify_baseline.py
+# Chạy cả khi verification bị lỗi/cancel:
+python3.14 worker/spikes/m6_2_hardening/verify_baseline.py --cleanup-only
 ```
 
-Cấu hình mẫu tại config.example.toml; path phải là absolute của OS. Chạy trong checkout
-có src/ và design/, chưa đóng gói wheel. `--synthetic-only` là xác nhận của operator,
-không phải bộ phát hiện CV thật. Không dùng real CV hoặc hostile PDF/resource bomb.
+Builder tạo fresh runtime/dependency/worker context trong `worker/build/baseline`,
+build từ Ubuntu image pin digest, CPython/Tesseract archives, models pin SHA256 và
+font có checksum. Dependency wheels tải theo hai hash lockfiles rồi cài offline
+`--require-hashes` + `pip check`. Không cần image có sẵn trên laptop. Context được
+xóa/recreate có kiểm tra target nằm dưới worker/build, không giữ source đã xóa.
+Image IDs, source manifest/version và full compiler/build logs ở output directory.
 
-Request theo design/examples/request.json: schema_version cv-compass.ocr/1.0,
-request_id/document_id opaque ASCII, input_ref32hex.pdf trong workspace private,
-expected_sha256 thực của fixture, profile baseline-v1. Không arbitrary path/URL/password.
-Result theo design/ocr-v1.schema.json; không đổi schema/version hoặc thêm delivered/isolation
-vào OCR JSON. Text NFC/LF, raw_text giữ engine output; không suy diễn/sửa business fields.
-Tesseract confidence là trung bình TSV word score hợp lệ, không xác suất/accuracy/CER.
+Verifier tạo venv host mới, cài lockfiles với hashes, chạy pip check, syntax compileall
+và **full `tests/run_checks.py`**, gồm Docker isolation tests. Missing prerequisite
+phải fail; `run_unprivileged_checks.py` chỉ là subset lịch sử. Compileall chỉ là syntax
+check, chưa có linter/type checker hoặc Python package build. Mỗi lần full gate cần
+verification directory mới; giữ evidence lần trước ở output khác, không ghi đè report.
 
-| Exit | Điều kiện | Receipt stderr |
+`.github/workflows/worker-ci.yml` dùng đúng hai script trên trên Ubuntu host + Docker
+child cho worker/workflow changes. Backend CI không đổi. JUnit/logs/provenance được
+upload kể cả thất bại; cleanup step có `always()`. Chi tiết acceptance và evidence
+source mới ở [PR9 revision](design/M6_PR9_REVISION.md); số80/80 cũ là lịch sử.
+
+## Chạy CLI dùng thử
+
+Xem [handoff](design/M6_BASELINE_HANDOFF.md) cho config/request và fixture. Dùng
+CPython3.14.8 với dependencies đã cài; Docker image là ID vừa build trong images.json.
+
+```sh
+python worker/run_worker.py --config /private/config.toml \
+  --workspace /private/workspace --request /private/request.json \
+  --output /private/new-result.json --verification-report /private/new-verification.json \
+  --synthetic-only
+```
+
+`mode="diagnostic"`, `adapter="docker"` cho bounded trial. `--synthetic-only` là xác
+nhận operator, không phát hiện CV thật. Production mode bị từ chối trước xử lý PDF;
+không có flag bypass. Không dùng CV thật, D:, credentials hoặc inbox/storage thật.
+
+| Exit | Result được giao | Status |
 |---:|---|---|
-| 0 | Result JSON success đã giao | delivered=true,status=success |
-| 1 | Result JSON partial đã giao | delivered=true,status=partial |
-| 2 | Result JSON failed đã giao | delivered=true,status=failed |
-| 3 | Không giao được result JSON hợp lệ | delivered=false,không status |
+| 0 | Có | success: có ok, còn lại ok/blank, không document error |
+| 1 | Có | partial: có ok và page/not_processed/document error |
+| 2 | Có | failed: không có ok, kể cả toàn blank |
+| 3 | Không | result absent hoặc target cũ giữ nguyên |
 
-Request/config lỗi nhưng có schema version/opaque IDs đã validate đủ để tạo envelope
-failed thì xuất failed và trả2. Thiếu identity hợp lệ, JSON hỏng hoặc publication lỗi
-thì3. Invalid config không được điều khiển fallback envelope caps. Exit không chứng
-minh accuracy OCR. Receipt chỉ code/delivered/status, không PDF text/filename/path.
-Không stdout OCR JSON. Examples riêng: design/cli-exit-examples.json.
+Kiểm tra exit/status/stderr receipt delivered/output cùng nhau. Text NFC/LF,
+raw_text giữ output method đã chọn. Output mới, atomic no-clobber; report/result
+không commit nguyên tử cùng nhau. Exit0/confidence không chứng minh accuracy.
+Trần v1:50trang,50.000Unicode codepoints mỗi text/raw_text/trang; config chỉ giảm,
+không truncate âm thầm, phần loại có OUTPUT_LIMIT. Tổng text+raw500.000,
+result/engine8MiB, worktmpfs256MiB. Cleanup lỗi chỉ warning, giữ trang đã xong,
+primary error và lock/halt để operator xử lý resource còn sót.
 
-Result/report phải là file mới. Atomic no-clobber publication trên cùng filesystem;
-hai artifact không commit nguyên tử cùng nhau: report có thể tồn tại nếu result write
-thất bại. Chỉ receipt delivered=true sau result publication; không suy từ report/file cũ.
+## Kiến trúc và ranh giới
 
-## Native diagnostic và Docker adapter
+`run_worker.py` bootstrap src; `src/cv_compass_worker` chứa CLI/config/contracts,
+pipeline/PDF/OCR/layout và native/Docker adapters. `design/*.json` là runtime dependency:
+config/contracts đọc schema/canonical limits theo relative path; phải có trong checkout
+và image, chưa đóng gói wheel. `tests/` tạo synthetic PDFs và bounded resource helper;
+`spikes/m6_1/*.py` có smoke/guard tests được full runner import. Build/verify scripts
+ở `spikes/m6_2_hardening/` là test/provision tooling; dependency test dùng
+requirements-test.lock. Không tái cấu trúc pipeline chỉ để đổi tên thư mục.
 
-Native Windows/Linux chỉ dành fixture tổng hợp thông thường, chưa hard isolation.
-Snapshot stream10MiB, hash/identity recheck, reject symlink/reparse/network source,
-không sửa PDF nguồn. Workspace phải private/ACL do operator chuẩn bị; chưa bảo đảm
-chống tài khoản có quyền đổi ancestor directories.
+Endpoint resolution: named DOCKER_CONTEXT ưu tiên DOCKER_HOST, rồi current context theo
+[Docker CLI docs](https://docs.docker.com/reference/cli/docker/). Resolve/validate local
+unix/npipe trước snapshot/resource/stream. Context đặc biệt `default` có endpoint
+in-memory lấy từ DOCKER_HOST; resolver giữ host khi đọc metadata để reject đúng remote.
+Mọi command trong lượt xử lý dùng cùng
+explicit `--host` và environment snapshot, không thừa hưởng routing overrides mới.
 
-Docker adapter dùng Linux containers trên Docker Desktop hoặc Docker local Ubuntu.
-Không cài daemon/service/global config. Supervisor ở ngoài PDF container, chỉ dùng
-local unix/npipe daemon; remote Docker endpoint bị reject **trước staging input**.
-Không truyền Docker socket/config/DB/cloud credentials vào PDF child.
+Supervisor ngoài child scope. Writer có tên xác định, bounded pipe wait/watchdog,
+kill/wait/remove daemon container trước input volume; Popen/stream/timeout đều vào
+cleanup. Cleanup flag truyền bằng memory qua prepare/scope/child/pipeline kể cả disk
+full làm ledger không ghi được. Ledger chỉ là evidence/recovery aid, không điều kiện
+duy nhất để halt intake.
 
-Để cấu hình adapter, bổ sung trong private TOML:
+PDF child:768MiB/no swap/CPU2/PIDs64, nonroot/read-only/networknone, capdropALL,
+no-new-privileges, input volume RO, tmpfs work256MiB + shm1MiB riêng. Không Docker
+socket/credentials/host storage mount. Native adapter chỉ diagnostic với fixture thường,
+không hard isolation. Host supervisor memory cap/hard host-I/O deadline/VPS thật chưa
+kiểm chứng; abrupt supervisor death có thể để resource/lock cần operator dọn.
 
-```toml
-adapter = "docker"
-docker_image = "sha256:<64 hex của worker image đã build/review>"
-container_memory_bytes = 805306368
-container_cpu_millicores = 2000
-container_pids = 64
-```
-
-Image phải có sẵn; `--pull never`, runtime không download. Build source bằng
-spikes/m6_2_hardening/prepare_worker_image.py và Dockerfile.worker sau clean dependency
-image Dockerfile.dependencies. Dockerfile.supervisor chỉ là test harness Ubuntu;
-không tự mount socket vào nó. Full Ubuntu checks đã chạy từ host supervisor trong
-WSL riêng `CVCompass-Ubuntu-24.04`, với Docker Desktop integration được cấp quyền;
-PDF child vẫn không có Docker socket. Evidence ngày 2026-10-20 ở báo cáo mục I.
-
-Mỗi child: hard memory768MiB/swap0/CPU2/PIDs64, nonroot65532/rootreadonly/networknone,
-capdropALL/no-new-privileges/core0/logdriver-none. /work và /work/engine là hai tmpfs
-có tổng size=max_temp_bytes256MiB; engine reserve=min(engine_output_cap,max_temp/2).
-/dev/shm có cap1MiB riêng. Input/control được writer trusted bounded stream vào named
-volume private mới, files444 rồi mount read-only trong PDF scope; không bind inbox,
-CV storage hoặc output RW. Supervisor được giữ ngoài child memory scope, chưa đặt
-hard256MiB budget cho host supervisor. Production vẫn fail closed vì GCC unresolved;
-technical suite hai môi trường đã chạy đầy đủ, không có flag bỏ qua gate.
-
-Container watchdog và parent watchdog giới hạn page/document; kill/remove PID scope,
-không chỉ kill Tesseract PID. Cgroup memory.peak gồm tree/cache/tmpfs, không phải RSS
-supervisor. Polling guards không thay hard quota. Không tuyên bố hard I/O deadline:
-Docker/filesystem/cleanup có thể treo ngoài watchdog tính toán.
-
-Nếu supervisor bị kill, container watchdog còn chạy và giới hạn lifetime; không hứa
-kill tức thì. Stopped container/readonly input volume/host snapshot-lock có thể còn;
-operator phải xác minh ownership rồi dọn. Không scheduler, retry hoặc crash recovery.
-Cleanup Docker thất bại không che lỗi chính hay đổi page đã thành công; ghi warning,
-giữ private ownership ledger/lock và ngừng intake tới khi operator xử lý.
-
-## Hành vi xử lý và giới hạn
-
-Ưu tiên native theo trang; text sparse/hỏng hoặc image coverage nghi thiếu thì full
-page OCR vie+eng/OEM1/PSM3. Geometry/column ordering/OSD còn heuristic, OCR cảnh báo
-READING_ORDER_UNCERTAIN. Blank giữ entry; toàn blank là failed. success có ít nhất1ok,
-còn lại ok/blank và không docerror; partial có ok và page/doc failure; failed không ok.
-Cleanup là warning. Chưa calibration trên CV thật, không có quality readiness claim.
-
-Trần contract v1 tại design/ocr-v1.limits.json:50pages,50.000Unicode codepoints mỗi
-text/raw_text. Config chỉ giảm; invalid bị từ chối trước PDF. Tổng text+raw500.000,
-result8MiB, engine8MiB, temp256MiB. Vượt output giữ whole-page prefix, phần loại có
-OUTPUT_LIMIT, không truncate text. Envelope tối thiểu không vừa thì3/no delivery.
-DPI300(config150–400),16Mpixel/6000px mỗi chiều trước render; preflight10s/page60s/
-Tesseract40s/OSD5s/document600s, reserve7s cho cleanup/output, concurrency1.
-
-## Kiểm chứng
-
-Fresh-install Windows script tạo interpreter3.14.8 riêng, không pth tới site-packages cũ;
-Ubuntu venv include-system-site-packages=false. Cả hai install --require-hashes offline
-sau provisioning wheelhouse; pip check và package/binary/model inventory có evidence.
-PATH Scripts chỉ đặt trong tiến trình provisioning rồi restore, không thay PATH global.
-
-```powershell
-# Source cuối, môi trường Windows sạch; đặt OCR_TEST_DOCKER_IMAGE bằng image SHA256 đã review.
-& worker/build/m6-2-hardening/windows-clean-final/python.exe -W error worker/tests/run_checks.py --xml worker/build/m6-2-hardening/windows/tests.xml
-```
-
-OCR_TEST_TESSERACT/MODELS/FONT/REPORT_DIR là cấu hình test, không credentials. Missing
-mandatory dependency phải fail, không skip. run_unprivileged_checks.py là Ubuntu
-**subset**, không full gate. Full suite cuối dùng run_checks.py: Windows 80/0/0/0,
-Ubuntu WSL 80/0/0/0, gồm đủ 13 isolation checks từng thiếu (2026-10-20).
-Không đưa subset vào CI như full technical check. Chưa có lint/type tool cấu hình ở
-baseline; compileall chỉ kiểm tra syntax, không được gọi là lint/type PASS.
-
-Đọc design/M6_2_HARDENING_REPORT.md, M6_2_HARDENING_DECISIONS.md và review record.
-M6_2_VERIFICATION.md là evidence iteration trước. GCC vẫn unresolved; 517sanitizer
-cases reduced path không chứng minh mọi input an toàn. Chưa CER/WER/manual-ground-truth
-quality evaluation: **OCR accuracy chưa đánh giá**, được đưa vào backlog riêng, không
-là điều kiện nghiệm thu baseline theo quyết định 2026-10-21. Chưa real CV/M7/commit/
-push/merge. Java/Gradle/PostgreSQL N/A. Source fingerprint không đổi thì dùng evidence
-đã đối chiếu; không gọi việc đọc lại XML là một lần chạy tests mới.
+Accuracy evaluation/tuning ở [backlog riêng](design/OCR_QUALITY_BACKLOG.md).
+GCC warning vẫn unresolved độc lập; không suppress, đổi compiler/hạ optimization hay
+bypass để tạo PASS. Historical reports có banner dẫn tới trạng thái hiện hành.

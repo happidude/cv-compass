@@ -1,4 +1,4 @@
-> Historical iteration trước hardening. Kết quả mới ở [M6_2_HARDENING_REPORT.md](M6_2_HARDENING_REPORT.md); không dùng số test/source bên dưới cho source hiện tại.
+> LỊCH SỬ trước hardening. Source/evidence PR9 hiện hành: [M6_PR9_REVISION.md](M6_PR9_REVISION.md), cách chạy: [handoff](M6_BASELINE_HANDOFF.md). Không dùng số test/source bên dưới cho source hiện tại.
 
 # M6.2 — Báo cáo kiểm chứng (2026-10-18)
 
