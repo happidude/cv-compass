@@ -4,5 +4,6 @@ public enum DocumentStatus {
     PENDING,
     PROCESSING,
     COMPLETED,
+    PARTIAL,
     FAILED
 }

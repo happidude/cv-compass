@@ -890,3 +890,56 @@ move retry, source thay đổi, history/batch commit failure + compensation, shu
 và restart qua hai application context thật. Regression M1–M5 vẫn bắt buộc.
 Giữ negative-test WARN/ERROR và đối chiếu với assertion; không che log tạo PASS.
 CI Linux phải kiểm chứng đúng source cuối; CV thật không thuộc test/smoke.
+# M7.2 OCR database foundation (local work in progress, no HTTP)
+
+Base: PR9 merge `2c39e9267ba3da00d038c3b42aaa22a348503b6b`.
+Dedicated branch `feature/m7-2-ocr-db`; commit/push authorized for this work-in-progress
+snapshot. No merge or M7.3 authorization; M7.2 has not passed its local quality gate.
+V6 adds attempt history, lease/fencing/retry/quarantine and terminal result JSONB;
+V1–V5 and legacy records are preserved. Services use constructor DI and existing
+ingestion responsibility packages. No upload/batch/disk enqueue hook, scheduler,
+HTTP/auth, PDF transfer, Python adapter, candidate mapping or worker DB access.
+
+`cv.ocr.enabled=false` by default. Enabling with `prod` fails: unresolved GCC/Tesseract
+still blocks production. Technical state-machine tests do not open the production
+gate. OCR accuracy has not been evaluated. Synthetic-only safeguards stay intact.
+
+Historical pre-fix check (`16b594d`): 226 tests, 1 failure, 0 errors, 0 skipped. PostgreSQL
+returned a finish time 5.407 seconds before the attempt start; Docker VM logs repeatedly
+reported `Time jumped backwards`. The time constraint/assertion remains unchanged.
+Local acceptance is BLOCKED pending a stable Docker clock and a fresh full check;
+publishing this branch does not declare M7.2 complete or production-ready.
+
+Follow-up fixes keep heartbeat expiry non-decreasing even when DB time moves
+backwards, while still enforcing live/current ownership and the hard deadline.
+Renewal is `min(hard deadline, max(current expiry, DB now + configured lease duration))`.
+Confidence sample_count is an integer in the M6 schema's fixed 1–50,000 range;
+the validator reads these bounds from the unchanged canonical schema snapshot.
+The two classpath contract copies preserve canonical worker bytes via scoped root
+`.gitattributes` rules (`text eol=crlf`). The canonical artifacts use CRLF; do not
+normalize only the backend copy to LF. The strict byte-parity test is unchanged and
+must pass from Linux Git checkout, not just an autocrlf-converted Windows worktree.
+Deterministic service tests script DB time (no host clock changes), including expired
+attempt rejection; validator tests include 0/1/50,000/50,001 and oversized integers.
+Current verification evidence is in local docs/M7_2_FINDING_FIXES.md. Docker clock
+stability remains unverified; the operator declined a restart during this fix run.
+
+Defaults: max attempts 3 (hard cap), lease 120s, heartbeat 30s, absolute attempt
+timeout 900s, quarantine grace 60s, retry backoffs 30s/120s. See typed/validated
+`OcrJobProperties` and `CV_OCR_*` bindings in application.yaml; limits can only reduce
+canonical M6 caps. Delivered success/partial/failed is terminal, including blank-only.
+
+Local verification (Java25, PostgreSQL17, isolated schemas, TEST_DB_PASSWORD supplied
+privately; never use real inbox/storage):
+
+```powershell
+./gradlew test --tests '*Ocr*Tests' --rerun-tasks --console=plain
+./gradlew check --rerun-tasks --console=plain
+```
+
+On Windows, retain the documented session-only JAVA_HOME and short ASCII
+`-Djdk.net.unixdomain.tmpdir` workaround above. JUnit XML: build/test-results/test;
+logs/evidence: build/m7-2-*.log and local docs/M7_2_DATABASE_FOUNDATION.md.
+Worker unchanged: Python suite is not rerun for this Java-only increment.
+CI must be checked separately for the published commit; neither CI nor M6 results
+replace the local gate. Do not reuse the historical pre-fix test result for these fixes.

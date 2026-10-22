@@ -35,4 +35,13 @@ public class CvExtraction extends BaseEntity {
     @Column(name = "\"EXTRACTION_METHOD\"", nullable = false, length = 30)
     private ExtractionMethod extractionMethod;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "\"ATTEMPT_ID\"") private CvOcrAttempt attempt;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "\"OCR_RESULT\"", columnDefinition = "jsonb") private Map<String, Object> ocrResult;
+    @Column(name = "\"OCR_STATUS\"", length = 20) private String ocrStatus;
+    @Column(name = "\"PROFILE_REVISION\"", length = 128) private String profileRevision;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "\"PROVENANCE\"", columnDefinition = "jsonb") private Map<String, Object> provenance;
+
 }

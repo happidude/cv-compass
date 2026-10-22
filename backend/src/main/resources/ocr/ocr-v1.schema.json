@@ -1,0 +1,743 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CV Compass OCR local contract v1.0 — M6.1 PROPOSAL",
+  "description": "M6.1 local contract. Limits authority: ocr-v1.limits.json; verify_contract.py rejects schema/config drift. Status/ordering/output-preservation rules require semantic validation. Isolation belongs only in a separate verification report.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "request_id",
+        "document_id",
+        "input_ref",
+        "expected_sha256",
+        "profile"
+      ],
+      "properties": {
+        "type": {
+          "const": "request"
+        },
+        "schema_version": {
+          "const": "cv-compass.ocr/1.0"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "document_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "input_ref": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}\\.pdf$"
+        },
+        "expected_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile": {
+          "const": "baseline-v1"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "request_id",
+        "document_id",
+        "status",
+        "page_count",
+        "pages",
+        "warnings",
+        "errors",
+        "timings_ms",
+        "engines",
+        "config_fingerprint"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "schema_version": {
+          "const": "cv-compass.ocr/1.0"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "document_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "status": {
+          "enum": [
+            "success",
+            "partial",
+            "failed"
+          ]
+        },
+        "page_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 50
+        },
+        "pages": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/page"
+          }
+        },
+        "warnings": {
+          "$ref": "#/$defs/warnings"
+        },
+        "errors": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "timings_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "preflight",
+            "cleanup",
+            "total"
+          ],
+          "properties": {
+            "preflight": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "cleanup": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "total": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "engines": {
+          "$ref": "#/$defs/engines"
+        },
+        "config_fingerprint": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "page_count": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "pages": {
+                "maxItems": 0
+              },
+              "status": {
+                "const": "failed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "success"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "errors": {
+                "maxItems": 0
+              },
+              "pages": {
+                "minItems": 1,
+                "contains": {
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    }
+                  }
+                },
+                "items": {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/page"
+                    },
+                    {
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "ok",
+                            "blank"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "partial"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "properties": {
+                  "pages": {
+                    "contains": {
+                      "properties": {
+                        "status": {
+                          "const": "ok"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "pages": {
+                        "contains": {
+                          "properties": {
+                            "status": {
+                              "enum": [
+                                "failed",
+                                "not_processed"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "errors": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "pages": {
+                "items": {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/page"
+                    },
+                    {
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "blank",
+                            "failed",
+                            "not_processed"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page_number",
+        "status",
+        "method",
+        "text",
+        "raw_text",
+        "warnings",
+        "error",
+        "timings_ms",
+        "confidence"
+      ],
+      "properties": {
+        "page_number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "blank",
+            "failed",
+            "not_processed"
+          ]
+        },
+        "method": {
+          "enum": [
+            "native",
+            "ocr",
+            "none"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 50000
+        },
+        "raw_text": {
+          "type": "string",
+          "maxLength": 50000
+        },
+        "warnings": {
+          "$ref": "#/$defs/warnings"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/error"
+            }
+          ]
+        },
+        "timings_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "native",
+            "render",
+            "preprocess",
+            "ocr",
+            "total"
+          ],
+          "properties": {
+            "native": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "render": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "preprocess": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "ocr": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "total": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/confidence"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "native",
+                  "ocr"
+                ]
+              },
+              "text": {
+                "pattern": "\\S"
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "blank"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "const": "none"
+              },
+              "text": {
+                "const": ""
+              },
+              "raw_text": {
+                "const": ""
+              },
+              "error": {
+                "type": "null"
+              },
+              "warnings": {
+                "contains": {
+                  "const": "BLANK_PAGE"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "failed",
+                  "not_processed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "const": "none"
+              },
+              "text": {
+                "const": ""
+              },
+              "error": {
+                "$ref": "#/$defs/error"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "native",
+                  "none"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "confidence": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "stage"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_REQUEST",
+            "INVALID_CONFIGURATION",
+            "INPUT_NOT_FOUND",
+            "INPUT_ACCESS_DENIED",
+            "UNSAFE_INPUT",
+            "INPUT_CHANGED",
+            "INPUT_HASH_MISMATCH",
+            "FILE_CORRUPT",
+            "FILE_ENCRYPTED",
+            "FILE_SIZE_LIMIT",
+            "PAGE_COUNT_LIMIT",
+            "IMAGE_LIMIT",
+            "OUTPUT_LIMIT",
+            "TEMP_LIMIT",
+            "RESOURCE_LIMIT",
+            "PAGE_TIMEOUT",
+            "DOCUMENT_TIMEOUT",
+            "DEPENDENCY_MISSING",
+            "MODEL_MISSING",
+            "ENGINE_VERSION_UNSUPPORTED",
+            "NATIVE_EXTRACTION_FAILED",
+            "RENDER_FAILED",
+            "OCR_FAILED",
+            "NO_USABLE_TEXT",
+            "ENGINE_CRASH",
+            "SUMMARY_PARTIAL",
+            "OUTPUT_WRITE_FAILED",
+            "INTERNAL_ERROR"
+          ]
+        },
+        "stage": {
+          "enum": [
+            "request",
+            "preflight",
+            "native",
+            "render",
+            "preprocess",
+            "ocr",
+            "supervisor",
+            "output",
+            "cleanup"
+          ]
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "NATIVE_TEXT_UNUSABLE",
+          "NATIVE_EXTRACTION_FAILED",
+          "SPARSE_TEXT",
+          "NATIVE_TEXT_WITH_IMAGES",
+          "READING_ORDER_UNCERTAIN",
+          "ROTATION_UNCERTAIN",
+          "LOW_OCR_CONFIDENCE",
+          "BLANK_PAGE",
+          "BLANK_PAGE_SUSPECTED",
+          "LOW_RESOLUTION",
+          "CLEANUP_FAILED"
+        ]
+      },
+      "maxItems": 11
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "metric",
+        "value",
+        "sample_count"
+      ],
+      "properties": {
+        "engine": {
+          "const": "tesseract"
+        },
+        "metric": {
+          "const": "mean_word_confidence"
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50000
+        }
+      }
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "python",
+        "pdfplumber",
+        "pdfminer_six",
+        "pypdfium2",
+        "pdfium",
+        "tesseract",
+        "leptonica",
+        "models",
+        "pillow",
+        "worker_version"
+      ],
+      "properties": {
+        "python": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pdfplumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pdfminer_six": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pypdfium2": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pdfium": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tesseract": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "leptonica": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "models": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "revision",
+              "sha256"
+            ],
+            "properties": {
+              "name": {
+                "enum": [
+                  "vie",
+                  "eng",
+                  "osd"
+                ]
+              },
+              "revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "sha256": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "pillow": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "worker_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
