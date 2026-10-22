@@ -64,7 +64,8 @@ public class OcrJobService {
         proof(key,attempt);
         Instant now = state.wallClock();
         live(job,attempt,now);
-        Instant expiry = min(now.plus(properties.getLeaseDuration()),attempt.hardDeadlineAt());
+        // DB wall-clock may move backwards: never retract a lease already granted.
+        Instant expiry = min(max(attempt.leaseExpiresAt(),now.plus(properties.getLeaseDuration())),attempt.hardDeadlineAt());
         state.renewed(attempt.id(),expiry);
         return new OcrClaim(job.id(),job.documentId(),job.profileRevision(),attempt.publicId(),attempt.attemptNo(),now,expiry,attempt.hardDeadlineAt());
     }

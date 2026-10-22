@@ -156,10 +156,11 @@ public class OcrResultValidator {
     private void confidence(JsonNode node,String method) {
         if (node.isNull()) return;
         require(method.equals("ocr")); object(node,"confidence");
+        JsonNode sampleCount = definitions.get("confidence").get("properties").get("sample_count");
         require(text(node.get("engine")).equals("tesseract") && text(node.get("metric")).equals("mean_word_confidence")
                 && node.get("value").isNumber() && Double.isFinite(node.get("value").doubleValue())
                 && node.get("value").doubleValue() >= 0 && node.get("value").doubleValue() <= 100
-                && node.get("sample_count").isIntegralNumber() && node.get("sample_count").bigIntegerValue().signum() >= 0);
+                && integer(node.get("sample_count"),sampleCount.get("minimum").intValue(),sampleCount.get("maximum").intValue()));
     }
     private static String text(JsonNode node) { require(node != null && node.isString()); return node.asString(); }
     private static boolean usable(String value) {

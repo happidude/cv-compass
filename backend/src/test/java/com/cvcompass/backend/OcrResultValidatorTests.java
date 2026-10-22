@@ -5,6 +5,8 @@ import com.cvcompass.backend.ingestion.enums.*;
 import com.cvcompass.backend.ingestion.exception.OcrStateException;
 import com.cvcompass.backend.ingestion.service.OcrResultValidator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -68,6 +70,19 @@ class OcrResultValidatorTests {
             var tree = tree(); ((ObjectNode)tree.at("/ocr_result/pages/0")).put("text",whitespace);
             rejected(tree.toString());
         }
+    }
+    @ParameterizedTest
+    @CsvSource({"0,false","1,true","50000,true","50001,false","4294967297,false",
+            "9223372036854775808,false","999999999999999999999999999999999999999,false","-1,false"})
+    void confidenceSampleCountObeysM6IntegerBounds(String sampleCount,boolean accepted) {
+        var tree=tree(); var page=(ObjectNode)tree.at("/ocr_result/pages/0"); page.put("method","ocr");
+        page.putObject("confidence").put("engine","tesseract").put("metric","mean_word_confidence")
+                .put("value",88).put("sample_count",new java.math.BigInteger(sampleCount));
+        if (accepted) {
+            var result=validator.parse(tree.toString());
+            assertThat(json.readTree(result.resultJson()).at("/pages/0/confidence/sample_count").bigIntegerValue())
+                    .isEqualTo(new java.math.BigInteger(sampleCount));
+        } else rejected(tree.toString());
     }
     @Test void schemaAndCanonicalLimitsAreByteIdenticalToWorker() throws Exception {
         for (String name : java.util.List.of("ocr-v1.schema.json","ocr-v1.limits.json")) {
