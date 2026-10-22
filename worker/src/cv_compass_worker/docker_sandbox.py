@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +20,18 @@ from .sandbox import ChildFailure
 
 
 _target = ContextVar('docker_target', default=None)
+RUN_ENV = 'CV_COMPASS_VERIFICATION_RUN_ID'
+RUN_LABEL = 'cv-compass.verification-run'
+
+
+def resource_labels():
+    """Trusted supervisor ownership only; never forwarded to the PDF child env."""
+    run_id = os.environ.get(RUN_ENV)
+    if run_id is None:
+        return []
+    if not re.fullmatch('[0-9a-f]{32}', run_id):
+        raise ChildFailure('INVALID_CONFIGURATION')
+    return ['--label', RUN_LABEL+'='+run_id]
 
 
 def docker_env():
@@ -137,7 +150,7 @@ def _create_scope(config, volume):
           '--tmpfs',f'/work/engine:rw,noexec,nosuid,nodev,size={engine_quota},uid=65532,gid=65532,mode=0700',
           '--shm-size','1m','--cap-drop','ALL','--security-opt','no-new-privileges',
           '--ulimit','core=0','--log-driver','none','--user','65532:65532',
-          '--label','cv-compass.scope=ocr-child',config.docker_image,
+          '--label','cv-compass.scope=ocr-child',*resource_labels(),config.docker_image,
           '/opt/cv-venv/bin/python','-m','cv_compass_worker.container_entry']
     if volume:
         args[-4:-4] = ['--mount',f'type=volume,source={volume},target=/request,readonly']
@@ -169,6 +182,7 @@ def prepare_control(task, source, config, root=None):
 
 
 def _prepare_control(task, source, config, root):
+    labels=resource_labels()
     volume='cvcompass-input-'+uuid.uuid4().hex
     name='cvcompass-writer-'+uuid.uuid4().hex
     writer = """import json,sys,pathlib,os,threading
@@ -188,7 +202,7 @@ for p in root.iterdir(): p.chmod(0o444)
     args=['create','--name',name,'-i','--pull','never','--network','none','--read-only',
           '--memory','64m','--memory-swap','64m','--cpus','1','--pids-limit','8',
           '--cap-drop','ALL','--security-opt','no-new-privileges','--log-driver','none',
-          '--label','cv-compass.scope=ocr-writer',
+          '--label','cv-compass.scope=ocr-writer',*labels,
           '--mount',f'type=volume,source={volume},target=/control',
           '--user','0:0',config.docker_image,'/opt/cv-venv/bin/python','-c',writer]
     process=None
@@ -198,7 +212,7 @@ for p in root.iterdir(): p.chmod(0o444)
     primary=None
     leftovers=[]
     try:
-        command(['volume','create','--label','cv-compass.scope=ocr-input',volume])
+        command(['volume','create','--label','cv-compass.scope=ocr-input',*labels,volume])
         writer_attempted=True
         command(args)
         cli,env=docker_cli(['start','--attach','--interactive',name])

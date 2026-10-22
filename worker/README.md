@@ -37,6 +37,19 @@ phải fail; `run_unprivileged_checks.py` chỉ là subset lịch sử. Compilea
 check, chưa có linter/type checker hoặc Python package build. Mỗi lần full gate cần
 verification directory mới; giữ evidence lần trước ở output khác, không ghi đè report.
 
+Mỗi verification tạo UUID `run_id` mới và ghi exclusive `resources.owner.json`
+(version/run_id/local endpoint) trước khi tạo resource. `CV_COMPASS_VERIFICATION_RUN_ID`
+truyền ownership tới trusted test supervisors; writer/child/input volume và asset
+container mang label riêng `cv-compass.verification-run=<run_id>`. Không truyền biến
+này hoặc Docker socket vào PDF child. Không tự đặt/tái sử dụng run_id giữa các lượt.
+Cleanup (kể cả `--cleanup-only --build <đúng output>`) chỉ discover theo run_id,
+inspect xác nhận owner/scope, xóa container theo immutable ID trước volume; kiểm tra
+endpoint trùng state. Không snapshot diff/label chung/name prefix làm authority.
+Giữ state cùng evidence; không gọi cleanup-only khi lượt đó còn chạy. Missing/legacy
+state hoặc endpoint khác không được dùng để dọn tự động. Inventory/inspect/remove/
+evidence-write failure trả nonzero, ghi leftovers trong cleanup.json/stderr để operator
+xử lý; không xóa resource của lượt khác. Chi tiết [ownership revision](design/M6_PR9_CLEANUP_OWNERSHIP.md).
+
 `.github/workflows/worker-ci.yml` dùng đúng hai script trên trên Ubuntu host + Docker
 child cho worker/workflow changes. Backend CI không đổi. JUnit/logs/provenance được
 upload kể cả thất bại; cleanup step có `always()`. Chi tiết acceptance và evidence

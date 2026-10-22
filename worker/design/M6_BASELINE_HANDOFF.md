@@ -4,6 +4,8 @@ PR [#9](https://github.com/hoangnguyen229/cv-compass/pull/9), `feature/ocr-worke
 Đợt sửa endpoint/staging/build/CI nối tiếp baseline ee6d4a7, giữ pipeline PDF → page
 text. Source đã đổi: evidence80/80 cũ chỉ là lịch sử. Kết quả/fingerprint mới và review
 record ở [M6_PR9_REVISION.md](M6_PR9_REVISION.md).
+Đợt cleanup ownership nối tiếp: [M6_PR9_CLEANUP_OWNERSHIP.md](M6_PR9_CLEANUP_OWNERSHIP.md).
+Evidence103 cũ không xác minh source đã đổi của đợt này.
 
 **OCR accuracy chưa đánh giá. Production vẫn BLOCKED do GCC/Tesseract unresolved.**
 Baseline dùng thử chỉ synthetic diagnostic; technical pass không chứng minh accuracy,
@@ -18,6 +20,16 @@ Prerequisites và hai lệnh Linux/WSL hiện hành ở [README](../README.md):
 laptop. Mạng chỉ dùng provisioning; child networknone. Pin/checksums ở
 `spikes/m6_2_hardening/provisioning.json` và requirements*.lock; compiler diagnostics
 được giữ nguyên trong logs/provenance, không suppress.
+
+Mỗi lượt có UUID run_id riêng trong `resources.owner.json` (exclusive trước resource),
+truyền tới trusted test subprocess, label cả writer/child/input volume/asset. Cleanup
+lọc run_id và inspect lại owner/scope, kiểm endpoint, remove container ID trước volume.
+Không dùng snapshot trước/sau, label scope chung hoặc tên asset làm ownership.
+`--cleanup-only --build <output>` phải trỏ state của lượt đã dừng; giữ state để retry.
+Thiếu state nhưng có evidence/legacy snapshot thì refuse, không đoán owner. Lỗi
+inventory/inspect/remove/report write trả nonzero; xem cleanup.json/stderr, không
+tự dọn resource run khác. State chỉ là authority của trusted supervisor, không
+chống operator cùng quyền daemon cố ý giả mạo label/state.
 
 Default evidence directory `worker/build/baseline` có source-manifest.json,
 source-version.json, images.json, runtime/dependency/worker-build.log; verification/

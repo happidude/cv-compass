@@ -1,5 +1,10 @@
 # M6 PR #9 — endpoint/staging/build/CI revision
 
+> Lịch sử source `94fee36` trước finding cleanup ownership. Báo cáo nối tiếp hiện hành:
+> [M6_PR9_CLEANUP_OWNERSHIP.md](M6_PR9_CLEANUP_OWNERSHIP.md). Không dùng103 tests
+> bên dưới làm evidence cho source sau sửa ownership; implementation cũ dùng delta
+> cleanup đã được thay, không phải authority để xóa resource.
+
 Base `ee6d4a7b810233f2faaab59ea4e913cba7340537`, branch `feature/ocr-worker`,
 worktree `E:/cv-compass-ocr-design`. Phạm vi developer giao: sửa technical baseline
 hiện có, cập nhật PR9; không xây lại pipeline, không M7/mapping fields/DB/CV thật.
