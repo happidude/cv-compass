@@ -915,6 +915,10 @@ backwards, while still enforcing live/current ownership and the hard deadline.
 Renewal is `min(hard deadline, max(current expiry, DB now + configured lease duration))`.
 Confidence sample_count is an integer in the M6 schema's fixed 1–50,000 range;
 the validator reads these bounds from the unchanged canonical schema snapshot.
+The two classpath contract copies preserve canonical worker bytes via scoped root
+`.gitattributes` rules (`text eol=crlf`). The canonical artifacts use CRLF; do not
+normalize only the backend copy to LF. The strict byte-parity test is unchanged and
+must pass from Linux Git checkout, not just an autocrlf-converted Windows worktree.
 Deterministic service tests script DB time (no host clock changes), including expired
 attempt rejection; validator tests include 0/1/50,000/50,001 and oversized integers.
 Current verification evidence is in local docs/M7_2_FINDING_FIXES.md. Docker clock
