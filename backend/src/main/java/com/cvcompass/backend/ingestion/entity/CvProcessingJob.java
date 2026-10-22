@@ -6,6 +6,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.time.Instant;
+import java.util.Map;
+import com.cvcompass.backend.ingestion.enums.OcrEndReason;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Getter
 @Setter
@@ -33,5 +37,17 @@ public class CvProcessingJob extends BaseEntity {
 
     @Column(name = "\"COMPLETED_AT\"")
     private Instant completedAt;
+
+    @Column(name = "\"PROFILE_REVISION\"", length = 128) private String profileRevision;
+    @Column(name = "\"GENERATION\"") private Integer generation;
+    @Column(name = "\"MAX_ATTEMPTS\"") private Integer maxAttempts;
+    @Column(name = "\"ATTEMPTS_STARTED\"") private Integer attemptsStarted;
+    @Column(name = "\"NEXT_ATTEMPT_AT\"") private Instant nextAttemptAt;
+    @Column(name = "\"CURRENT_ATTEMPT_ID\"") private Long currentAttemptId;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "\"ADMISSION_SNAPSHOT\"", columnDefinition = "jsonb") private Map<String, Object> admissionSnapshot;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "\"END_REASON\"", length = 40) private OcrEndReason endReason;
+    @Column(name = "\"ERROR_CODE\"", length = 60) private String errorCode;
 
 }

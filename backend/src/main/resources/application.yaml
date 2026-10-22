@@ -16,6 +16,20 @@ logging:
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
+  ocr:
+    enabled: ${CV_OCR_ENABLED:false}
+    max-attempts: ${CV_OCR_MAX_ATTEMPTS:3}
+    lease-duration: ${CV_OCR_LEASE_DURATION:120s}
+    heartbeat-interval: ${CV_OCR_HEARTBEAT_INTERVAL:30s}
+    attempt-timeout: ${CV_OCR_ATTEMPT_TIMEOUT:900s}
+    quarantine-grace: ${CV_OCR_QUARANTINE_GRACE:60s}
+    retry-backoffs: ${CV_OCR_RETRY_BACKOFFS:30s,120s}
+    expiry-batch-size: ${CV_OCR_EXPIRY_BATCH_SIZE:50}
+    max-pages: ${CV_OCR_MAX_PAGES:50}
+    max-text-code-points: ${CV_OCR_MAX_TEXT_CODE_POINTS:50000}
+    max-document-text: ${CV_OCR_MAX_DOCUMENT_TEXT:500000}
+    max-result-bytes: ${CV_OCR_MAX_RESULT_BYTES:8388608}
+    max-envelope-bytes: ${CV_OCR_MAX_ENVELOPE_BYTES:8454144}
   import:
     enabled: ${CV_IMPORT_ENABLED:false}
     provider: ${CV_IMPORT_PROVIDER:local}
