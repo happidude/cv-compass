@@ -1,0 +1,10 @@
+ARG DEPENDENCY_IMAGE=cvcompass-m6-deps:build
+FROM ${DEPENDENCY_IMAGE}
+USER 0:0
+COPY run_worker.py /opt/worker/run_worker.py
+COPY src/ /opt/worker/src/
+COPY design/ /opt/worker/design/
+COPY spikes/ /opt/worker/spikes/
+COPY tests/ /opt/worker/tests/
+ENV PYTHONPATH=/opt/worker/src TMPDIR=/work
+USER 65532:65532

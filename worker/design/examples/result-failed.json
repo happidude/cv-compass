@@ -1,0 +1,50 @@
+{
+  "type": "result",
+  "schema_version": "cv-compass.ocr/1.0",
+  "request_id": "synthetic-request-001",
+  "document_id": "synthetic-document-001",
+  "status": "failed",
+  "page_count": null,
+  "pages": [],
+  "warnings": [],
+  "errors": [
+    {
+      "code": "FILE_ENCRYPTED",
+      "stage": "preflight"
+    }
+  ],
+  "timings_ms": {
+    "preflight": 20,
+    "cleanup": 10,
+    "total": 40
+  },
+  "engines": {
+    "python": "3.14.8",
+    "pdfplumber": "0.11.10",
+    "pdfminer_six": "20260107",
+    "pypdfium2": "5.14.0",
+    "pdfium": "design-example-unmeasured",
+    "tesseract": "5.5.3",
+    "leptonica": "design-example-unmeasured",
+    "models": [
+      {
+        "name": "vie",
+        "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "name": "eng",
+        "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "name": "osd",
+        "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "pillow": "13.0.0",
+    "worker_version": "0.1.0-design-example"
+  },
+  "config_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

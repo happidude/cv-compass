@@ -1,0 +1,11 @@
+# M6.1 provisioning spike only, not a production worker image.
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+ENV DEBIAN_FRONTEND=noninteractive OMP_THREAD_LIMIT=1
+RUN apt-get -o Acquire::ForceIPv4=true update && apt-get -o Acquire::ForceIPv4=true install -y --no-install-recommends build-essential cmake pkg-config curl ca-certificates xz-utils libssl-dev zlib1g-dev libffi-dev libbz2-dev liblzma-dev libreadline-dev libsqlite3-dev uuid-dev libleptonica-dev fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN curl -4 -fL https://www.python.org/ftp/python/3.14.8/Python-3.14.8.tar.xz -o /tmp/python.tar.xz && sha256sum /tmp/python.tar.xz > /python-source.sha256 && tar -xJf /tmp/python.tar.xz -C /tmp && cd /tmp/Python-3.14.8 && ./configure --prefix=/opt/python --with-ensurepip=install && make -j2 && make install && rm -rf /tmp/Python-3.14.8 /tmp/python.tar.xz
+RUN curl -4 -fL https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz -o /tmp/tesseract.tar.gz && sha256sum /tmp/tesseract.tar.gz > /tesseract-source.sha256 && tar -xzf /tmp/tesseract.tar.gz -C /tmp && cmake -S /tmp/tesseract-5.5.3 -B /tmp/tess-build -DCMAKE_BUILD_TYPE=Release -DBUILD_TRAINING_TOOLS=OFF -DBUILD_TESTS=OFF && cmake --build /tmp/tess-build -j2 && cmake --install /tmp/tess-build && ldconfig && rm -rf /tmp/tesseract-5.5.3 /tmp/tess-build /tmp/tesseract.tar.gz
+COPY requirements.txt /requirements.txt
+RUN /opt/python/bin/python3 -m pip install --no-cache-dir --only-binary=:all: -r /requirements.txt
+RUN mkdir /models && for lang in vie eng osd; do curl -4 -fL https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/$lang.traineddata -o /models/$lang.traineddata || exit 1; done
+ENV PATH=/opt/python/bin:/usr/local/bin:/usr/bin:/bin PYTHONDONTWRITEBYTECODE=1
+USER 65532:65532

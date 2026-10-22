@@ -1,0 +1,20 @@
+# Diagnostic only: ordinary generated fixtures, never real CVs.
+mode = "diagnostic"
+tesseract = "C:/local-ocr/tesseract.exe"
+models = "C:/local-ocr/models"
+max_file_bytes = 10485760
+max_pages = 50
+max_text_code_points_per_field = 50000
+max_document_text = 500000
+max_result_bytes = 8388608
+max_engine_output_bytes = 8388608
+max_temp_bytes = 268435456
+render_dpi = 300
+max_image_pixels = 16000000
+max_image_dimension = 6000
+preflight_timeout = 10
+page_timeout = 60
+tesseract_timeout = 40
+osd_timeout = 5
+document_timeout = 600
+concurrency = 1

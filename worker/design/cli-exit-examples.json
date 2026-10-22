@@ -1,0 +1,8 @@
+[
+  {"exit_code":0,"result_status":"success","delivered":true,"output":"new_valid_result"},
+  {"exit_code":1,"result_status":"partial","delivered":true,"output":"new_valid_result"},
+  {"exit_code":2,"result_status":"failed","delivered":true,"output":"new_valid_result"},
+  {"case":"invalid_config_with_validated_identity","exit_code":2,"result_status":"failed","delivered":true,"output":"new_valid_result"},
+  {"case":"invalid_identity_or_malformed_json","exit_code":3,"result_status":null,"delivered":false,"output":"absent"},
+  {"case":"publication_existing_target","exit_code":3,"result_status":null,"delivered":false,"output":"existing_target_unchanged"}
+]

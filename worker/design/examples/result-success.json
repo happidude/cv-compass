@@ -1,0 +1,88 @@
+{
+  "type": "result",
+  "schema_version": "cv-compass.ocr/1.0",
+  "request_id": "synthetic-request-001",
+  "document_id": "synthetic-document-001",
+  "status": "success",
+  "page_count": 2,
+  "pages": [
+    {
+      "page_number": 1,
+      "status": "ok",
+      "method": "native",
+      "text": "Hồ sơ minh họa\nKỹ năng: Java, Python, phát triển hệ thống và kiểm thử phần mềm.",
+      "raw_text": "Hồ sơ minh họa\r\nKỹ năng: Java, Python, phát triển hệ thống và kiểm thử phần mềm.",
+      "warnings": [],
+      "error": null,
+      "timings_ms": {
+        "native": 15,
+        "render": null,
+        "preprocess": null,
+        "ocr": null,
+        "total": 40
+      },
+      "confidence": null
+    },
+    {
+      "page_number": 2,
+      "status": "ok",
+      "method": "ocr",
+      "text": "Synthetic scan\nExperience: software development.",
+      "raw_text": "Synthetic scan\nExperience: software development.\n",
+      "warnings": [
+        "NATIVE_TEXT_UNUSABLE",
+        "READING_ORDER_UNCERTAIN"
+      ],
+      "error": null,
+      "timings_ms": {
+        "native": 10,
+        "render": 90,
+        "preprocess": 30,
+        "ocr": 1200,
+        "total": 1400
+      },
+      "confidence": {
+        "engine": "tesseract",
+        "metric": "mean_word_confidence",
+        "value": 87.2,
+        "sample_count": 5
+      }
+    }
+  ],
+  "warnings": [],
+  "errors": [],
+  "timings_ms": {
+    "preflight": 50,
+    "cleanup": 20,
+    "total": 1510
+  },
+  "engines": {
+    "python": "3.14.8",
+    "pdfplumber": "0.11.10",
+    "pdfminer_six": "20260107",
+    "pypdfium2": "5.14.0",
+    "pdfium": "design-example-unmeasured",
+    "tesseract": "5.5.3",
+    "leptonica": "design-example-unmeasured",
+    "models": [
+      {
+        "name": "vie",
+        "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "name": "eng",
+        "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "name": "osd",
+        "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "pillow": "13.0.0",
+    "worker_version": "0.1.0-design-example"
+  },
+  "config_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

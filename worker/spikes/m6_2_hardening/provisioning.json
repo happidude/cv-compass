@@ -1,0 +1,11 @@
+{
+  "python": {"url":"https://www.python.org/ftp/python/3.14.8/Python-3.14.8.tar.xz","sha256":"c2215904f02b175596dc49351585104f4bc20341e1c47378b26a2c274360ce73","file":"python.tar.xz"},
+  "tesseract": {"url":"https://codeload.github.com/tesseract-ocr/tesseract/tar.gz/refs/tags/5.5.3","sha256":"9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884","file":"tesseract.tar.gz"},
+  "models": {
+    "eng":"7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+    "vie":"79df64caf7bcfb2a27df5042ecb6121e196eada34da774956995747636d5bfa1",
+    "osd":"9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff"
+  },
+  "model_revision":"87416418657359cb625c412a48b6e1d6d41c29bd",
+  "ubuntu_font_sha256":"ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280"
+}
