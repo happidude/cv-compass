@@ -30,7 +30,7 @@ def validated_identity(request: object) -> bool:
                for k in ('request_id', 'document_id'))
 
 
-def main(argv=None):
+def main(argv=None, *, cancelled=None):
     parser = SafeParser(description='Offline PDF to page text; production remains gated')
     for name in ('config', 'workspace', 'request', 'output', 'verification-report'):
         parser.add_argument('--'+name, required=True, type=Path)
@@ -48,7 +48,8 @@ def main(argv=None):
         if config.mode != 'diagnostic' or not args.synthetic_only:
             raise ValueError('INVALID_CONFIGURATION')
         stage_code = 'INTERNAL_ERROR'
-        result = process(request, args.workspace, config, diagnostics)
+        result = (process(request, args.workspace, config, diagnostics) if cancelled is None
+                  else process(request, args.workspace, config, diagnostics, cancelled=cancelled))
     except Exception:
         if not validated_identity(request):
             receipt(stage_code, False)

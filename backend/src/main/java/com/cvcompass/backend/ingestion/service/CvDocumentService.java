@@ -29,11 +29,13 @@ public class CvDocumentService {
     private final FileStorageService storage;
     private final CvDocumentRepository documents;
     private final TransactionTemplate metadataTransaction;
+    private final OcrEnqueueService ocr;
 
     public CvDocumentService(FileStorageService storage, CvDocumentRepository documents,
-                             PlatformTransactionManager transactionManager) {
+                             PlatformTransactionManager transactionManager, OcrEnqueueService ocr) {
         this.storage = storage;
         this.documents = documents;
+        this.ocr = ocr;
         this.metadataTransaction = new TransactionTemplate(transactionManager);
         // Complete our own commit before returning, even if invoked from another transaction.
         this.metadataTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -73,8 +75,9 @@ public class CvDocumentService {
                 document.setSha256(stored.sha256());
                 document.setMimeType("application/pdf");
                 document.setStatus(DocumentStatus.PENDING);
-                // Batch, candidate and processing job creation are explicitly outside M4.
-                return persist.apply(document);
+                T result = persist.apply(document);
+                ocr.enqueue(document);
+                return result;
             }));
         } catch (RuntimeException | Error primary) {
             try {

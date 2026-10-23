@@ -18,6 +18,15 @@ logging:
 cv:
   ocr:
     enabled: ${CV_OCR_ENABLED:false}
+    integration:
+      enabled: ${CV_OCR_INTEGRATION_ENABLED:false}
+      namespace: ${CV_OCR_SYNTHETIC_NAMESPACE:}
+      synthetic-storage-root: ${CV_OCR_SYNTHETIC_STORAGE_ROOT:}
+      control-body-bytes: ${CV_OCR_CONTROL_BODY_BYTES:16384}
+      reaper-delay: ${CV_OCR_REAPER_DELAY:15s}
+      download-timeout: ${CV_OCR_DOWNLOAD_TIMEOUT:60s}
+      # Worker credential SHA256s, profile provenance and known fixture manifests
+      # belong in an external operator-owned configuration file; never a public request.
     max-attempts: ${CV_OCR_MAX_ATTEMPTS:3}
     lease-duration: ${CV_OCR_LEASE_DURATION:120s}
     heartbeat-interval: ${CV_OCR_HEARTBEAT_INTERVAL:30s}

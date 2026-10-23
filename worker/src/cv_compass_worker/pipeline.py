@@ -70,21 +70,21 @@ def empty_result(request, config):
                 engines={k: None for k in names} | {'models': []}, config_fingerprint=config.fingerprint())
 
 
-def process(request, workspace, config, diagnostics=None):
+def process(request, workspace, config, diagnostics=None, *, cancelled=None):
     if config.adapter == 'docker':
         from .docker_sandbox import docker_session
         try:
             with docker_session():
-                return _process(request,workspace,config,diagnostics)
+                return _process(request,workspace,config,diagnostics,cancelled=cancelled)
         except ChildFailure as exc:
             result=empty_result(request,config)
             result['errors']=[{'code':exc.code,'stage':'preflight'}]
             result['timings_ms']['total']=0
             return result
-    return _process(request,workspace,config,diagnostics)
+    return _process(request,workspace,config,diagnostics,cancelled=cancelled)
 
 
-def _process(request, workspace, config, diagnostics=None):
+def _process(request, workspace, config, diagnostics=None, *, cancelled=None):
     validate_request(request)
     # Fail closed irrespective of operator-provided booleans: no production
     # adapter or reviewed replacement binary has been implemented/approved.
@@ -102,10 +102,15 @@ def _process(request, workspace, config, diagnostics=None):
     deadline = started + config.document_timeout - 7  # cleanup/publication reserve
     stage = 'preflight'
     scope_cleanup_failed = False
+    def child(task, directory, timeout):
+        if cancelled is not None and cancelled.is_set():
+            raise ChildFailure('INTERNAL_ERROR')
+        return (run_child(task,directory,config,timeout) if cancelled is None
+                else run_child(task,directory,config,timeout,cancelled=cancelled))
     try:
         root = Path(tempfile.mkdtemp(prefix='.ocr-tmp-', dir=workspace))
         source = snapshot(workspace, request, root, config)
-        info = run_child(dict(action='preflight', source=str(source)), root/'preflight', config,
+        info = child(dict(action='preflight', source=str(source)), root/'preflight',
                          min(config.preflight_timeout, max(.001, deadline-time.monotonic())))
         scope_cleanup_failed |= getattr(info,'cleanup_failed',False)
         if diagnostics is not None and (root/'preflight/isolation.json').is_file():
@@ -126,6 +131,8 @@ def _process(request, workspace, config, diagnostics=None):
         stage = 'supervisor'
         used_text = 0
         for n in range(1, count+1):
+            if cancelled is not None and cancelled.is_set():
+                raise ChildFailure('INTERNAL_ERROR')
             if scope_cleanup_failed:
                 mark_pending(result,'INTERNAL_ERROR','cleanup')
                 break
@@ -136,8 +143,8 @@ def _process(request, workspace, config, diagnostics=None):
             directory = root / f'page-{n}'
             attempt_started = time.monotonic()
             try:
-                item = run_child(dict(action='page', source=str(source), number=n), directory,
-                                 config, min(config.page_timeout, remaining))
+                item = child(dict(action='page', source=str(source), number=n), directory,
+                             min(config.page_timeout, remaining))
                 scope_cleanup_failed |= getattr(item,'cleanup_failed',False)
                 # Check structure/status before accepting IPC. Result validation
                 # also checks semantic page order and configured text ceilings.

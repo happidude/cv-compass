@@ -22,11 +22,20 @@ import static org.mockito.ArgumentMatchers.*;
 
 @ExtendWith(OutputCaptureExtension.class)
 class CvDocumentServiceTests {
+    @Test void enqueueFailureRollsBackMetadataAndCompensatesStorage() {
+        prepareTransaction();
+        when(documents.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var failure=new IllegalStateException("synthetic enqueue failure");
+        doThrow(failure).when(ocr).enqueue(any());
+        assertThatThrownBy(()->service.upload("fixture.pdf",pdf())).isSameAs(failure);
+        verify(transactions).rollback(any()); verify(storage).delete(stored.key());
+    }
     private final FileStorageService storage = mock(FileStorageService.class);
     private final CvDocumentRepository documents = mock(CvDocumentRepository.class);
     private final PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
     private final StoredFile stored = new StoredFile(new StorageKey("a".repeat(32)), 23, "b".repeat(64));
-    private final CvDocumentService service = new CvDocumentService(storage, documents, transactions);
+    private final OcrEnqueueService ocr = mock(OcrEnqueueService.class);
+    private final CvDocumentService service = new CvDocumentService(storage, documents, transactions, ocr);
 
     @Test
     void storageFailureNeverTouchesDatabase() {

@@ -13,7 +13,7 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Optional;
 
-/** Trusted internal state-machine seam. No HTTP, authentication, scheduler or enqueue hooks. */
+/** Trusted internal state-machine seam; HTTP callers must first authenticate worker/profile. */
 @Service
 @ConditionalOnProperty(prefix = "cv.ocr", name = "enabled", havingValue = "true")
 public class OcrJobService {
@@ -70,6 +70,18 @@ public class OcrJobService {
         return new OcrClaim(job.id(),job.documentId(),job.profileRevision(),attempt.publicId(),attempt.attemptNo(),now,expiry,attempt.hardDeadlineAt());
     }
 
+    /** Download authorization must not renew the lease or permit terminal replay to read input. */
+    @Transactional
+    public OcrClaim authorizeInput(OcrAttemptKey key) {
+        OcrAttemptState found = find(key);
+        OcrJobState job = job(found.jobId());
+        OcrAttemptState attempt = state.lockAttempt(found.id());
+        proof(key,attempt);
+        Instant now = state.wallClock();
+        live(job,attempt,now);
+        return claimView(job,attempt,now);
+    }
+
     @Transactional
     public OcrReceipt complete(OcrAttemptKey key,String submissionJson) {
         // Parsing/validation may be slow; no lease timestamp is captured before the locks.
@@ -121,7 +133,7 @@ public class OcrJobService {
         return new OcrReceipt(job.id(),attempt.publicId(),null,false);
     }
 
-    /** Invoked explicitly by a trusted caller in M7.2; no scheduled execution is registered. */
+    /** Reaper and HTTP outcomes share job → attempt lock order. */
     @Transactional
     public int expireDue() {
         int expired = 0;

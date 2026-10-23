@@ -2,3 +2,10 @@
 # The canonical files use CRLF; materialize the same bytes on every checkout OS.
 backend/src/main/resources/ocr/ocr-v1.schema.json text eol=crlf
 backend/src/main/resources/ocr/ocr-v1.limits.json text eol=crlf
+
+# M7-touched Python supervisors use LF; canonical JSON above remains byte-identical.
+worker/src/cv_compass_worker/__init__.py text eol=lf
+worker/src/cv_compass_worker/__main__.py text eol=lf
+worker/src/cv_compass_worker/docker_sandbox.py text eol=lf
+worker/src/cv_compass_worker/pipeline.py text eol=lf
+worker/src/cv_compass_worker/sandbox.py text eol=lf

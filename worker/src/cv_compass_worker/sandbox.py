@@ -75,11 +75,12 @@ def stop_tree(process):
     process.wait(timeout=5)
 
 
-def run_child(task, root, config, timeout):
+def run_child(task, root, config, timeout, *, cancelled=None):
     """One native child at a time; no pickle from an engine process."""
     if config.adapter == 'docker':
         from .docker_sandbox import run_docker_child
-        return run_docker_child(task, root, config, timeout)
+        return (run_docker_child(task, root, config, timeout) if cancelled is None
+                else run_docker_child(task,root,config,timeout,cancelled=cancelled))
     root.mkdir(mode=0o700)
     spec = root / 'task.json'
     output = root / 'response.json'
@@ -93,6 +94,8 @@ def run_child(task, root, config, timeout):
         failure = None
         try:
             while True:
+                if cancelled is not None and cancelled.is_set():
+                    failure = 'INTERNAL_ERROR'
                 files = list(root.rglob('*'))
                 sizes = [(p, p.stat().st_size) for p in files if p.is_file()]
                 document_bytes = sum(p.stat().st_size for p in root.parent.rglob('*') if p.is_file())

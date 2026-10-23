@@ -1,4 +1,28 @@
-# Nền tảng lưu trữ dữ liệu trong cơ sở dữ liệu
+# M7 integration — current local implementation
+
+M7.3 internal worker API/auth/reaper, M7.4 Python pull/stream/spool adapter and M7.5
+synthetic-only enqueue are implemented in the dedicated feature/m7-integration
+worktree from origin/main afba013. This is not a completed quality gate or production
+release. [Configuration, protocol and verification boundaries](../worker/design/M7_INTEGRATION.md).
+
+Spring Security is Boot-BOM managed, scoped to /internal/ocr/**, stateless with a
+server-bound worker principal/role. Existing public API policy is unchanged.
+Constructor DI and ingestion responsibility packages remain; no worker DB access,
+mapping/candidate processing or new migration. Both integration flags default off.
+Enqueue joins metadata transaction for single/batch/disk and existing compensation.
+
+Run `./gradlew check --rerun-tasks --console=plain --warning-mode=all` with JDK25
+and private TEST_DB_* settings for isolated PostgreSQL17 schemas. Missing DB/Docker
+prerequisites remain BLOCKED/NOT VERIFIED; a unit/transport subset is not full gate.
+OCR accuracy has not been evaluated. GCC/Tesseract unresolved still blocks production.
+No commit/push/merge or M8 is authorized in this invocation.
+
+The sections below preserve historical milestone implementation/evidence. Their
+old “no M7.3 authorization”, “worker unchanged” and numeric results are historical,
+not claims about the current source. See local docs/M7_INTEGRATION_HANDOFF.md for
+this invocation's exact commands, source fingerprint, results and blockers.
+
+# Nền tảng lưu trữ dữ liệu trong cơ sở dữ liệu (historical foundation)
 
 Module `com.cvcompass.backend.ingestion` tổ chức năm entity của POC trong
 `ingestion.entity`, các Spring Data repository cơ bản trong `ingestion.repository`,

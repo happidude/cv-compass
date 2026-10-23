@@ -14,6 +14,21 @@ import java.util.List;
 @RestControllerAdvice(basePackages = "com.cvcompass.backend.ingestion.controller")
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class IngestionExceptionHandler {
+    @ExceptionHandler(OcrHttpException.class)
+    public ResponseEntity<ApiError> ocr(OcrHttpException exception,HttpServletResponse response) {
+        return ResponseEntity.status(exception.status()).body(new ApiError(exception.getMessage(),
+                "OCR request rejected",response.getHeader("X-Correlation-ID"),List.of()));
+    }
+    @ExceptionHandler(OcrStateException.class)
+    public ResponseEntity<ApiError> ocrState(OcrStateException exception,HttpServletResponse response) {
+        int status=switch(exception.reason()) {
+            case NOT_FOUND -> 404;
+            case INVALID_REQUEST,INVALID_RESULT -> 422;
+            default -> 409;
+        };
+        return ResponseEntity.status(status).body(new ApiError(exception.reason().name(),
+                "OCR request rejected",response.getHeader("X-Correlation-ID"),List.of()));
+    }
     @ExceptionHandler(UploadRejectedException.class)
     public ResponseEntity<ApiError> rejected(UploadRejectedException exception, HttpServletResponse response) {
         HttpStatus status = switch (exception.reason()) {

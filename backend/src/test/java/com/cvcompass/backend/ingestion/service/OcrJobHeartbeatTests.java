@@ -17,6 +17,18 @@ import static org.mockito.ArgumentMatchers.*;
 
 /** Service regression with scripted DB time; never reads or changes host/DB clocks. */
 class OcrJobHeartbeatTests {
+    @Test void inputAuthorizationDoesNotRenewAndStillUsesLockedDbClock() {
+        when(state.wallClock()).thenReturn(BASE.plusSeconds(100));
+        assertThat(service.authorizeInput(key).attemptId()).isEqualTo(PUBLIC_ID);
+        verify(state,never()).renewed(anyLong(),any());
+        var order=inOrder(state); order.verify(state).findAttempt(PUBLIC_ID);
+        order.verify(state).lockJob(1); order.verify(state).lockAttempt(3); order.verify(state).wallClock();
+    }
+    @Test void expiredInputCannotBeDownloaded() {
+        when(state.wallClock()).thenReturn(attempt.leaseExpiresAt());
+        assertThatThrownBy(()->service.authorizeInput(key)).isInstanceOf(OcrStateException.class);
+        verify(state,never()).renewed(anyLong(),any());
+    }
     private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
     private static final UUID PUBLIC_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final String HASH = "a".repeat(64);
