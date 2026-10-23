@@ -4,7 +4,28 @@ Base: M7 `5b647bc`; M7 is not merged. Backend only; no schema or worker protocol
 changes or new user auth. Synthetic local verification is recorded below; production
 enablement and OCR accuracy are separate gates.
 
-Upload response fix (2026-10-23), review base `2ed7246`: upload returns the
+CI expiry/submission race fix (2026-10-23), review base `2445e3c`: the reaper uses
+SKIP LOCKED, so a submission holding the job lock can defer expiry to the next
+scheduled sweep. A controlled PostgreSQL lock reproduced the previous test's
+expected PENDING / actual PROCESSING failure. The concurrency test now models that
+next sweep, retaining the final PENDING/no-extraction assertions. A deterministic
+regression verifies the locked job is skipped, other jobs expire, stale submission
+cannot write, and the next sweep marks exactly one attempt EXPIRED. Runtime SQL,
+services, worker and constraints are unchanged.
+
+From backend/ on the same Windows JDK25.0.4.1/Gradle9.7.1/PostgreSQL17.11 setup:
+`./gradlew.bat test --tests '*OcrJobIntegrationTests' --rerun-tasks --console=plain --warning-mode=all`
+passed **15/0/0/0**; `./gradlew.bat check --rerun-tasks --console=plain --warning-mode=all`
+passed **314/0/0/0**, including Modulith, with4 tasks freshly executed. Fresh log,
+HTML and39 XML suites inspected; compiler warnings0, unchanged73 expected negative
+test WARN/ERROR lines. Owned schemas/temporary storage only. Evidence, including
+the initial failed reproduction: build/m8-expiry-race-fix/. Final backend src SHA256:
+`0e6ee88785f134d9e98d0bbd92d9064bfb7702b60bcd38148fb6211b161f842c`.
+Review:2 passes against2445e3c, no unresolved findings; git diff --check PASS.
+Python not rerun (worker unchanged). CI for this fix is separate from local results;
+the prior Persistence CI at2445e3c failed. Production/accuracy gates remain unchanged.
+
+Upload response fix at `2445e3c` (2026-10-23), review base `2ed7246`: upload returns the
 `DocumentMetadata` already committed by the service without a subsequent query;
 201, Location and no-store remain. GET detail retains the M8 processing/OCR fields.
 On Windows Microsoft JDK25.0.4.1, Gradle9.7.1 and PostgreSQL17.11, from backend/:

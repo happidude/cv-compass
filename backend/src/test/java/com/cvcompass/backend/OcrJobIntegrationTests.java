@@ -179,9 +179,75 @@ class OcrJobIntegrationTests {
             var second=executor.submit(() -> { stale(() -> service.complete(key(claim,request),OcrFixtures.success(claim))); return true; });
             first.get(10,TimeUnit.SECONDS); assertThat(second.get(10,TimeUnit.SECONDS)).isTrue();
         }
+        // A sweep can skip the submission's job lock; the next scheduler tick must reclaim it.
+        service.expireDue();
         assertThat(jobs.findById(job.getId()).orElseThrow().getStatus()).isEqualTo(JobStatus.PENDING);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",Integer.class,job.getId())).isZero();
+        assertThat(attempts.findByJobIdOrderByAttemptNoAsc(job.getId())).singleElement()
+                .satisfies(attempt -> assertThat(attempt.getStatus()).isEqualTo(OcrAttemptStatus.EXPIRED));
     }
+
+    @Test
+    void expirySkippedDuringSubmissionIsRecoveredOnNextSweep() throws Exception {
+        var job = seed();
+        var request = request(job);
+        var claim = service.claim(request).orElseThrow();
+        expire(claim);
+        var unlockedJob = seed();
+        var unlockedClaim = service.claim(request(unlockedJob)).orElseThrow();
+        expire(unlockedClaim);
+        var submissionLocked = new CountDownLatch(1);
+        var sweepFinished = new CountDownLatch(1);
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var submission = executor.submit(() -> {
+                stale(() -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+                    jdbc.queryForObject("SELECT \"ID\" FROM \"CV_PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
+                            Long.class, job.getId());
+                    submissionLocked.countDown();
+                    awaitSignal(sweepFinished);
+                    service.complete(key(claim, request), OcrFixtures.success(claim));
+                }));
+                return true;
+            });
+            try {
+                assertThat(submissionLocked.await(10, TimeUnit.SECONDS)).as("submission holds job lock").isTrue();
+                service.expireDue();
+                assertThat(jobs.findById(job.getId()).orElseThrow().getStatus()).isEqualTo(JobStatus.PROCESSING);
+                assertThat(attempts.findByJobIdOrderByAttemptNoAsc(job.getId())).singleElement()
+                        .satisfies(attempt -> assertThat(attempt.getStatus()).isEqualTo(OcrAttemptStatus.ACTIVE));
+                // A locked submission must not block expiry of other jobs in the same sweep.
+                assertThat(jobs.findById(unlockedJob.getId()).orElseThrow().getStatus()).isEqualTo(JobStatus.PENDING);
+                assertThat(attempts.findByJobIdOrderByAttemptNoAsc(unlockedJob.getId())).singleElement()
+                        .satisfies(attempt -> assertThat(attempt.getStatus()).isEqualTo(OcrAttemptStatus.EXPIRED));
+            } finally {
+                sweepFinished.countDown();
+            }
+            assertThat(submission.get(10, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(jobs.findById(job.getId()).orElseThrow().getStatus()).isEqualTo(JobStatus.PROCESSING);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
+                Integer.class, job.getId())).isZero();
+        service.expireDue();
+        assertThat(jobs.findById(job.getId()).orElseThrow().getStatus()).isEqualTo(JobStatus.PENDING);
+        assertThat(attempts.findByJobIdOrderByAttemptNoAsc(job.getId())).singleElement().satisfies(attempt -> {
+            assertThat(attempt.getStatus()).isEqualTo(OcrAttemptStatus.EXPIRED);
+            assertThat(attempt.getEndReason()).isEqualTo(OcrEndReason.LEASE_EXPIRED);
+        });
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
+                Integer.class, job.getId())).isZero();
+    }
+
+    private static void awaitSignal(CountDownLatch signal) {
+        try {
+            assertThat(signal.await(10, TimeUnit.SECONDS)).as("concurrent test signal").isTrue();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Concurrent test interrupted", interrupted);
+        }
+    }
+
     @Test void partialMixedAndFailedNoneResultsAreTerminal() {
         for (boolean partial : List.of(true,false)) {
             var job=seed(); var request=request(job); var claim=service.claim(request).orElseThrow();
