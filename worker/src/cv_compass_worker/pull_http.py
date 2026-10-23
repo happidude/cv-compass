@@ -1,0 +1,205 @@
+"""Pinned-origin, no-redirect HTTP transport. Retries reuse the caller's exact bytes."""
+import hashlib
+import http.client
+import json
+import os
+import re
+import ssl
+import sys
+import socket
+import threading
+import time
+from urllib.parse import urlsplit
+
+BASE = '/internal/ocr/v1'
+PROTOCOL = 'cv-compass.ocr-job/1.0'
+
+
+class Exchange:
+    """Absolute socket deadline also interrupts slow trickle bodies/headers, not just idle reads."""
+    def __init__(self, connection, timeout):
+        self.connection = connection
+        self.response = None
+        try:
+            connection.connect()
+        except BaseException:
+            connection.close()
+            raise
+        self.socket = connection.sock
+        self.timer = threading.Timer(timeout, self.interrupt)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def interrupt(self):
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def close(self):
+        self.timer.cancel()
+        primary=sys.exception()
+        failure=None
+        try:
+            if self.response is not None:
+                self.response.close()
+        except Exception as error:
+            failure=error
+        try:
+            self.connection.close()
+        except Exception as error:
+            failure=failure or error
+        if failure is not None:
+            if primary is not None:
+                primary.cleanup_failed=True
+                primary.add_note('HTTP_CLEANUP_FAILED; intake must remain halted')
+            else:
+                failure.cleanup_failed=True
+                raise failure
+
+
+class HttpFailure(Exception):
+    def __init__(self, status):
+        super().__init__('OCR_HTTP_REJECTED')
+        self.status = status
+
+
+class InputIntegrityError(ValueError):
+    """Non-retryable input admission failure; no fabricated M6 JSON."""
+
+
+class DownloadUnavailable(OSError):
+    """Transport failure only, not a local spool write failure."""
+
+
+def json_bytes(value):
+    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8')
+
+
+def strict_json(raw):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError('DUPLICATE_KEY')
+            result[key] = value
+        return result
+    def reject(_):
+        raise ValueError('NONFINITE_JSON')
+    value = json.loads(raw.decode('utf-8', errors='strict'), object_pairs_hook=pairs, parse_constant=reject)
+    def depth(node, level=0):
+        if level > 32:
+            raise ValueError('JSON_DEPTH')
+        for child in (node.values() if isinstance(node, dict) else node if isinstance(node, list) else []):
+            depth(child, level+1)
+    depth(value)
+    return value
+
+
+class WorkerHttp:
+    def __init__(self, config, credential):
+        if not isinstance(credential, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43,256}', credential):
+            raise ValueError('PULL_CREDENTIAL')
+        self.config, self._credential = config, credential
+        self.origin = urlsplit(config.origin)
+
+    def _open(self, method, path, data, token, claim_id=None, *, exchange_timeout=None):
+        # Job input URLs are never trusted; caller constructs the one allowed relative path.
+        if not re.fullmatch(BASE+r'/(?:claims|attempts/[0-9a-f-]{36}/(?:input|lease|result|failure))', path):
+            raise ValueError('PULL_PATH')
+        if self.origin.scheme == 'https':
+            connection = http.client.HTTPSConnection(self.origin.hostname, self.origin.port,
+                    timeout=self.config.http_timeout_seconds, context=ssl.create_default_context())
+        else:
+            connection = http.client.HTTPConnection(self.origin.hostname, self.origin.port,
+                    timeout=self.config.http_timeout_seconds)
+        headers = {'Authorization': 'Bearer '+self._credential, 'X-Lease-Token': token,
+                   'Accept-Encoding': 'identity', 'Content-Type': 'application/json'}
+        if claim_id is not None:
+            headers['Idempotency-Key'] = claim_id
+        exchange = Exchange(connection,self.config.http_timeout_seconds if exchange_timeout is None else exchange_timeout)
+        try:
+            connection.request(method, path, body=data, headers=headers)
+            response = connection.getresponse()
+            exchange.response = response
+            if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
+                raise ValueError('PULL_ENCODING')
+            return exchange, response
+        except BaseException:
+            exchange.close()
+            raise
+
+    def request(self, method, path, data, token, claim_id=None, *, live=lambda: True):
+        for index in range(self.config.max_http_attempts):
+            connection = None
+            try:
+                if not live():
+                    raise ValueError('LEASE_LOST')
+                connection, response = self._open(method, path, data, token, claim_id)
+                raw = response.read(16385)
+                if len(raw) > 16384:
+                    raise ValueError('HTTP_BODY_LIMIT')
+                if response.status == 204:
+                    if raw:
+                        raise ValueError('HTTP_BODY')
+                    return None
+                if response.status not in (200, 201):
+                    raise HttpFailure(response.status)
+                tree = strict_json(raw)
+                if not isinstance(tree, dict) or set(tree) != {'data'} or not isinstance(tree['data'], dict):
+                    raise ValueError('HTTP_BODY')
+                return tree['data']
+            except (OSError, http.client.HTTPException, HttpFailure) as failure:
+                if getattr(failure,'cleanup_failed',False):
+                    raise
+                if isinstance(failure, HttpFailure) and failure.status < 500:
+                    raise
+                if index+1 == self.config.max_http_attempts or not live():
+                    raise
+            finally:
+                if connection is not None:
+                    connection.close()
+            time.sleep(self.config.retry_backoff_seconds)
+        raise ValueError('HTTP_ATTEMPTS')
+
+    def download(self, attempt, token, target, size, sha256, *, live):
+        if type(size) is not int or not 1 <= size <= self.config.max_file_bytes \
+                or not re.fullmatch(r'[0-9a-f]{64}', sha256):
+            raise ValueError('INPUT_MANIFEST')
+        try:
+            connection, response = self._open('GET', BASE+'/attempts/'+attempt+'/input', None, token,
+                                            exchange_timeout=self.config.download_timeout_seconds)
+        except (OSError,http.client.HTTPException) as failure:
+            if getattr(failure,'cleanup_failed',False):
+                raise
+            raise DownloadUnavailable('DOWNLOAD_UNAVAILABLE') from None
+        try:
+            if response.status != 200:
+                raise HttpFailure(response.status)
+            if response.getheader('Content-Type') != 'application/pdf' \
+                    or response.getheader('Content-Length') != str(size) \
+                    or response.getheader('X-Content-SHA256') != sha256:
+                raise InputIntegrityError('INPUT_MANIFEST')
+            digest, total = hashlib.sha256(), 0
+            descriptor=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
+            with os.fdopen(descriptor,'wb') as output:
+                while True:
+                    if not live():
+                        raise ValueError('LEASE_LOST')
+                    try:
+                        chunk = response.read(min(65536, size-total+1))
+                    except (OSError,http.client.HTTPException):
+                        raise DownloadUnavailable('DOWNLOAD_UNAVAILABLE') from None
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > size:
+                        raise InputIntegrityError('INPUT_SIZE')
+                    digest.update(chunk)
+                    output.write(chunk)
+            if total != size:
+                raise DownloadUnavailable('DOWNLOAD_UNAVAILABLE')
+            if digest.hexdigest() != sha256:
+                raise InputIntegrityError('INPUT_INTEGRITY')
+        finally:
+            connection.close()

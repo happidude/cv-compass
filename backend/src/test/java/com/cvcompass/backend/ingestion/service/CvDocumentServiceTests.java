@@ -22,11 +22,37 @@ import static org.mockito.ArgumentMatchers.*;
 
 @ExtendWith(OutputCaptureExtension.class)
 class CvDocumentServiceTests {
+    @Test
+    void configuredStandaloneByteLimitAlsoAppliesDuringStreaming() throws Exception {
+        var properties = new com.cvcompass.backend.ingestion.config.UploadProperties();
+        properties.setMaxFileBytes(10);
+        var configuredService = new CvDocumentService(storage, documents, transactions, ocr, properties);
+        when(storage.store(any())).thenAnswer(invocation -> {
+            java.io.InputStream stream = invocation.getArgument(0);
+            stream.readAllBytes();
+            return stored;
+        });
+        assertThatThrownBy(() -> configuredService.upload("synthetic.pdf", pdf()))
+                .isInstanceOfSatisfying(UploadRejectedException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(UploadRejectedException.Reason.FILE_TOO_LARGE));
+        verifyNoInteractions(documents, transactions, ocr);
+    }
+
+    @Test void enqueueFailureRollsBackMetadataAndCompensatesStorage() {
+        prepareTransaction();
+        when(documents.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var failure=new IllegalStateException("synthetic enqueue failure");
+        doThrow(failure).when(ocr).enqueue(any());
+        assertThatThrownBy(()->service.upload("fixture.pdf",pdf())).isSameAs(failure);
+        verify(transactions).rollback(any()); verify(storage).delete(stored.key());
+    }
     private final FileStorageService storage = mock(FileStorageService.class);
     private final CvDocumentRepository documents = mock(CvDocumentRepository.class);
     private final PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
     private final StoredFile stored = new StoredFile(new StorageKey("a".repeat(32)), 23, "b".repeat(64));
-    private final CvDocumentService service = new CvDocumentService(storage, documents, transactions);
+    private final OcrEnqueueService ocr = mock(OcrEnqueueService.class);
+    private final CvDocumentService service = new CvDocumentService(storage, documents, transactions, ocr,
+            new com.cvcompass.backend.ingestion.config.UploadProperties());
 
     @Test
     void storageFailureNeverTouchesDatabase() {

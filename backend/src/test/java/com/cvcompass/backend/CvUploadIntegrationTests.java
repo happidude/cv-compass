@@ -88,6 +88,7 @@ class CvUploadIntegrationTests {
         assertThat(metadata.get("status").asString()).isEqualTo("PENDING");
         assertThat(metadata.get("createdAt").asString()).isNotBlank();
         assertThat(response.headers().firstValue("Location")).contains("/api/documents/" + id);
+        assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
         assertThat(response.headers().firstValue("X-Correlation-ID")).contains("upload-integration");
         assertThat(response.body()).doesNotContain("storagePath", "storageKey", DATABASE.storageRoot().toString());
 
@@ -104,7 +105,21 @@ class CvUploadIntegrationTests {
 
         var queried = get("/api/documents/" + id);
         assertThat(queried.statusCode()).isEqualTo(200);
-        assertThat(json.readTree(queried.body())).isEqualTo(metadata);
+        assertThat(queried.headers().firstValue("Cache-Control")).contains("no-store");
+        var detail = json.readTree(queried.body());
+        for (String field : List.of("id", "originalFilename", "sizeBytes", "mimeType", "sha256", "createdAt")) {
+            assertThat(detail.get(field)).as("shared metadata: %s", field).isEqualTo(metadata.get(field));
+        }
+        // OCR is disabled in this fixture; status is independently read at each request.
+        assertThat(detail.get("status").asString()).isEqualTo("PENDING");
+        assertThat(metadata.has("processing")).isFalse();
+        assertThat(metadata.has("ocr")).isFalse();
+        assertThat(detail.get("batchId").isNull()).isTrue();
+        assertThat(detail.get("ingestionStatus").asString()).isEqualTo("STORED");
+        assertThat(detail.get("processing").get("status").asString()).isEqualTo("NOT_SCHEDULED");
+        assertThat(detail.get("processing").get("resultAvailability").asString()).isEqualTo("NONE");
+        assertThat(detail.get("ocr").get("availability").asString()).isEqualTo("NONE");
+        assertThat(detail.get("ocr").get("pages").isEmpty()).isTrue();
     }
 
     @Test

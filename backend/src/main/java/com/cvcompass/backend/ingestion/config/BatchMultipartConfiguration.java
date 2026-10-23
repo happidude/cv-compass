@@ -1,20 +1,16 @@
 package com.cvcompass.backend.ingestion.config;
 
 import jakarta.servlet.MultipartConfigElement;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 /** A finite parser ceiling; individual file limits are enforced by streaming validation. */
 @Configuration(proxyBeanMethods = false)
 class BatchMultipartConfiguration {
     @Bean
-    MultipartConfigElement multipartConfigElement(
-            @Value("${cv.batch.max-files:10}") int files,
-            @Value("${cv.batch.max-file-bytes:10485760}") long bytes) {
-        if (files < 1 || files > 10 || bytes < 1 || bytes > 10485760) {
-            throw new IllegalArgumentException("Invalid batch limits");
-        }
-        long request = Math.max(10485760L, files * bytes) + 1048576L;
+    MultipartConfigElement multipartConfigElement(BatchProperties batch, UploadProperties upload) {
+        long batchBytes = Math.multiplyExact(batch.getMaxFiles(), batch.getMaxFileBytes());
+        long request = Math.addExact(Math.max(upload.getMaxFileBytes(), batchBytes), batch.getMultipartOverheadBytes());
         return new MultipartConfigElement("", request, request, 0);
     }
 }

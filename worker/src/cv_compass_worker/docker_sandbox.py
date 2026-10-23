@@ -282,12 +282,12 @@ for p in root.iterdir(): p.chmod(0o444)
     return volume
 
 
-def execute_scope(name, root, config, timeout):
+def execute_scope(name, root, config, timeout, *, cancelled=None):
     with docker_session():
-        return _execute_scope(name,root,config,timeout)
+        return _execute_scope(name,root,config,timeout,cancelled=cancelled)
 
 
-def _execute_scope(name, root, config, timeout):
+def _execute_scope(name, root, config, timeout, *, cancelled=None):
     started=time.monotonic()
     stdout=root/'container.response.json'; stderr=root/'container.stderr.log'
     failure=None
@@ -296,6 +296,8 @@ def _execute_scope(name, root, config, timeout):
         attached=subprocess.Popen(cli,stdout=out,stderr=err,stdin=subprocess.DEVNULL,env=env)
         try:
             while True:
+                if cancelled is not None and cancelled.is_set():
+                    failure='INTERNAL_ERROR'
                 if stdout.stat().st_size+stderr.stat().st_size > config.max_engine_output_bytes+32768:
                     failure='OUTPUT_LIMIT'
                 elif time.monotonic()-started > timeout+5:
@@ -331,12 +333,12 @@ def _execute_scope(name, root, config, timeout):
         raise ChildFailure('ENGINE_CRASH') from None
 
 
-def run_scope(task, root, config, timeout, source=None):
+def run_scope(task, root, config, timeout, source=None, *, cancelled=None):
     with docker_session():
-        return _run_scope(task,root,config,timeout,source)
+        return _run_scope(task,root,config,timeout,source,cancelled=cancelled)
 
 
-def _run_scope(task, root, config, timeout, source):
+def _run_scope(task, root, config, timeout, source, *, cancelled=None):
     root.mkdir(mode=0o700)
     child_config=replace(config,adapter='native',tesseract='/usr/local/bin/tesseract',models='/models')
     control=task | {'config':asdict(child_config),'source':'/request/input.pdf','wall_timeout':timeout}
@@ -344,9 +346,14 @@ def _run_scope(task, root, config, timeout, source):
     name=None
     envelope=None
     try:
+        if cancelled is not None and cancelled.is_set():
+            raise ChildFailure('INTERNAL_ERROR')
         volume=prepare_control(control,source,config,root)
+        if cancelled is not None and cancelled.is_set():
+            raise ChildFailure('INTERNAL_ERROR')
         name=create_scope(config,volume)
-        envelope=execute_scope(name,root,config,timeout)
+        envelope=(execute_scope(name,root,config,timeout) if cancelled is None
+                  else execute_scope(name,root,config,timeout,cancelled=cancelled))
         return envelope
     finally:
         leftovers=[]
@@ -372,8 +379,9 @@ class ChildValue(dict):
     cleanup_failed=False
 
 
-def run_docker_child(task, root, config, timeout):
-    envelope=run_scope(task,root,config,timeout,source=task['source'])
+def run_docker_child(task, root, config, timeout, *, cancelled=None):
+    envelope=(run_scope(task,root,config,timeout,source=task['source']) if cancelled is None
+              else run_scope(task,root,config,timeout,source=task['source'],cancelled=cancelled))
     cleanup_failed=envelope['metrics'].get('cleanup_failed',False)
     try:
         try:

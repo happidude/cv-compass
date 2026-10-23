@@ -1,6 +1,7 @@
 package com.cvcompass.backend.ingestion.service;
 
 import com.cvcompass.backend.ingestion.dto.BatchDetails;
+import com.cvcompass.backend.ingestion.config.BatchProperties;
 import com.cvcompass.backend.ingestion.dto.BatchItem;
 import com.cvcompass.backend.ingestion.exception.BatchNotFoundException;
 import com.cvcompass.backend.ingestion.dto.ImportResult;
@@ -12,7 +13,6 @@ import com.cvcompass.backend.ingestion.enums.BatchStatus;
 import com.cvcompass.backend.ingestion.repository.*;
 import com.cvcompass.backend.ingestion.upload.*;
 import com.cvcompass.backend.storage.StorageException;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.*;
@@ -32,13 +32,14 @@ public class CvBatchService {
     private final CvDocumentService uploads;
     private final TransactionTemplate transaction;
     private final long maxFileBytes;
+    private final int maxFiles;
 
     public CvBatchService(CvImportBatchRepository batches, CvImportItemRepository items,
                           CvDocumentRepository documents, CvDocumentService uploads,
                           PlatformTransactionManager manager,
-                          @Value("${cv.batch.max-file-bytes:10485760}") long maxFileBytes) {
-        if (maxFileBytes < 1 || maxFileBytes > 10485760) throw new IllegalArgumentException("Invalid batch file limit");
-        this.maxFileBytes = maxFileBytes;
+                          BatchProperties properties) {
+        this.maxFileBytes = properties.getMaxFileBytes();
+        this.maxFiles = properties.getMaxFiles();
         this.batches = batches; this.items = items; this.documents = documents; this.uploads = uploads;
         transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -52,7 +53,7 @@ public class CvBatchService {
     }
 
     public ImportResult upload(List<ImportFile> files, BatchImportObserver observer) {
-        if (files.isEmpty() || files.size() > 10) throw new IllegalArgumentException("Invalid file count");
+        if (files.isEmpty() || files.size() > maxFiles) throw new IllegalArgumentException("Invalid file count");
         long id = Objects.requireNonNull(transaction.execute(status -> {
             var batch = new CvImportBatch();
             batch.setTotalFiles(files.size()); batch.setStatus(BatchStatus.PROCESSING);

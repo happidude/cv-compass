@@ -1,24 +1,34 @@
 package com.cvcompass.backend.ingestion.service;
 
 import com.cvcompass.backend.ingestion.config.DiskImportProperties;
-import com.cvcompass.backend.ingestion.dto.*;
+import com.cvcompass.backend.ingestion.config.BatchProperties;
+import com.cvcompass.backend.ingestion.dto.BatchItem;
+import com.cvcompass.backend.ingestion.dto.DiskImportEntry;
+import com.cvcompass.backend.ingestion.dto.ImportFile;
+import com.cvcompass.backend.ingestion.dto.SourceFile;
 import com.cvcompass.backend.ingestion.exception.SourceChangedException;
 import com.cvcompass.backend.ingestion.repository.DiskImportRepository;
 import com.cvcompass.backend.ingestion.source.ImportSource;
-import com.cvcompass.backend.storage.*;
+import com.cvcompass.backend.storage.FileStorageService;
+import com.cvcompass.backend.storage.StorageKey;
 import jakarta.annotation.PreDestroy;
-import org.slf4j.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import java.nio.file.NoSuchFileException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.*;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-import java.io.*;
-import java.time.*;
-import java.util.*;
+import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -30,6 +40,7 @@ public class DiskImportService {
     private final CvBatchService batches;
     private final FileStorageService storage;
     private final DiskImportProperties properties;
+    private final int importBatchSize;
     private final Clock clock;
     private final TransactionTemplate transaction;
     private final AtomicBoolean active = new AtomicBoolean();
@@ -37,11 +48,16 @@ public class DiskImportService {
     private volatile boolean stopping;
 
     public DiskImportService(ImportSource source, DiskImportRepository history, CvBatchService batches,
-            FileStorageService storage, DiskImportProperties properties,
+            FileStorageService storage, DiskImportProperties properties, BatchProperties batchProperties,
             @Qualifier("diskImportClock") Clock clock, PlatformTransactionManager manager) {
-        this.source=source; this.history=history; this.batches=batches; this.storage=storage;
-        this.properties=properties; this.clock=clock;
-        transaction=new TransactionTemplate(manager);
+        this.source = source;
+        this.history = history;
+        this.batches = batches;
+        this.storage = storage;
+        this.properties = properties;
+        this.clock = clock;
+        this.importBatchSize = Math.min(properties.getBatchSize(), batchProperties.getMaxFiles());
+        transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
@@ -64,7 +80,9 @@ public class DiskImportService {
         source.scan(file -> { if (!stopping) history.observe(key,file,scan,clock.instant()); });
         String after="";
         while (!stopping) {
-            List<SourceFile> candidates=history.stable(key,scan,clock.instant().minus(properties.getStabilityInterval()),after,properties.getBatchSize(),properties.getMaxAttempts(),clock.instant());
+            List<SourceFile> candidates = history.stable(key, scan,
+                    clock.instant().minus(properties.getStabilityInterval()), after,
+                    importBatchSize, properties.getMaxAttempts(), clock.instant());
             if (candidates.isEmpty()) break;
             after=candidates.getLast().name();
             var entries=new ArrayList<DiskImportEntry>();

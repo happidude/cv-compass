@@ -1,6 +1,7 @@
 package com.cvcompass.backend.ingestion.service;
 
 import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
+import com.cvcompass.backend.ingestion.config.UploadProperties;
 import com.cvcompass.backend.ingestion.exception.DocumentNotFoundException;
 import com.cvcompass.backend.ingestion.upload.PdfUploadValidation;
 import com.cvcompass.backend.ingestion.upload.UploadFilename;
@@ -27,13 +28,18 @@ import java.util.Objects;
 public class CvDocumentService {
     private static final Logger log = LoggerFactory.getLogger(CvDocumentService.class);
     private final FileStorageService storage;
+    private final UploadProperties uploadProperties;
     private final CvDocumentRepository documents;
     private final TransactionTemplate metadataTransaction;
+    private final OcrEnqueueService ocr;
 
     public CvDocumentService(FileStorageService storage, CvDocumentRepository documents,
-                             PlatformTransactionManager transactionManager) {
+                             PlatformTransactionManager transactionManager, OcrEnqueueService ocr,
+                             UploadProperties uploadProperties) {
         this.storage = storage;
+        this.uploadProperties = uploadProperties;
         this.documents = documents;
+        this.ocr = ocr;
         this.metadataTransaction = new TransactionTemplate(transactionManager);
         // Complete our own commit before returning, even if invoked from another transaction.
         this.metadataTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -47,7 +53,7 @@ public class CvDocumentService {
     /** Persistence callback runs inside the compensated metadata transaction. */
     private <T> T upload(String originalFilename, InputStream content,
                         java.util.function.Function<CvDocument, T> persist) throws IOException {
-        return upload(originalFilename, content, PdfUploadValidation.MAX_BYTES, persist);
+        return upload(originalFilename, content, uploadProperties.getMaxFileBytes(), persist);
     }
 
     <T> T upload(String originalFilename, InputStream content, long maxBytes,
@@ -73,8 +79,9 @@ public class CvDocumentService {
                 document.setSha256(stored.sha256());
                 document.setMimeType("application/pdf");
                 document.setStatus(DocumentStatus.PENDING);
-                // Batch, candidate and processing job creation are explicitly outside M4.
-                return persist.apply(document);
+                T result = persist.apply(document);
+                ocr.enqueue(document);
+                return result;
             }));
         } catch (RuntimeException | Error primary) {
             try {

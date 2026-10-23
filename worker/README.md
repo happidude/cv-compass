@@ -1,12 +1,15 @@
 # CV Compass — M6 offline PDF → page text baseline
 
-PR [#9](https://github.com/hoangnguyen229/cv-compass/pull/9), branch `feature/ocr-worker`.
+M6 historical baseline: PR [#9](https://github.com/hoangnguyen229/cv-compass/pull/9), merged.
+M7 adds a separate [synthetic pull adapter](design/M7_INTEGRATION.md). The M6 CLI
+commands below are retained and are not the adapter command.
 Baseline dùng thử với fixture tổng hợp. **OCR accuracy chưa đánh giá. Production vẫn
 BLOCKED do GCC/Tesseract unresolved.** Technical CI pass không mở production gate.
 
 Pipeline hiện có: snapshot/hash PDF → child preflight → native text theo trang →
 PDFium render/Tesseract vie+eng khi cần → validated page results → cleanup/publication.
-Không mapping business fields, candidate parsing, DB, HTTP integration hoặc M7.
+Không mapping business fields, candidate parsing hoặc DB access. HTTP coordination
+belongs only to the M7 host supervisor, never the offline PDF child.
 
 ## Build và full gate từ checkout sạch
 

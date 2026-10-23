@@ -25,9 +25,17 @@ class DiskImportConfigurationTests {
     }
     @Test void invalidProviderLimitsAndDurationsFailStartup() throws Exception {
         for(String property:java.util.List.of("cv.import.provider=unknown","cv.import.batch-size=11","cv.import.max-attempts=0",
-                "cv.import.scan-interval=0s","cv.import.retry-backoff=-1s","cv.import.stability-interval=0s","cv.batch.max-files=1")) {
+                "cv.import.scan-interval=0s","cv.import.retry-backoff=-1s","cv.import.stability-interval=0s","cv.batch.max-files=0")) {
             enabled().withPropertyValues(property).run(context -> assertThat(context).as(property).hasFailed());
         }
+    }
+    @Test void importSizeMayExceedTheValidatedBatchMaximum() throws Exception {
+        enabled().withPropertyValues("cv.import.batch-size=10", "cv.batch.max-files=5")
+                .run(context -> {
+                    assertThat(context).hasNotFailed().hasSingleBean(ImportSource.class);
+                    assertThat(context.getBean(DiskImportProperties.class).getBatchSize()).isEqualTo(10);
+                    assertThat(context.getBean(BatchProperties.class).getMaxFiles()).isEqualTo(5);
+                });
     }
     @Test void enabledWithoutSourceFailsStartup() {
         runner.withPropertyValues("cv.import.enabled=true","cv.storage.local.root-directory="+directory.resolve("storage"))
