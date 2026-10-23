@@ -1,11 +1,58 @@
 # M8 — CV management and OCR read API
 
 Base: M7 `5b647bc`; M7 is not merged. Backend only; no schema or worker protocol
-changes, no new user auth, no OCR enablement or claim of real OCR success.
+changes or new user auth. Synthetic local verification is recorded below; production
+enablement and OCR accuracy are separate gates.
+
+Latest M7–M8 local verification (2026-10-23): **technical PASS on final source**,
+base `363b4c5` plus CvDocumentController's additive upload/detail response alignment.
+The unchanged M4 exact-response assertion exposed this regression; upload now returns
+the same detail fields, preserving metadata, Location and existing assertions.
+
+- Windows Microsoft JDK25.0.4.1, Gradle9.7.1, real PostgreSQL17.11: from backend/,
+  `./gradlew.bat assemble check --rerun-tasks --console=plain --warning-mode=all`:
+  **312 tests / 0 failures / 0 errors / 0 skipped**, 7 tasks freshly executed, JAR
+  and architecture/Modulith PASS. Targeted upload/MVC regression:24/0/0/0.
+- Ubuntu24.04 WSL, CPython3.14.8, Docker29.6.1 Linux/cgroupv2: existing
+  `build_baseline.py --output worker/build/m7-m8-local/baseline` then
+  `verify_baseline.py --build worker/build/m7-m8-local/baseline` completed; fresh
+  hash-locked venv/pip check/syntax and **147/0/0/0 full tests**, including Docker.
+- Real Ubuntu JDK25 backend + PostgreSQL + pull supervisor and run_pull_worker.py
+  CLI + source-built Docker OCR: native/scanned/blank synthetic pages persisted
+  as JSONB and read through list/detail. Two uploads →2 documents/jobs/attempts/
+  extractions. Exact replay leaves counts unchanged; changed bytes→409. No dev
+  instance/storage or real CV used; test schemas/private directories removed,
+  backend/worker stopped and both run-owned Docker cleanup reports have no leftovers.
+
+Initial check on363b4c5 failed upload/detail equality and one attempt time constraint
+after DB clock moved backwards ~0.7s. Response code was fixed; time constraints and
+assertions were preserved. The final full check passed; retain clock-regression
+evidence and stop for operator investigation if it recurs. Initial E2E harness also
+expected immediate claim; bounded normal polling fixed that harness expectation,
+without relaxing result/replay/cleanup assertions. All initial logs are retained.
+
+Java compiler/deprecation warnings:0. Runtime build retains43 warning/notice lines,
+including upstream Python/pip notices and unresolved Tesseract GCC stringop-overflow;
+no suppression or compiler/Docker change. **Production remains BLOCKED_GCC_WARNING_UNRESOLVED;
+accuracy NOT_EVALUATED.** CI for the final source is NOT VERIFIED separately.
+
+Final backend src SHA256:
+`8446aa587477dbc9841bec763f73c5a5f9fea64c2c79ab266a9ac753c2b0206b`
+(repo-relative backend/src paths + space + lowercase file SHA256, sorted, joined LF,
+no terminal LF). Worker image:
+`sha256:597c6b0f4caa3cd0a9873476e3d504a8eee28b2b2056d2b30b63437848f88136`;
+source-manifest SHA256 `ff7d9d4e93278b2f146872a93de1d45636a4604e89af8d0bbdf4e78187c9a650`.
+Builder's WSL Git commit field was null due shared-checkout ownership; Windows Git
+HEAD363b4c5 and the unchanged worker source manifest establish the image source.
+Local logs/XML/config-free reports: backend/build/m7-m8-local/ and
+worker/build/m7-m8-local/baseline/verification/. The local ignored run guide is
+docs/M7_M8_LOCAL_RUN_GUIDE.md; it is not force-added. Review:2 bounded passes,
+response finding fixed and verified, no unresolved Critical/High/Medium finding;
+git diff --check PASS. No merge, UI or next milestone.
 
 | API | Behavior |
 |---|---|
-| `POST /api/documents`, multipart `file` | Existing single upload; metadata/Location unchanged |
+| `POST /api/documents`, multipart `file` | Existing single upload; metadata/Location retained, response includes the same additive M8 detail fields as GET |
 | `POST /api/batches`, repeated multipart `files` | Existing batch upload and per-file `items` outcomes |
 | `GET /api/batches?page=0&size=20` | Existing batches ordered by createdAt DESC, ID DESC |
 | `GET /api/batches/{id}` | Existing ingestion counters, not OCR counters |

@@ -5,7 +5,6 @@ import com.cvcompass.backend.ingestion.service.DocumentQueryService;
 import com.cvcompass.backend.ingestion.config.UploadProperties;
 import com.cvcompass.backend.ingestion.dto.DocumentCursorPage;
 import com.cvcompass.backend.ingestion.dto.DocumentDetails;
-import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
 import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import jakarta.servlet.ServletException;
 import jakarta.validation.constraints.Positive;
@@ -38,7 +37,7 @@ public class CvDocumentController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<DocumentMetadata> upload(MultipartHttpServletRequest request)
+    public ResponseEntity<DocumentDetails> upload(MultipartHttpServletRequest request)
             throws IOException, ServletException {
         var files = request.getMultiFileMap();
         if (request.getParts().size() != 1 || files.size() != 1 || !files.containsKey("file")
@@ -53,7 +52,8 @@ public class CvDocumentController {
         }
         try (var content = file.getInputStream()) {
             var metadata = service.upload(file.getOriginalFilename(), content);
-            return ResponseEntity.created(URI.create("/api/documents/" + metadata.id())).body(metadata);
+            return ResponseEntity.created(URI.create("/api/documents/" + metadata.id()))
+                    .cacheControl(CacheControl.noStore()).body(queries.find(metadata.id()));
         }
     }
 
