@@ -4,10 +4,29 @@ Base: M7 `5b647bc`; M7 is not merged. Backend only; no schema or worker protocol
 changes or new user auth. Synthetic local verification is recorded below; production
 enablement and OCR accuracy are separate gates.
 
-Latest M7–M8 local verification (2026-10-23): **technical PASS on final source**,
-base `363b4c5` plus CvDocumentController's additive upload/detail response alignment.
-The unchanged M4 exact-response assertion exposed this regression; upload now returns
-the same detail fields, preserving metadata, Location and existing assertions.
+Upload response fix (2026-10-23), review base `2ed7246`: upload returns the
+`DocumentMetadata` already committed by the service without a subsequent query;
+201, Location and no-store remain. GET detail retains the M8 processing/OCR fields.
+On Windows Microsoft JDK25.0.4.1, Gradle9.7.1 and PostgreSQL17.11, from backend/:
+
+- `./gradlew.bat test --tests '*CvUploadIntegrationTests' --tests '*CvDocumentQueryHttpTests' --rerun-tasks --console=plain --warning-mode=all`: **25/0/0/0** tests/failures/errors/skipped.
+- `./gradlew.bat check --rerun-tasks --console=plain --warning-mode=all`: **313/0/0/0**,
+  4 tasks freshly executed; Modulith PASS. NO-SOURCE test resources are inapplicable.
+  Fresh terminal log, HTML and39 JUnit XML suites inspected. Compiler warnings0;
+  73 WARN/ERROR lines are expected negative validation/constraint/failure-path tests.
+
+Tests use TEST_DB_* with a private local credential, per-suite owned schemas and
+temporary storage; no dev data/storage. Logs/XML: build/m8-upload-response-fix/.
+Final backend src SHA256: `fc81dfb6e988f8f5906f4972a2cbf3c2b2e972444994aecd192146eb3d587ac8`
+(calculation below). Review:2 passes against2ed7246, no unresolved findings;
+git diff --check PASS. Worker unchanged; Python/Docker/E2E not rerun for this fix.
+CI for this revision NOT VERIFIED. Production/accuracy gates below remain unchanged.
+
+Historical M7–M8 local verification (2026-10-23): **technical PASS at `2ed7246`**,
+base `363b4c5` plus the previous upload/detail response alignment. That alignment
+is superseded by the scoped fix below: upload returns service metadata directly;
+expanded processing/OCR fields belong to GET detail. Regression compares shared
+metadata exactly and checks independently read processing state separately.
 
 - Windows Microsoft JDK25.0.4.1, Gradle9.7.1, real PostgreSQL17.11: from backend/,
   `./gradlew.bat assemble check --rerun-tasks --console=plain --warning-mode=all`:
@@ -36,7 +55,7 @@ including upstream Python/pip notices and unresolved Tesseract GCC stringop-over
 no suppression or compiler/Docker change. **Production remains BLOCKED_GCC_WARNING_UNRESOLVED;
 accuracy NOT_EVALUATED.** CI for the final source is NOT VERIFIED separately.
 
-Final backend src SHA256:
+Historical backend src SHA256 at `2ed7246`:
 `8446aa587477dbc9841bec763f73c5a5f9fea64c2c79ab266a9ac753c2b0206b`
 (repo-relative backend/src paths + space + lowercase file SHA256, sorted, joined LF,
 no terminal LF). Worker image:
@@ -52,7 +71,7 @@ git diff --check PASS. No merge, UI or next milestone.
 
 | API | Behavior |
 |---|---|
-| `POST /api/documents`, multipart `file` | Existing single upload; metadata/Location retained, response includes the same additive M8 detail fields as GET |
+| `POST /api/documents`, multipart `file` | 201 with service DocumentMetadata and Location; Cache-Control: no-store; no post-commit detail query |
 | `POST /api/batches`, repeated multipart `files` | Existing batch upload and per-file `items` outcomes |
 | `GET /api/batches?page=0&size=20` | Existing batches ordered by createdAt DESC, ID DESC |
 | `GET /api/batches/{id}` | Existing ingestion counters, not OCR counters |
