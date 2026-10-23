@@ -76,7 +76,33 @@ batch bytes) + overhead, with actual byte limits still enforced during streaming
 Invalid config fails startup. Existing M7 DB/storage/import/OCR configuration is
 reused; no new deployment path or credentials are embedded.
 
-M8 verification (2026-10-23, Windows, Microsoft JDK 25.0.4.1, Gradle 9.7.1):
+M8 disk-import finding fix (base `8403a1b`, 2026-10-23): constructor-injected
+BatchProperties caps candidate selection at min(import batch size, batch maximum)
+before queueing. Local configuration accepts import=10 / maximum=5; both individual
+property constraints remain validated. Synthetic orchestration regression drains
+12 files as 5/5/2, with no queued remainder or duplicate on the next tick; a smaller
+import size is also respected. A real file/PostgreSQL regression is included but
+NOT VERIFIED without TEST_DB_PASSWORD. No retry/schema/OCR/Docker change.
+
+Final local checks, Windows/JDK25.0.4.1/Gradle9.7.1, from backend/: regression
+10/0/0/0 tests/failures/errors/skipped; final independent suite including these
+regressions 204/0/0/0, JAR assemble PASS (7 tasks freshly executed).
+Commands: `test --tests '*DiskImportBatchLimitTests' --tests '*DiskImportServiceTests'
+--tests '*DiskImportConfigurationTests' --rerun-tasks --console=plain --warning-mode=all`;
+`assemble test` with the independent selection below and the same flags; final
+`check --rerun-tasks --console=plain --warning-mode=all`: 314/110/0/0, FAILED
+(4 tasks freshly executed). Missing isolated PostgreSQL17 credentials block all
+12 failing suites, including the new file/history regression; PostgreSQL/Docker/CI
+remain NOT VERIFIED. No compiler/deprecation warnings. Existing expected negative
+WARN/ERROR and fixture-cleanup failures remain visible. No generated problems report.
+Logs/XML: build/m8-import-{regression,independent-final,full-check}.log and
+build/m8-import-evidence/. Source src/ fingerprint using the calculation below:
+`2b532c3dbd870bdccaee90d141ff23c137744a224ab9c8c526c1da921b4d39b6`.
+Review: 2 bounded passes, no unresolved Critical/High/Medium findings; diff-check
+PASS. Gate remains BLOCKED / NOT VERIFIED. Commit/push is the requested source
+snapshot; rerun full local check with private TEST_DB_* on stable PostgreSQL17.
+
+Initial M8 verification (`8403a1b`, 2026-10-23, Windows, Microsoft JDK 25.0.4.1, Gradle 9.7.1):
 `assemble test --rerun-tasks --console=plain --warning-mode=all` with the explicit
 independent suite selection: **201 tests / 0 failures / 0 errors / 0 skipped**, JAR
 build PASS, including architecture/Modulith. Selection: all `*Tests.java` classes
@@ -874,7 +900,7 @@ bật. Không thêm broker, distributed scheduler hoặc framework batch.
 | CV_IMPORT_SOURCE_DIRECTORY | Bắt buộc khi bật; inbox riêng tư, đường dẫn tuyệt đối đã chuẩn hóa |
 | CV_IMPORT_PROCESSED_DIRECTORY | `<inbox>/processed`; nếu đổi phải là đường dẫn tuyệt đối của thư mục con trực tiếp |
 | CV_IMPORT_FAILED_DIRECTORY | `<inbox>/failed`; thư mục con trực tiếp khác processed |
-| CV_IMPORT_BATCH_SIZE | 10; 1–10 và không vượt CV_BATCH_MAX_FILES |
+| CV_IMPORT_BATCH_SIZE | 10; 1–10; mỗi nhóm nhập dùng min(CV_IMPORT_BATCH_SIZE, CV_BATCH_MAX_FILES) trước khi queue |
 | CV_IMPORT_SCAN_INTERVAL | 30s |
 | CV_IMPORT_STABILITY_INTERVAL | 10s |
 | CV_IMPORT_RETRY_BACKOFF | 30s; nhập/move tăng gấp đôi, hệ số tối đa 1024 |

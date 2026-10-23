@@ -11,16 +11,14 @@ import java.time.Clock;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "cv.import", name = "enabled", havingValue = "true")
-@EnableConfigurationProperties(DiskImportProperties.class)
+@EnableConfigurationProperties({DiskImportProperties.class, BatchProperties.class})
 @EnableScheduling
 public class DiskImportConfiguration {
     @Bean public Clock diskImportClock() { return Clock.systemUTC(); }
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(prefix = "cv.import", name = "provider", havingValue = "local", matchIfMissing = true)
     public ImportSource importSource(DiskImportProperties properties,
-            @Value("${cv.storage.local.root-directory}") String storage,
-            @Value("${cv.batch.max-files:10}") int maxFiles) throws IOException {
-        if (properties.getBatchSize() > maxFiles) throw new IllegalArgumentException("Import batch size exceeds configured batch limit");
+            @Value("${cv.storage.local.root-directory}") String storage) throws IOException {
         return new LocalDiskImportSource(properties.getSourceDirectory(), properties.getProcessedDirectory(),
                 properties.getFailedDirectory(), storage);
     }
