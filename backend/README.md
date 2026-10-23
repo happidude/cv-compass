@@ -1,3 +1,107 @@
+# M8 — CV management and OCR read API
+
+Base: M7 `5b647bc`; M7 is not merged. Backend only; no schema or worker protocol
+changes, no new user auth, no OCR enablement or claim of real OCR success.
+
+| API | Behavior |
+|---|---|
+| `POST /api/documents`, multipart `file` | Existing single upload; metadata/Location unchanged |
+| `POST /api/batches`, repeated multipart `files` | Existing batch upload and per-file `items` outcomes |
+| `GET /api/batches?page=0&size=20` | Existing batches ordered by createdAt DESC, ID DESC |
+| `GET /api/batches/{id}` | Existing ingestion counters, not OCR counters |
+| `GET /api/batches/{id}/items?page=0&size=20` | Existing per-file ingestion outcomes, including failures |
+| `GET /api/documents?size=20&beforeId=123` | New cursor list; omit beforeId on first request |
+| `GET /api/documents/{id}` | Existing metadata route extended with processing and page results |
+
+List response: `{content:[{metadata,batchId,ingestionStatus,processing}],size,hasNext,nextBeforeId}`.
+Use nextBeforeId on the next request; stop when hasNext=false. Ordering is immutable
+ID DESC, strictly ID < beforeId, with bounded look-ahead; new inserts do not shift
+earlier pages. IDs can have gaps and do not guarantee concurrent transaction commit
+order. This is not a snapshot across requests; processing status is read afresh.
+No OCR text/large JSON, count query or N+1 in list responses. Failed ingestion files
+remain in batch items; no fake document is created for them.
+
+Detail preserves all M4 metadata fields at the top level, including legacy `status`.
+Use `ingestionStatus=STORED` for committed original/metadata, and `processing.status`
+for NOT_SCHEDULED (no job), PENDING, PROCESSING, COMPLETED, PARTIAL or FAILED.
+Select the highest job ID across profiles and only that job's latest extraction;
+never fall back to an older result while a newer job has no result. Querying does
+not read or modify the original PDF. List/detail send `Cache-Control: no-store`.
+
+`processing` exposes jobId, attemptsStarted/maxAttempts (nullable for legacy),
+nextAttemptAt, startedAt/completedAt, endReason, errorCode and resultAvailability.
+Worker identity, lease proofs, admission snapshots, internal error messages and
+storage paths are excluded. `ocr.availability` distinguishes:
+
+- `NONE`: no extraction for the selected job; null status/pageCount, empty pages.
+  Inspect processing to distinguish not scheduled, pending, running or infra failure.
+- `PAGE_RESULT`: stored M6 result with original success/partial/failed status.
+  A failed preflight may have null pageCount and empty pages and is still a result.
+- `LEGACY`: extraction without page JSON; legacyRawText is preserved if present,
+  without inventing page boundaries or an OCR status.
+
+PAGE_RESULT exposes extractionId, status, pageCount, ordered pages, warnings and
+errors (code/stage). Each page has pageNumber, status, method, text, rawText, warnings
+and error. Unicode/newlines/raw text and blank/failed/not_processed states are
+preserved, without flattening. Internal engines/provenance are excluded.
+ApiError/correlationId conventions remain: 400 invalid parameters/configured page
+size exceeded, 404 missing document, safe 500 for data/DB failures.
+
+Calls with a deployment-supplied BASE_URL and synthetic input only:
+
+```sh
+curl "$BASE_URL/api/documents?size=20"
+curl "$BASE_URL/api/documents?size=20&beforeId=123"
+curl "$BASE_URL/api/documents/123"
+curl -F 'file=@synthetic.pdf;type=application/pdf' "$BASE_URL/api/documents"
+curl -F 'files=@synthetic-a.pdf' -F 'files=@synthetic-b.pdf' "$BASE_URL/api/batches"
+curl "$BASE_URL/api/batches/123/items?page=0&size=20"
+```
+
+Typed, validated configuration (defaults preserve existing upload behavior):
+
+| Environment | Property | Default |
+|---|---|---:|
+| CV_API_DEFAULT_PAGE_SIZE | cv.pagination.default-page-size | 20 |
+| CV_API_MAX_PAGE_SIZE | cv.pagination.max-page-size | 100 |
+| CV_UPLOAD_MAX_FILE_BYTES | cv.upload.max-file-bytes | 10485760 |
+| CV_BATCH_MAX_FILES | cv.batch.max-files | 10 |
+| CV_BATCH_MAX_FILE_BYTES | cv.batch.max-file-bytes | 10485760 |
+| CV_MULTIPART_OVERHEAD_BYTES | cv.batch.multipart-overhead-bytes | 1048576 |
+
+Pagination is shared by documents/batches/items; default <= max <= 1000. File limits
+may be reduced within M4's 10 MiB protocol ceiling, batch count within the existing
+POC database constraint of 10. Parser ceiling is max(single bytes, batch count ×
+batch bytes) + overhead, with actual byte limits still enforced during streaming.
+Invalid config fails startup. Existing M7 DB/storage/import/OCR configuration is
+reused; no new deployment path or credentials are embedded.
+
+M8 verification (2026-10-23, Windows, Microsoft JDK 25.0.4.1, Gradle 9.7.1):
+`assemble test --rerun-tasks --console=plain --warning-mode=all` with the explicit
+independent suite selection: **201 tests / 0 failures / 0 errors / 0 skipped**, JAR
+build PASS, including architecture/Modulith. Selection: all `*Tests.java` classes
+except `*IntegrationTests` and `BackendApplicationTests`; no assertions were removed
+or weakened. `check --rerun-tasks --console=plain --warning-mode=all` freshly ran
+compileJava/processResources/compileTestJava/test: **310 / 109 / 0 / 0**, FAILED.
+All 11 failing suites lack TEST_DB_PASSWORD; PostgreSQL 17 is not connected or
+verified. Four new M8 SQL tests are BLOCKED / NOT VERIFIED. Existing secondary
+fixture-cleanup failures remain visible, not converted to skips. No compiler or
+deprecation warnings; expected negative-test WARN/ERROR logs remain. Git line-ending
+notices reflect existing Windows checkout policy; canonical OCR bytes are unchanged.
+
+Verified backend `src/` SHA256 before/after checks:
+`70bba08759b8a0bc7b158c34884eab9b8683365ff6ca980cd896ac98191e914f`.
+Fingerprint: sorted relative path + space + lowercase file SHA256, joined by LF,
+no terminal LF. Base M7: `5b647bc`. Local log/XML: `build/m8-independent-final.log`,
+`build/m8-full-check.log`, `build/m8-evidence/{independent,full}/`. One agent reviewed
+the complete M8 staged diff against M7: no Critical/High/Medium findings. Final
+evidence/documentation review is cycle 2/3; `git diff --check` passes.
+CI for M8 is NOT VERIFIED. Gate is **BLOCKED / NOT VERIFIED**, not complete or ready
+for acceptance. Supply private TEST_DB_* for stable PostgreSQL 17 and rerun the full
+check using existing isolated schema/storage fixtures. M7 live OCR/Docker and the
+GCC/Tesseract production blocker remain unverified/unresolved; worker/Docker are
+unchanged. Commit/push is a user-authorized source snapshot, not a quality-gate PASS.
+
 # M7 integration — current local implementation
 
 M7.3 internal worker API/auth/reaper, M7.4 Python pull/stream/spool adapter and M7.5

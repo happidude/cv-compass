@@ -75,7 +75,7 @@ final class PdfUploadStream extends FilterInputStream {
 
     private void checkSize(int read) {
         if (read > maxBytes - count) {
-            throw new UploadRejectedException(FILE_TOO_LARGE, "File exceeds the 10 MiB limit");
+            throw new UploadRejectedException(FILE_TOO_LARGE, "File exceeds the configured size limit");
         }
     }
 
