@@ -19,9 +19,22 @@ it("keeps legacy text as one expandable block", () => {
   expect(screen.getByText(/Kết quả legacy/)).toBeInTheDocument();
   expect(screen.getByText(/Hiện thêm text/)).toBeInTheDocument();
   expect(screen.queryByText("Trang 1")).not.toBeInTheDocument();
+  expect(screen.getByText(/Synthetic legacy text/).textContent).toBe(
+    d.ocr.legacyRawText!,
+  );
 });
 it("explains NONE according to job status", () => {
   const d = detailSchema.parse(details[2]);
   render(<OcrResult ocr={d.ocr} processing={d.processing} />);
   expect(screen.getByText(/Chưa có kết quả OCR.*đang chờ/)).toBeInTheDocument();
+});
+
+it("accepts nullable legacy text and shows a useful empty result", () => {
+  const d = detailSchema.parse({
+    ...details[1],
+    ocr: { ...details[1].ocr, legacyRawText: null },
+  });
+  render(<OcrResult ocr={d.ocr} processing={d.processing} />);
+  expect(screen.getByText("Kết quả cũ không có văn bản")).toBeInTheDocument();
+  expect(screen.queryByText("Trang 1")).not.toBeInTheDocument();
 });

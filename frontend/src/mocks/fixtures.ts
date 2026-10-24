@@ -176,7 +176,7 @@ export const documentPage = {
     ingestionStatus: d.ingestionStatus,
     processing: d.processing,
   })),
-  size: 20,
+  size: 7,
   hasNext: false,
   nextBeforeId: null,
 };

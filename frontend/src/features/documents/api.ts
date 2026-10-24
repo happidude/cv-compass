@@ -15,7 +15,7 @@ export async function listDocuments(
   signal?: AbortSignal,
 ) {
   const result = await get(
-    `/documents?size=20${before ? `&beforeId=${before}` : ""}`,
+    `/documents${before ? `?beforeId=${before}` : ""}`,
     cursorSchema,
     signal,
   );

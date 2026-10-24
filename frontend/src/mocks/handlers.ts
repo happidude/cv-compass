@@ -35,7 +35,7 @@ export const handlers = [
     return HttpResponse.json({
       content: page === 0 ? batches : [],
       page,
-      size: 20,
+      size: 7,
       totalPages: 1,
       totalElements: batches.length,
     });
@@ -56,7 +56,7 @@ export const handlers = [
     return HttpResponse.json({
       content: page === 0 ? items : [],
       page,
-      size: 20,
+      size: 7,
       totalPages: 1,
       totalElements: 4,
     });

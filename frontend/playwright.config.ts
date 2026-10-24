@@ -25,7 +25,7 @@ export default defineConfig({
       env: {
         VITE_MOCK: "true",
         VITE_POLL_INTERVAL_MS: "500",
-        VITE_POLL_MAX_MS: "1500",
+        VITE_POLL_MAX_MS: "5000",
       },
     },
     {
@@ -35,7 +35,7 @@ export default defineConfig({
       env: {
         VITE_MOCK: "false",
         VITE_POLL_INTERVAL_MS: "500",
-        VITE_POLL_MAX_MS: "1500",
+        VITE_POLL_MAX_MS: "5000",
       },
     },
   ],

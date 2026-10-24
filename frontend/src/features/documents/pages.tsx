@@ -123,7 +123,11 @@ function OcrResult({
     return (
       <>
         <p className="notice">Kết quả legacy — text được lưu nguyên khối.</p>
-        <LongText text={ocr.legacyRawText ?? ""} />
+        {ocr.legacyRawText === null ? (
+          <Empty>Kết quả cũ không có văn bản</Empty>
+        ) : (
+          <LongText text={ocr.legacyRawText} />
+        )}
       </>
     );
   if (ocr.availability !== "PAGE_RESULT")

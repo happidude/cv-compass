@@ -7,6 +7,7 @@ import {
   metadata,
   apiFailure,
 } from "../../src/mocks/fixtures";
+const documentListRoute = /\/api\/documents(?:\?.*)?$/;
 async function defaults(page: Page) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -53,7 +54,7 @@ test("loading then empty, safe HTTP error and contract failure", async ({
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route("**/api/documents?*", async (route) => {
+  await page.route(documentListRoute, async (route) => {
     await gate;
     await route.fulfill({ json: { ...documentPage, content: [] } });
   });
@@ -61,8 +62,8 @@ test("loading then empty, safe HTTP error and contract failure", async ({
   await expect(page.getByRole("status")).toContainText("Đang tải");
   release();
   await expect(page.getByText(/Chưa có CV/)).toBeVisible();
-  await page.unroute("**/api/documents?*");
-  await page.route("**/api/documents?*", (route) =>
+  await page.unroute(documentListRoute);
+  await page.route(documentListRoute, (route) =>
     route.fulfill({
       status: 400,
       json: { ...apiFailure, code: "INVALID_REQUEST" },
@@ -71,8 +72,8 @@ test("loading then empty, safe HTTP error and contract failure", async ({
   await page.reload();
   await expect(page.getByRole("alert")).toContainText("INVALID_REQUEST");
   await expect(page.getByText(apiFailure.message)).toHaveCount(0);
-  await page.unroute("**/api/documents?*");
-  await page.route("**/api/documents?*", (route) =>
+  await page.unroute(documentListRoute);
+  await page.route(documentListRoute, (route) =>
     route.fulfill({ json: { id: 9007199254740992 } }),
   );
   await page.reload();
@@ -90,8 +91,9 @@ test("cursor load-more keeps rows on failure, retries in place, refetch dedupes"
   let fail = true;
   let cursor = "";
   let nextCalls = 0;
-  await page.route("**/api/documents?*", (route) => {
+  await page.route(documentListRoute, (route) => {
     const before = new URL(route.request().url()).searchParams.get("beforeId");
+    expect(new URL(route.request().url()).searchParams.has("size")).toBe(false);
     cursor = before ?? "";
     if (before) {
       nextCalls++;
@@ -332,4 +334,25 @@ test("batch detail and document errors, item empty state", async ({ page }) => {
   await expect(
     page.getByText(/Chưa có kết quả upload ở trang này/),
   ).toBeVisible();
+});
+
+test("nullable LEGACY text does not break document metadata or the page", async ({
+  page,
+}) => {
+  await page.route("**/api/documents/6", (route) =>
+    route.fulfill({
+      json: { ...details[1], ocr: { ...details[1].ocr, legacyRawText: null } },
+    }),
+  );
+  await page.goto("/documents/6");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Synthetic_legacy.pdf",
+  );
+  await expect(
+    page.getByText("Kết quả cũ không có văn bản", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Metadata", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

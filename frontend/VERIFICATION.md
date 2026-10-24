@@ -1,57 +1,61 @@
-# M9 local verification — 2026-10-24 (Asia/Ho_Chi_Minh)
+# M9 PR #12 revision verification — 2026-10-24
 
-## Source and scope
+## Version, scope and review
 
-- Worktree: `E:\cv-compass-m9`, branch `feature/cv-management-frontend`.
-- Base: `8692e2d71a456a581267a3014fce6777fdff1f29` (`origin/main`, merged M8).
-- Reviewed source: all 48 intended `frontend/` files, excluding only this evidence document. Source fingerprint: `b3753a5fad4ba99e3ecfedc210a02eeaef20de1ad99f3aee142bfdb409ffed06`.
-- Fingerprint recipe: sort unique output of `git ls-files --cached --others --exclude-standard -- frontend`, exclude `frontend/VERIFICATION.md`, make `[relativePath, SHA256(fileBytes)]` pairs, SHA256 of UTF-8 JSON with separators `(',', ':')`.
-- Only frontend changes. Backend, worker, infra and ignored local docs/AGENTS were read as needed and were not modified. Main and other worktrees were preserved.
-- PDF's five pages were rendered and visually inspected before coding; final 1440/1024/768 screenshots were captured and inspected against that layout. Export whitespace was not reproduced. Route mapping and API inventory/gaps are in README.md.
+Base: `95e0e7c8f2216052f666ccca53127a0e266bcd80`; branch `feature/cv-management-frontend`; worktree `E:\cv-compass-m9`.
+This replaces the previous baseline verification record; that record remains in Git at the base commit.
 
-## Local execution
+Reviewed source fingerprint: `3d6bae55f872e87eae657e97f7efe7cd2fb8a2a2f7e4332936e36ed994168694`. Recipe: sort unique paths returned by `git ls-files --cached --others --exclude-standard -- frontend .github/workflows/frontend-ci.yml`, exclude only this document, collect `[relativePath, SHA256(fileBytes)]`, then SHA256 the UTF-8 JSON with separators `(',', ':')`. This identifies 52 files. Application source subset (`frontend/src/`) fingerprint: `796aa0fb46f67f7887dfa1bd5b586a47de7c99c1403c912e7cdb32bffa2899c1`. The live smoke used this same application source.
 
-Working directory for npm commands: `E:\cv-compass-m9\frontend`. Windows PowerShell, Node `v24.22.0`, npm `11.19.1`, TypeScript `5.9.3`, Vite `7.3.7`, Vitest `3.2.7`, Playwright `1.64.1`, Chromium `156.0.8078.4`.
+Changes: nullable LEGACY schema/display and regressions; omit read-request size in documents/batches/items and keep cursor/page; update synthetic responses/request matching; add independent frontend CI and opt-in isolated live browser smoke. Backend/Python sources, contracts, migrations and existing CI workflows are unchanged. No dependency or lockfile changes.
 
-| Command/check | Executed result |
+One agent used Developer/Reviewer roles, bounded to three passes. Reviewer pass 1 inspected the actual complete diff against `95e0e7c`, including new workflow, pagination tests and live smoke files. Final evidence/documentation and final source were checked in pass 2. No unresolved Critical/High/Medium or Low implementation findings. Schema/transaction/Modulith changes are not applicable. The existing production OCR gate remains closed.
+
+## Local frontend results
+
+Environment: Windows PowerShell, Node 24.22.0, npm 11.19.1, TypeScript 5.9.3, Vite 7.3.7, Vitest 3.2.7, Playwright 1.64.1 / Chromium 156.0.8078.4. Commands ran in `E:\cv-compass-m9\frontend`.
+
+| Executed command/check | Result |
 | --- | --- |
-| `npm ci --no-audit --no-fund` | PASS, clean install from committed lockfile; no install-script warnings after explicit package policy |
-| `npm run check` | PASS: typecheck, ESLint, Prettier, fresh Vitest and production build |
-| `npm run test` (inside check) | 4 files, **19 passed, 0 failed, 0 errors, 0 skipped** |
-| `npm run test:browser` | **29 passed, 0 failed, 0 skipped**, Chromium; fresh real browser sessions |
-| axe within browser suite | No violations across 5 screens × 1440/1024/768 = 15 checks |
-| Keyboard/browser behavior | Skip link, file picker, native dialog focus/Escape, single/batch upload, unknown outcome, cursor/load-more failure, URL pagination, OCR variants, hidden/terminal/unmounted/deadline polling verified |
-| `npm audit --omit=dev --audit-level=high --json` | 0 runtime advisories (all severity levels) |
+| `npm ci --no-audit --no-fund` | PASS, fresh install from unchanged lockfile |
+| `npm run check` | PASS: typecheck, lint, format, fresh unit/HTTP tests, production build |
+| `npm run test -- --reporter=default --reporter=junit --outputFile.junit=.ci-reports/unit-junit.xml` | PASS: **22 tests, 0 failures, 0 errors, 0 skipped**, 5 fresh suites; XML inspected |
+| `npm run test:browser` | PASS: **30 tests, 0 failures, 0 skipped**; includes 15 axe checks and desktop/tablet layouts |
+| Workflow YAML parse via Prettier parser | PASS; manual review verifies read-only permissions, exact PR head checkout, lockfile install, bash pipefail semantics and failure evidence upload |
 | `git diff --check` | PASS |
-| Production mock guard | With `VITE_MOCK=true`, `npm exec vite build -- --mode staging` rejected configuration as expected (negative test) |
-| Production output scan | No `mockServiceWorker.js`; `rg -l 'setupWorker\|Synthetic_scan\|mockServiceWorker\|MockServiceWorker' dist` found no matches |
-| Dev worker provenance | SHA256 `26171599d94d5445297303f3a1f1cedec26835ea3d0057dcfa92ec520cb35cca`, identical to locked `node_modules/msw/lib/mockServiceWorker.js` |
 
-Browser artifacts: ignored `frontend/test-results/screens/` (15 screenshots); HTML report in ignored `frontend/playwright-report/`. These contain synthetic data only. The tests use MSW in dev and HTTP interception in a separate browser project; the real HTTP client, XHR transport and Zod boundary run. No frontend function is replaced by a fake client. Known HTTP fixture shapes were checked against backend DTO/controller/query/exception/config source and OCR validator/worker contract. There was no fallback from live API to mocks.
+Regressions cover nullable LEGACY without breaking metadata, LEGACY with exact original text/newlines, all three list API requests without size, backend-selected non-20 sizes, cursor beforeId and zero-based page. Existing unknown-enum/error/upload/polling/OCR/keyboard checks remain enabled.
 
-Java 25/PostgreSQL 17/JUnit/Flyway/Modulith/Python checks: **NOT APPLICABLE** to this frontend-only diff, as explicitly instructed for M9. No Java/Python source, schema, database or infrastructure was changed. No JUnit counts are claimed.
+One pre-final legacy test initially used jest-dom's whitespace-normalizing matcher; the test now compares exact DOM `textContent` to original legacyRawText, a stronger preservation check. One pause/resume browser check initially exhausted its 1.5-second test budget before the next interval could fire. Trace showed initial completed reads at 06:02:18.895Z/06:02:19.444Z; visibility resumed about 1.35 seconds after mount, so the next 500ms interval was beyond that budget. The test environment now has a 5-second budget; all pause/resume and deadline assertions remain. Application polling defaults/logic are unchanged. Final browser suite passes.
 
-## Review record
+Local artifacts stay ignored: `.ci-reports/unit-junit.xml`, `.ci-reports/smoke-html/`, `.ci-reports/smoke-results/`, `.ci-reports/smoke-documents.png`, `playwright-report/`, `test-results/`. No CV, runtime data, credentials or build outputs are committed.
 
-One agent switched Developer/Reviewer roles; **2 reviewer passes**, within the maximum of 3. Review base is the commit above; both passes covered actual Git diff, intended new files, requirements, contracts, state transitions, failure handling, data safety, accessibility, tests and maintainability. Backend transaction/schema/module changes were not applicable.
+## Live isolated backend smoke
 
-| ID | Severity | Location in final source | Evidence / fix | Disposition |
-| --- | --- | --- | --- | --- |
-| M9-R1 | Medium | `src/shared/ui/status.tsx:37`, `src/shared/http.ts:75` | Plain object lookup could return inherited values for `__proto__`/`constructor` and break rendering. Use own-property checks; regression covers all status domains and error messages. | Fixed and verified |
-| M9-R2 | Medium | `src/shared/polling.ts:38`, document/batch query hooks | Browser test demonstrated hidden-tab polling failed to resume. Subscribe to visibility changes and recompute query options; browser now verifies pause and resume. | Fixed and verified |
-| M9-R3 | Medium | `src/mocks/fixtures.ts:58` | Initial OCR fixture included method/warning/error combinations rejected by backend's OCR validator. Aligned blank/failed/not_processed and known codes with actual contract, retaining unknown-enum coverage separately. | Fixed and verified |
+**PASS for upload/list/detail/cursor readback, with mock disabled.** Executed:
 
-During development (before review gate), tests also found and fixed live FileList capture after input reset, CSS link/button contrast and text-link identification. Node-fetch tests were moved to the Node environment to use its native AbortSignal; DOM XHR tests remain in jsdom. No assertion was weakened to hide application failures. The terminal polling test counts completed 200 responses; trace proved React StrictMode's first probe request was aborted (status -1), followed immediately by one successful response. The exact one-completed-response assertion remains. HTTP browser scenarios have default synthetic routes so navigation cannot contact the unavailable backend accidentally.
+```powershell
+$env:M9_SMOKE_RUN_ID = '<owned-run-id>'
+$env:M9_SMOKE_BACKEND_PORT = '18089'
+npm exec playwright test -- --config playwright.smoke.config.ts
+```
 
-Reviewer pass 2: fixes and regression evidence rechecked; no unresolved Critical/High/Medium findings. Remaining Low implementation findings: none. Final source checks were rerun after source fixes; CI is recorded separately below. Frontend gate passes locally within M9's scope; this does not establish live integration or production readiness.
+Result: **1 browser test passed, 0 failed/skipped**. Vite used loopback 5185 with `VITE_MOCK=false` and `/api` proxy to real Spring Boot on loopback 18089. No API interception, MSW fallback or backend modification was used. Single upload -> document detail/list; batch of two -> batch detail -> document detail/batch association -> batch history; document cursor load-more all passed with no failed API responses.
 
-## Warnings and verification limits
+Resources: new owned disposable PostgreSQL 17.11 container, database `cvcompass_m9_smoke`, schema `m9_smoke_22781a3c8ca24ce7af4fa76eb5b2980c`, a new empty temporary local storage root. Verified `current_schema()` before reading counts. No development/production datasource, existing storage or real CV was used. Final isolated counts: **3 documents, 1 batch, 2 items, 0 processing jobs, 0 extractions**. Three persisted storage objects, each **609 bytes**, SHA256 `f2de4a6dac53ef0af04d2d3466ad2379035e2925f20a4ed75ce265b180e479bb`, generated synthetic one-page PDF. Storage objects have no `.pdf` extension; the inventory was checked across all files. Backend document default=2 and max=5; the frontend loaded 2 then the third via backend cursor, proving no forced size=20. Batch/items used their existing backend defaults.
 
-- Fixed: unsupported ESLint 9 / deprecated jsdom transitive package by selecting supported tool versions; npm unreviewed install scripts by approving locked esbuild native setup and denying MSW auto-update; Git LF/CRLF conversion warnings by scoped frontend `.gitattributes`.
-- Remaining: two Rollup annotation warnings in Zod 4.6.7 (`core/util.js`, `core/regexes.js`). Rollup discards misplaced comment annotations; build completes and runtime/schema tests pass. No dependency source patched, warnings filtered or assertions suppressed. No demonstrated runtime defect; upgrading/downgrading unrelated libraries solely to hide these comments was avoided.
-- Remaining: Node warns that runner-injected `FORCE_COLOR` overrides host `NO_COLOR` during Playwright execution. Cosmetic terminal-color conflict; not an app/build/test defect; host-wide environment was preserved.
-- **Live backend smoke: BLOCKED / NOT VERIFIED.** Connection probe to `127.0.0.1:8080` failed. No real upload or PostgreSQL writes were attempted; next step is to run an isolated backend test instance and smoke with synthetic PDFs/test storage.
-- **CI: NOT VERIFIED** here; local results are not CI results. Existing backend CI does not establish frontend acceptance. Inspect checks for the pushed commit separately.
-- Public PDF preview/download and batch item OCR status are absent in the verified backend contract; UI handles these gaps as documented. No internal worker endpoint or credential is used.
-- Mock uploads return synthetic metadata/results; they do not persist new records in fixture list/detail storage. This dev-only limitation is documented; actual backend persistence remains to be smoke-tested.
-- OCR accuracy has not been evaluated. GCC/Tesseract still block production. No merge or deployment is performed.
+Backend environment: Microsoft OpenJDK **25.0.4.1**; unchanged Spring Boot 4.1.1 application, Flyway migrations on owned schema, Hibernate validate; importer/OCR/integration disabled. `gradlew.bat bootJar --console=plain --warning-mode=all` passed with **4 tasks executed**. Initial build/application startup encountered the documented Windows JDK UnixDomainSockets loopback issue; retry used session/JVM `-Djdk.net.unixdomain.tmpdir=E:\cv-compass-m9\backend\build\tmp\jvm` and `-Duser.timezone=UTC`, then startup and smoke passed. Successful backend startup/request logs had no WARN/ERROR; full logs remain in ignored `backend/build/m9-smoke/`. No application JVM/security/dependency source changes were made.
+
+Owned backend PID, immutable container ID/owner label, anonymous volume and exact temporary storage root were verified and cleaned after readback. No other process, container, database, worktree or storage was removed. Credentials were random and process-local, never printed/committed. Full backend/Python suites were not rerun: source unchanged and this is a frontend correction; no JUnit/backend-suite PASS is claimed.
+
+**Actual worker OCR/result production: NOT VERIFIED.** This isolated run has no provisioned worker/profile/images manifest (`worker/build/baseline/images.json` absent). UI read the real NONE/no-job state. PAGE_RESULT/LEGACY display is regression-tested synthetically, not claimed as live OCR evidence. No worker credentials, internal input endpoint or production-gate bypass was introduced. OCR accuracy is not evaluated; GCC/Tesseract still block production readiness.
+
+## Warning investigation and CI
+
+Resolved dependency sources were inspected without modification: Zod **4.6.7** `v4/core/util.js:400` has an explanatory line comment mentioning `@__PURE__`; its IIFE immediately following has its own valid `/*@__PURE__*/` marker. `v4/core/regexes.js:74` has a prose docblock mentioning the same marker; `anchor(dateSource)` later has a valid call annotation. Rollup's `logInvalidAnnotation` classifies the prose-marker positions as `INVALID_ANNOTATION`, warns and removes those comments. These two warnings concern explanatory comments, not malformed JavaScript or a failed schema validation. Builds, strict boundary tests and the real-backend browser path passed. Warning emission is preserved; no onwarn filter, source patch, suppression, dependency upgrade/downgrade or relaxed assertion was used. Remaining risk is dependency/tooling annotation handling; not an OCR production-readiness signal.
+
+The runner's existing FORCE_COLOR/NO_COLOR warning is cosmetic. New source has no lint/typecheck warnings. Git line-ending normalization is scoped to the existing frontend LF policy; no root/global Git policy is changed.
+
+New `.github/workflows/frontend-ci.yml`: Ubuntu 24.04, Node 24 LTS, verified/pinned official checkout/setup-node/upload-artifact action commits, npm cache only (never node_modules), clean npm ci, typecheck/lint/format/tests/build, Chromium install and browser suite. Failure logs/JUnit/HTML/traces/screenshots retained for 7 days. Backend/Python workflows are unchanged. The workflow checks the PR head SHA rather than relying on an earlier commit or merge-ref-only evidence.
+
+CI results for the pushed revision are inspected after publishing; see PR #12's current Frontend CI run and the final handoff for exact commit/run/step/log outcomes. Local PASS is not a CI claim. No merge or deployment is performed.

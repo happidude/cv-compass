@@ -50,8 +50,6 @@ export const ocrSchema = z
     legacyRawText: z.string().nullable(),
   })
   .superRefine((v, ctx) => {
-    if (v.availability === "LEGACY" && v.legacyRawText === null)
-      ctx.addIssue({ code: "custom", message: "Missing legacy text" });
     if (new Set(v.pages.map((p) => p.pageNumber)).size !== v.pages.length)
       ctx.addIssue({ code: "custom", message: "Duplicate page" });
   });

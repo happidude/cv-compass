@@ -38,15 +38,15 @@ PDF pages 1–5 map to `/documents`, `/documents/upload`, `/batches`, `/batches/
 | --- | --- |
 | POST `/api/documents` | One multipart `file`; returns metadata only |
 | POST `/api/batches` | Repeated multipart `files`; returns `{batch, items}` |
-| GET `/api/documents?size=20&beforeId=…` | `{content:[{metadata,batchId,ingestionStatus,processing}],size,hasNext,nextBeforeId}` |
+| GET `/api/documents?beforeId=…` | `{content:[{metadata,batchId,ingestionStatus,processing}],size,hasNext,nextBeforeId}` |
 | GET `/api/documents/{id}` | Flat metadata plus batchId, ingestionStatus, processing, ocr |
-| GET `/api/batches?page=…&size=20` | `{content,page,size,totalElements,totalPages}` |
+| GET `/api/batches?page=…` | `{content,page,size,totalElements,totalPages}` |
 | GET `/api/batches/{id}` | Batch aggregate counters and ingestion status |
-| GET `/api/batches/{id}/items?page=…&size=20` | Same page envelope, items: fileOrder/displayName/documentId/errorCode |
+| GET `/api/batches/{id}/items?page=…` | Same page envelope, items: fileOrder/displayName/documentId/errorCode |
 
 IDs arrive as positive safe JSON numbers and become strings at the boundary. Unsafe Long IDs fail contract validation. ApiError uses code/message/correlationId/details, but raw server messages are never rendered. Only safe code/correlation tokens are retained. GET retries network/timeouts/5xx twice; abort/4xx/contract errors never retry. XHR POST has progress for total transmitted bytes and zero retries. A lost/aborted/malformed-success/5xx upload is an unknown outcome requiring inspection before resubmission.
 
-Processing job: NOT_SCHEDULED / PENDING / PROCESSING / COMPLETED / PARTIAL / FAILED. Batch: PENDING / PROCESSING / COMPLETED / PARTIAL_FAILED / FAILED. Unknown enum values remain visibly unknown. OCR NONE shows job context; PAGE_RESULT retains per-page statuses, warnings/errors and separate text/rawText; LEGACY stays one original block. Raw OCR is rendered as text, never HTML or persisted in localStorage.
+Processing job: NOT_SCHEDULED / PENDING / PROCESSING / COMPLETED / PARTIAL / FAILED. Batch: PENDING / PROCESSING / COMPLETED / PARTIAL_FAILED / FAILED. Unknown enum values remain visibly unknown. OCR NONE shows job context; PAGE_RESULT retains per-page statuses, warnings/errors and separate text/rawText; LEGACY stays one original block; nullable legacyRawText displays “Kết quả cũ không có văn bản”. Raw OCR is rendered as text, never HTML or persisted in localStorage.
 
 ## Design adjustments / gaps
 
@@ -61,3 +61,11 @@ Processing job: NOT_SCHEDULED / PENDING / PROCESSING / COMPLETED / PARTIAL / FAI
 `npm run build` produces static `dist/`. Serve via reverse proxy with `/api` forwarded to the backend and SPA fallback to `index.html` for frontend routes. Or set `VITE_API_BASE_URL` to an explicit public API base at build time and arrange server-side CORS outside this milestone. Keep mock disabled. No secrets, worker token, storage paths, original CV or runtime data belong in this bundle/repository.
 
 Frontend verification does not evaluate OCR accuracy. GCC/Tesseract still block production readiness. See VERIFICATION.md for executed local evidence and remaining blockers.
+
+## Frontend CI and isolated live smoke
+
+`frontend-ci.yml` runs a clean lockfile install, typecheck, lint, format, unit/HTTP tests, production build and Chromium browser suite on Node 24 LTS. On failure it retains command logs, unit JUnit, Playwright HTML report and traces/screenshots for 7 days. Backend/Python workflows are unchanged. Read the new run for the PR head; earlier green runs are not evidence for this revision.
+
+Read API requests omit `size` and accept the backend-selected response size; only `beforeId` (documents) or zero-based `page` (batches/items) is supplied.
+
+Live smoke is separate from mocked CI: create a disposable PostgreSQL 17 instance, an owned schema and empty temporary storage; start the unchanged Java 25 backend with importer/OCR disabled and explicit isolated datasource/storage. Set `M9_SMOKE_RUN_ID` to that run's UUID and `M9_SMOKE_BACKEND_PORT` to its loopback port, then run `npm exec playwright test -- --config playwright.smoke.config.ts`. The config forces mock off and starts Vite on 5185. The test requires an initially empty documents list and uses only generated synthetic PDFs. Never target development/production data or storage. OCR result processing is NOT VERIFIED unless a provisioned synthetic worker is available; this smoke does not bypass the OCR production gate.

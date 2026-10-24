@@ -12,11 +12,11 @@ export const batchKeys = {
   items: (id: string, page: number) => ["batches", "items", id, page] as const,
 };
 export const listBatches = (page: number, signal?: AbortSignal) =>
-  get(`/batches?page=${page}&size=20`, batchPageSchema, signal);
+  get(`/batches?page=${page}`, batchPageSchema, signal);
 export const getBatch = (id: string, signal?: AbortSignal) =>
   get(`/batches/${id}`, batchSchema, signal);
 export const getItems = (id: string, page: number, signal?: AbortSignal) =>
-  get(`/batches/${id}/items?page=${page}&size=20`, itemPageSchema, signal);
+  get(`/batches/${id}/items?page=${page}`, itemPageSchema, signal);
 export const uploadBatch = (
   files: File[],
   progress: (n: number) => void,
