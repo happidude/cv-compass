@@ -58,7 +58,7 @@ class OcrWorkerIntegrationTests {
         registry.add("cv.ocr.integration.fixtures[0].size-bytes",()->PDF.length);
         registry.add("cv.ocr.integration.fixtures[0].profile-revision",()->"test-v1");
     }
-    private static String engines() {
+    static String engines() {
         var engines=JsonMapper.builder().build().createObjectNode();
         for (String name:Set.of("python","pdfplumber","pdfminer_six","pypdfium2","pdfium","tesseract","leptonica","pillow","worker_version"))
             engines.put(name,"synthetic-test");

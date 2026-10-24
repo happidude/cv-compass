@@ -121,3 +121,14 @@ kiểm chứng; abrupt supervisor death có thể để resource/lock cần oper
 Accuracy evaluation/tuning ở [backlog riêng](design/OCR_QUALITY_BACKLOG.md).
 GCC warning vẫn unresolved độc lập; không suppress, đổi compiler/hạ optimization hay
 bypass để tạo PASS. Historical reports có banner dẫn tới trạng thái hiện hành.
+
+## Explicit local admission
+
+The M7 supervisor also supports operator opt-in `synthetic_only=false` plus
+`local_only=true` in its existing private `pull.toml`. The default remains
+synthetic-only. Local claims must explicitly match that mode before download;
+the supervisor still requires diagnostic Docker processing, authenticated pinned
+deployment/profile provenance, private spool and the existing recovery protocol.
+It passes `--local-only` to the same M6 CLI, never declares production readiness.
+See [the coordinated local run guide](../backend/LOCAL_OCR.md) for backend admission,
+origin alignment, UI settings and commands. Do not clear a halt/spool blindly.

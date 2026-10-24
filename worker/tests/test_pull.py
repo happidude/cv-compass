@@ -23,6 +23,13 @@ def config(**values):
 
 
 class ConfigTests(unittest.TestCase):
+    def test_local_admission_requires_explicit_exclusive_opt_in(self):
+        self.assertTrue(config(synthetic_only=False, local_only=True).local_only)
+        for values in ({'local_only':True}, {'synthetic_only':False},
+                       {'synthetic_only':None, 'local_only':True}, {'local_only':'true'}):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                config(**values)
+
     def test_credential_env_cannot_alias_forwarded_runtime_settings(self):
         from cv_compass_worker.sandbox import safe_env
         from cv_compass_worker.docker_sandbox import docker_env
@@ -358,6 +365,18 @@ class SupervisorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.supervisor.once()
         self.http.download.assert_not_called()
+
+    def test_local_worker_rejects_synthetic_claim_and_uses_local_cli_gate(self):
+        self.cfg=replace(self.cfg, synthetic_only=False, local_only=True)
+        self.supervisor=PullSupervisor(self.cfg,self.http,self.pipeline)
+        with self.assertRaisesRegex(ValueError,'CLAIM_CONTRACT'):
+            self.supervisor._claim(self.claim)
+        self.claim.update(synthetic_only=False,local_only=True)
+        self.supervisor._claim(self.claim)
+        with patch('cv_compass_worker.__main__.main',side_effect=self.cli) as cli:
+            self.assertTrue(self.supervisor.once())
+        self.assertIn('--local-only',cli.call_args.args[0])
+        self.assertNotIn('--synthetic-only',cli.call_args.args[0])
 
     def test_foreign_input_path_refused_before_download(self):
         self.claim['input_path']='https://remote.invalid/input'

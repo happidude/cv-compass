@@ -1,4 +1,6 @@
 import { defineConfig } from "@playwright/test";
+import { testOrigins } from "./test-origins";
+const [mockOrigin, networkOrigin] = await testOrigins(2);
 export default defineConfig({
   testDir: "./tests/browser",
   fullyParallel: false,
@@ -9,18 +11,18 @@ export default defineConfig({
     {
       name: "synthetic-msw",
       testMatch: "frontend.spec.ts",
-      use: { baseURL: "http://127.0.0.1:5173" },
+      use: { baseURL: mockOrigin },
     },
     {
       name: "http-scenarios",
       testMatch: "network.spec.ts",
-      use: { baseURL: "http://127.0.0.1:5174", serviceWorkers: "block" },
+      use: { baseURL: networkOrigin, serviceWorkers: "block" },
     },
   ],
   webServer: [
     {
-      command: "npm run dev",
-      url: "http://127.0.0.1:5173",
+      command: `npm run dev -- --port ${new URL(mockOrigin).port}`,
+      url: mockOrigin,
       reuseExistingServer: false,
       env: {
         VITE_MOCK: "true",
@@ -29,11 +31,12 @@ export default defineConfig({
       },
     },
     {
-      command: "npm run dev -- --port 5174",
-      url: "http://127.0.0.1:5174",
+      command: `npm run dev -- --port ${new URL(networkOrigin).port}`,
+      url: networkOrigin,
       reuseExistingServer: false,
       env: {
         VITE_MOCK: "false",
+        API_PROXY_TARGET: mockOrigin,
         VITE_POLL_INTERVAL_MS: "500",
         VITE_POLL_MAX_MS: "5000",
       },

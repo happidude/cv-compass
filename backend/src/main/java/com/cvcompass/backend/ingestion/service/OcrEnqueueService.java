@@ -23,30 +23,35 @@ public class OcrEnqueueService {
     private final CvProcessingJobRepository repository;
     private final ObjectMapper json;
     private final OcrStateRepository state;
+    private final OcrAdmissionPolicy admission;
     public OcrEnqueueService(OcrIntegrationProperties integration, OcrJobProperties jobs,
-            CvProcessingJobRepository repository, ObjectMapper json,OcrStateRepository state) {
+            CvProcessingJobRepository repository, ObjectMapper json,OcrStateRepository state,
+            OcrAdmissionPolicy admission) {
         this.integration=integration; this.jobs=jobs; this.repository=repository; this.json=json;
         this.state=state;
+        this.admission=admission;
         if (integration.isEnabled()) integration.getProfiles().values().forEach(this::engines);
     }
     @Transactional(propagation=Propagation.MANDATORY)
     public void enqueue(CvDocument document) {
         if (!integration.isEnabled()) return;
-        var fixture = integration.getFixtures().stream().filter(f -> f.getSha256().equals(document.getSha256())
-                && f.getSizeBytes() == document.getFileSize()).findFirst();
-        if (fixture.isEmpty()) return; // Ingested, but not authorized for OCR.
-        var enrolled = fixture.get();
-        var profile = integration.getProfiles().get(enrolled.getProfileRevision());
+        var decision = admission.admit(document);
+        if (decision.isEmpty()) return; // Ingested, but not authorized for OCR.
+        var enrolled = decision.get();
+        var profile = integration.getProfiles().get(enrolled.profileRevision());
         var job = new CvProcessingJob();
         job.setDocument(document); job.setStatus(JobStatus.PENDING);
-        job.setProfileRevision(enrolled.getProfileRevision()); job.setGeneration(1);
+        job.setProfileRevision(enrolled.profileRevision()); job.setGeneration(1);
         job.setMaxAttempts(jobs.getMaxAttempts()); job.setAttemptsStarted(0);
         job.setNextAttemptAt(state.wallClock());
-        job.setAdmissionSnapshot(Map.of("namespace",integration.getNamespace(),"fixture_id",enrolled.getFixtureId(),
+        var snapshot = new java.util.LinkedHashMap<String, Object>(Map.of("namespace",integration.getNamespace(),
                 "document_id",document.getId().toString(),"sha256",document.getSha256(),"size_bytes",document.getFileSize(),
                 "worker_commit",profile.getWorkerCommit(),"image_id",profile.getImageId(),
                 "config_fingerprint",profile.getConfigFingerprint(),"engines",json.convertValue(engines(profile),
                         new tools.jackson.core.type.TypeReference<Map<String,Object>>() { })));
+        snapshot.put("admission_mode", enrolled.mode());
+        if (enrolled.fixtureId() != null) snapshot.put("fixture_id", enrolled.fixtureId());
+        job.setAdmissionSnapshot(snapshot);
         repository.saveAndFlush(job);
     }
     private JsonNode engines(OcrIntegrationProperties.Profile profile) {

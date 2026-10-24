@@ -222,7 +222,8 @@ class PullSupervisor:
             # In-process supervisor with heartbeat thread. Credentials never enter PDF child env/mounts.
             exit_code = pipeline_main(['--config', str(directory/'pipeline.toml'), '--workspace', str(directory),
                     '--request', str(directory/'request.json'), '--output', str(directory/'result.json'),
-                    '--verification-report', str(directory/'verification.json'), '--synthetic-only'],
+                    '--verification-report', str(directory/'verification.json'),
+                    '--local-only' if self.config.local_only else '--synthetic-only'],
                     cancelled=lease.cancelled)
             if not (directory/'result.json').exists() or exit_code not in (0, 1, 2):
                 failure = json_bytes(dict(protocol=PROTOCOL, code='OUTPUT_NOT_DELIVERED'))
@@ -249,8 +250,11 @@ class PullSupervisor:
 
     def _claim(self, claim):
         from .contracts import validate_request
+        mode_matches = (claim.get('synthetic_only') is False and claim.get('local_only') is True
+                        if self.config.local_only else claim.get('synthetic_only') is True
+                        and claim.get('local_only', False) is False)
         if claim.get('protocol') != PROTOCOL or claim.get('profile_revision') != self.config.profile_revision \
-                or claim.get('synthetic_only') is not True:
+                or not mode_matches:
             raise ValueError('CLAIM_CONTRACT')
         attempt = str(uuid.UUID(claim['attempt_id']))
         if attempt != claim['attempt_id'] or claim['input_path'] != BASE+'/attempts/'+attempt+'/input':

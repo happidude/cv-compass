@@ -35,7 +35,9 @@ public class OcrWorkerService {
         OcrClaim claim=claimed.get();
         CvProcessingJob job=admitted(claim.jobId());
         var data=new LinkedHashMap<>(view(claim));
-        data.put("profile_revision",profile); data.put("synthetic_only",true);
+        boolean local = "local".equals(job.getAdmissionSnapshot().get("admission_mode"));
+        data.put("profile_revision",profile); data.put("synthetic_only",!local);
+        if (local) data.put("local_only", true);
         data.put("input_path","/internal/ocr/v1/attempts/"+claim.attemptId()+"/input");
         data.put("size_bytes",job.getDocument().getFileSize());
         data.put("ocr_request",Map.of("type","request","schema_version",OcrProtocol.RESULT_VERSION,
@@ -98,8 +100,11 @@ public class OcrWorkerService {
         var job=records.findById(id).orElseThrow(()->new OcrHttpException(503,"ADMISSION_UNAVAILABLE"));
         var snapshot=json.valueToTree(job.getAdmissionSnapshot());
         var document=job.getDocument();
-        require(snapshot.path("namespace").asString().equals(properties.getNamespace())
-                && snapshot.path("fixture_id").isString() && !snapshot.path("fixture_id").asString().isEmpty()
+        String mode = snapshot.path("admission_mode").asString("synthetic-only");
+        boolean admittedMode = "local".equals(mode) && !snapshot.has("fixture_id")
+                || "synthetic-only".equals(mode) && snapshot.path("fixture_id").isString()
+                && !snapshot.path("fixture_id").asString().isEmpty();
+        require(snapshot.path("namespace").asString().equals(properties.getNamespace()) && admittedMode
                 && snapshot.path("document_id").asString().equals(document.getId().toString())
                 && snapshot.path("sha256").asString().equals(document.getSha256())
                 && snapshot.path("size_bytes").asLong()==document.getFileSize(),503,"ADMISSION_UNAVAILABLE");

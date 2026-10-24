@@ -1,5 +1,13 @@
 # M8 — CV management and OCR read API
 
+For the completed M7–M9 local UI → worker → JSONB → UI flow, admission modes,
+coordinated connection settings and safe recovery/start commands, see
+[LOCAL_OCR.md](LOCAL_OCR.md). Default admission remains synthetic-only; local mode
+requires explicit configuration and retains the production GCC/Tesseract gate.
+
+The M8 implementation/evidence below is historical; its branch and merge statements
+describe that milestone's original checkout, not the current M7–M9 local flow.
+
 Base: M7 `5b647bc`; M7 is not merged. Backend only; no schema or worker protocol
 changes or new user auth. Synthetic local verification is recorded below; production
 enablement and OCR accuracy are separate gates.
@@ -637,8 +645,9 @@ tải file xuống, nhập ZIP hoặc bổ sung storage provider.
 Ví dụ chạy với ứng dụng đã được cấu hình local:
 
 ~~~sh
-curl -i -F "file=@/path/to/cv.pdf" http://localhost:8080/api/documents
-curl -i http://localhost:8080/api/documents/123
+# BACKEND_ORIGIN is the origin from your server.address/server.port configuration.
+curl -i -F "file=@/path/to/cv.pdf" "$BACKEND_ORIGIN/api/documents"
+curl -i "$BACKEND_ORIGIN/api/documents/123"
 ~~~
 
 Response thành công với các giá trị minh họa:
@@ -774,10 +783,10 @@ tổng của parser trả 413; lỗi hạ tầng trả 500. Đợt nhập đã x
 cả khi mọi file đều thất bại. Không sử dụng 202.
 
 ```sh
-curl -i -F 'files=@/path/to/one.pdf' -F 'files=@/path/to/two.pdf' http://localhost:8080/api/batches
-curl http://localhost:8080/api/batches/42
-curl 'http://localhost:8080/api/batches/42/items?page=0&size=20'
-curl 'http://localhost:8080/api/batches?page=0&size=20'
+curl -i -F 'files=@/path/to/one.pdf' -F 'files=@/path/to/two.pdf' "$BACKEND_ORIGIN/api/batches"
+curl "$BACKEND_ORIGIN/api/batches/42"
+curl "$BACKEND_ORIGIN/api/batches/42/items?page=0&size=20"
+curl "$BACKEND_ORIGIN/api/batches?page=0&size=20"
 ```
 
 Response minh họa khi một phần file nhập thành công:

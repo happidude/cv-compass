@@ -20,6 +20,7 @@ class PullConfig:
     config_fingerprint: str
     enabled: bool = False
     synthetic_only: bool = True
+    local_only: bool = False
     heartbeat_seconds: float = 30
     http_timeout_seconds: float = 10
     download_timeout_seconds: float = 60
@@ -56,7 +57,9 @@ class PullConfig:
             except ValueError:
                 raise ValueError('PULL_ORIGIN') from None
         origin.port  # Validate malformed ports before any request.
-        if type(config.enabled) is not bool or not config.enabled or config.synthetic_only is not True:
+        if type(config.enabled) is not bool or not config.enabled \
+                or type(config.synthetic_only) is not bool or type(config.local_only) is not bool \
+                or config.synthetic_only == config.local_only:
             raise ValueError('PULL_DISABLED')
         # Reserved prefix is excluded by M6 child safe_env/docker_env allowlists.
         # An operator must not bind a credential to LANG/PATH/HOME and leak it to a child.

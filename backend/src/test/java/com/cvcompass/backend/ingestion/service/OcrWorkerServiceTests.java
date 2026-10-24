@@ -62,6 +62,16 @@ class OcrWorkerServiceTests {
                 .isInstanceOfSatisfying(OcrHttpException.class,e->assertThat(e.status()).isEqualTo(403));
         verifyNoInteractions(jobs);
     }
+    @Test void localClaimReportsActualAdmissionWithoutSyntheticFixture() {
+        var job = seed();
+        var snapshot = new HashMap<>(job.getAdmissionSnapshot());
+        snapshot.remove("fixture_id");
+        snapshot.put("admission_mode", "local");
+        job.setAdmissionSnapshot(snapshot);
+        when(jobs.claim(any())).thenReturn(Optional.of(claim()));
+        var reply = service.claim(principal, id, "a".repeat(64), "test-v1");
+        assertThat(reply.data()).containsEntry("synthetic_only", false).containsEntry("local_only", true);
+    }
     @Test void snapshotMismatchRejectsInputBeforeStorageDescriptorIsReturned() {
         var job=seed(); job.getDocument().setSha256("f".repeat(64));
         when(jobs.authorizeInput(key)).thenReturn(claim());
