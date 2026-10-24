@@ -14,6 +14,10 @@ public class OcrLeaseReaper {
     @Scheduled(fixedDelayString="${cv.ocr.integration.reaper-delay:15s}")
     public void expire() {
         try { jobs.expireDue(); }
-        catch (RuntimeException failure) { log.error("OCR lease reaper failed type={}",failure.getClass().getName()); }
+        catch (RuntimeException failure) {
+            com.cvcompass.backend.web.OperationalLog.write(org.slf4j.event.Level.ERROR,
+                    com.cvcompass.backend.web.OperationalLog.Event.OCR_REAPER_FAILED,
+                    "REAPER_FAILED", java.util.Map.of("exceptionType", failure.getClass().getName()));
+        }
     }
 }

@@ -109,6 +109,11 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(self.http.request('PUT',self.path,raw,'t'*43)['accepted'])
         self.assertEqual([event[2] for event in self.events],[raw,raw])
         self.assertEqual(self.events[0][3]['X-Lease-Token'],'t'*43)
+        # Retries are distinct HTTP requests while idempotency/body/token remain unchanged.
+        correlations = [entry[3]['X-Correlation-ID'] for entry in self.events]
+        self.assertEqual(len(set(correlations)), 2)
+        for correlation in correlations:
+            self.assertEqual(str(uuid.UUID(correlation)), correlation)
 
     def test_redirect_401_403_409_do_not_retry(self):
         for status in (302,401,403,409):

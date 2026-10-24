@@ -89,8 +89,10 @@ public class CvDocumentService {
             } catch (RuntimeException cleanup) {
                 if (cleanup != primary) primary.addSuppressed(cleanup);
                 // Opaque key is necessary for orphan recovery; no filename, contents or cause messages.
-                log.error("Orphan cleanup required storageKey={} cleanupType={}",
-                        stored.key().value(), cleanup.getClass().getName());
+                com.cvcompass.backend.web.OperationalLog.write(org.slf4j.event.Level.ERROR,
+                        com.cvcompass.backend.web.OperationalLog.Event.STORAGE_CLEANUP_FAILED,
+                        "STORAGE_ORPHANED", java.util.Map.of("storageKey", stored.key().value(),
+                                "exceptionType", cleanup.getClass().getName()));
             }
             throw primary;
         }

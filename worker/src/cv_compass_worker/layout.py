@@ -1,43 +1,113 @@
-"""Deterministic native block order with a conservative two-column split."""
+"""Geometry-based native order; ambiguous columns/glyphs remain visible and warned."""
+from collections import Counter
+import re
+from statistics import median
+
+
+def _rows(words):
+    rows = []
+    for word in sorted(words, key=lambda w: (w['top'], w['x0'])):
+        height = max(1, word['bottom']-word['top'])
+        if rows:
+            row = rows[-1]
+            top, bottom = median(w['top'] for w in row), median(w['bottom'] for w in row)
+            overlap = min(bottom, word['bottom'])-max(top, word['top'])
+            same = (abs(bottom-word['bottom']) <= max(2, min(height, bottom-top)*.3)
+                    and overlap >= min(height, bottom-top)*.5)
+        else:
+            same = False
+        if same:
+            rows[-1].append(word)
+        else:
+            rows.append([word])
+    return [sorted(row, key=lambda w: w['x0']) for row in rows]
+
+
+def _gaps(row):
+    height = median(max(1, w['bottom']-w['top']) for w in row)
+    return [(a['x1'], b['x0']) for a, b in zip(row, row[1:])
+            if b['x0']-a['x1'] >= max(18, height*2)]
+
+
+def _column_cut(rows):
+    # Repeated actual whitespace gutter anywhere on the page, never width/2.
+    candidates = sorted({(left+right)/2 for row in rows for left, right in _gaps(row)})
+    # Unaligned columns can have no shared baseline. Add gaps in the x projection.
+    intervals = sorted((w['x0'], w['x1']) for row in rows for w in row)
+    end = intervals[0][1]
+    for start, stop in intervals[1:]:
+        if start-end >= 24:
+            candidates.append((start+end)/2)
+        end = max(end, stop)
+    best = None
+    for cut in candidates:
+        supporting = [row for row in rows if any(a < cut < b for a, b in _gaps(row))]
+        separate_left = [row for row in rows if all(w['x1'] < cut for w in row)]
+        separate_right = [row for row in rows if all(w['x0'] > cut for w in row)]
+        if len(supporting) < 2 and min(len(separate_left), len(separate_right)) < 2:
+            continue
+        left = [w for row in supporting+separate_left for w in row if w['x1'] < cut]
+        right = [w for row in supporting+separate_right for w in row if w['x0'] > cut]
+        right_text = ''.join(w['text'] for w in right)
+        # Repeated right-aligned dates/numbers are annotations, not another article.
+        if not right_text or sum(c.isdigit() for c in right_text)/len(right_text) > .25:
+            continue
+        if min(sum(len(w['text']) for w in side) for side in (left, right)) < 12:
+            continue
+        gap = min(w['x0'] for w in right)-max(w['x1'] for w in left)
+        if gap < 18:
+            continue
+        score = (len(supporting)+min(len(separate_left), len(separate_right)))*gap
+        if best is None or score > best[0]:
+            best = score, cut
+    return best[1] if best else None
+
+
+def _line(row):
+    return ' '.join(w['text'] for w in row).strip()
+
+
+def normalize_native(text):
+    # Only discretionary soft hyphens prove a word was broken. Keep ambiguous hard hyphens.
+    text = re.sub(r'(?<=[^\W\d_])\u00ad\n(?=[^\W\d_])', '', text)
+    return '\n'.join(re.sub(r'[^\S\n]+', ' ', line).strip() for line in text.split('\n')).strip()
 
 
 def native_order(page):
-    words = page.extract_words(use_text_flow=False)
+    # Dynamic glyph gaps recover word boundaries; object/text-flow order is not reading order.
+    words = page.extract_words(use_text_flow=False, x_tolerance_ratio=.15, y_tolerance=2,
+                               expand_ligatures=True)
     if not words:
         return '', False
-    # Candidate central whitespace gutter; words crossing it are full-width
-    # bands, whose boundaries divide the page before column ordering.
-    width = page.width
-    gutter = width / 2
-    crossing = [w for w in words if w['x0'] < gutter-8 and w['x1'] > gutter+8]
-    left = [w for w in words if w['x1'] <= gutter+8]
-    right = [w for w in words if w['x0'] >= gutter-8]
-    columns = len(left) >= 5 and len(right) >= 5 and len(crossing) <= max(3, len(words)//10)
-    if not columns:
-        return page.extract_text(layout=False) or '', False
-    cuts = sorted({round(w['top']/4)*4 for w in crossing})
-    def lines(items):
-        rows = []
-        for w in sorted(items, key=lambda x: (x['top'], x['x0'])):
-            if not rows or abs(rows[-1][0]-w['top']) > 4:
-                rows.append((w['top'], [w]))
+    rows = _rows(words)
+    cut = _column_cut(rows)
+    ordered, blocks = [], []
+    if cut is None:
+        ordered = rows
+        blocks = [rows]
+    else:
+        left, right = [], []
+        for row in rows:
+            if any(a < cut < b for a, b in _gaps(row)):
+                left.append([w for w in row if w['x1'] < cut])
+                right.append([w for w in row if w['x0'] > cut])
+            elif all(w['x1'] < cut for w in row):
+                left.append(row)
+            elif all(w['x0'] > cut for w in row):
+                right.append(row)
             else:
-                rows[-1][1].append(w)
-        return [' '.join(w['text'] for w in sorted(row, key=lambda x: x['x0'])) for _, row in rows]
-    output = []
-    low = float('-inf')
-    for cut in cuts + [float('inf')]:
-        band = [w for w in words if low < w['top'] < cut-2]
-        output.extend(lines([w for w in band if w['x1'] <= gutter+8]))
-        output.extend(lines([w for w in band if w['x0'] >= gutter-8 and w['x1'] > gutter+8]))
-        if cut != float('inf'):
-            output.extend(lines([w for w in words if abs(w['top']-cut) <= 2]))
-        low = cut+2
-    ordered = '\n'.join(output)
-    # Geometry heuristics may be uncertain, but must never lose/duplicate words.
-    if sorted(ordered.split()) != sorted(w['text'] for w in words):
-        return page.extract_text(layout=False) or '', True
-    return ordered, True
+                # Spanning heading is a band boundary, never split across columns.
+                blocks.extend([left, right, [row]])
+                ordered.extend(left+right+[row]); left, right = [], []
+        ordered.extend(left+right)
+        blocks.extend([left, right])
+    if Counter(id(w) for row in ordered for w in row) != Counter(id(w) for w in words):
+        return normalize_native('\n'.join(_line(row) for row in rows)), True
+    # Do not join a soft-hyphen word across a column/heading boundary.
+    text = '\n'.join(normalize_native('\n'.join(_line(row) for row in block)) for block in blocks if block)
+    uncertain = cut is not None or bool(re.search(r'\(cid:\d+\)|[\ufffd\ue000-\uf8ff]', text))
+    uncertain |= any(not w.get('upright', True) for w in words)
+    return text, uncertain
 
 
 def usable(text):

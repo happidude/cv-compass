@@ -108,7 +108,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private void logUnexpected(Exception exception) {
         // Exception messages/causes can contain SQL, request values or credentials.
         // Log the type and stack locations, never the exception or its message.
-        log.error("Unexpected request failure type={}, stack={}", exception.getClass().getName(),
-                Arrays.toString(exception.getStackTrace()));
+        com.cvcompass.backend.web.OperationalLog.write(org.slf4j.event.Level.ERROR,
+                com.cvcompass.backend.web.OperationalLog.Event.HTTP_REQUEST_FAILED,
+                "INTERNAL_ERROR", java.util.Map.of("exceptionType", exception.getClass().getName()));
     }
 }

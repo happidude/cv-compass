@@ -7,6 +7,8 @@ import shutil
 import stat
 import tempfile
 import time
+import logging
+from .observability import context, event, Event
 from .contracts import classify, page, validate_page, validate_request
 from .sandbox import ChildFailure, run_child
 
@@ -71,6 +73,27 @@ def empty_result(request, config):
 
 
 def process(request, workspace, config, diagnostics=None, *, cancelled=None):
+    # PDF children do not inherit Python context. Log validated page IPC here, in the supervisor.
+    with context(documentId=request.get('document_id', 'unknown')):
+        event(Event.PIPELINE_STARTED)
+        try:
+            result = _run(request, workspace, config, diagnostics, cancelled=cancelled)
+        except BaseException:
+            event(Event.PIPELINE_FINISHED, level=logging.ERROR, error_code='PIPELINE_FAILED', status='failed')
+            raise
+        for item in result['pages']:
+            event(Event.PAGE_FINISHED, level=logging.WARN if item['status'] in ('failed', 'not_processed') else logging.INFO,
+                  error_code=(item.get('error') or {}).get('code', 'NONE'), pageNumber=item['page_number'],
+                  method=item['method'], status=item['status'], durationMs=int(item['timings_ms']['total'] or 0))
+        for warning in result['warnings']:
+            if warning == 'CLEANUP_FAILED':
+                event(Event.CLEANUP_FAILED, level=logging.ERROR, error_code='CLEANUP_FAILED')
+        event(Event.PIPELINE_FINISHED, level=logging.ERROR if result['status'] == 'failed' else logging.INFO,
+              status=result['status'], durationMs=int(result['timings_ms']['total'] or 0))
+        return result
+
+
+def _run(request, workspace, config, diagnostics=None, *, cancelled=None):
     if config.adapter == 'docker':
         from .docker_sandbox import docker_session
         try:

@@ -93,7 +93,7 @@ class CvDocumentServiceTests {
         doThrow(cleanup).when(storage).delete(stored.key());
         assertThatThrownBy(() -> service.upload("synthetic-private-name.pdf", pdf()))
                 .isSameAs(failure).satisfies(error -> assertThat(error.getSuppressed()).containsExactly(cleanup));
-        assertThat(output.getOut()).contains("Orphan cleanup required", stored.key().value())
+        assertThat(output.getOut()).contains("STORAGE_CLEANUP_FAILED", stored.key().value())
                 .doesNotContain("synthetic-private-database-detail", "synthetic-private-filesystem-detail",
                         "synthetic-private-name");
     }

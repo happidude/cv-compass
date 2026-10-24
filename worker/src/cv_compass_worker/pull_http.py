@@ -9,6 +9,9 @@ import sys
 import socket
 import threading
 import time
+import uuid
+import logging
+from .observability import context, event, Event
 from urllib.parse import urlsplit
 
 BASE = '/internal/ocr/v1'
@@ -104,6 +107,7 @@ class WorkerHttp:
         self.origin = urlsplit(config.origin)
 
     def _open(self, method, path, data, token, claim_id=None, *, exchange_timeout=None):
+        correlation = str(uuid.uuid4())
         # Job input URLs are never trusted; caller constructs the one allowed relative path.
         if not re.fullmatch(BASE+r'/(?:claims|attempts/[0-9a-f-]{36}/(?:input|lease|result|failure))', path):
             raise ValueError('PULL_PATH')
@@ -114,13 +118,18 @@ class WorkerHttp:
             connection = http.client.HTTPConnection(self.origin.hostname, self.origin.port,
                     timeout=self.config.http_timeout_seconds)
         headers = {'Authorization': 'Bearer '+self._credential, 'X-Lease-Token': token,
+                   'X-Correlation-ID': correlation,
                    'Accept-Encoding': 'identity', 'Content-Type': 'application/json'}
         if claim_id is not None:
             headers['Idempotency-Key'] = claim_id
         exchange = Exchange(connection,self.config.http_timeout_seconds if exchange_timeout is None else exchange_timeout)
         try:
+            with context(correlationId=correlation):
+                event(Event.HTTP_STARTED, level=logging.DEBUG)
             connection.request(method, path, body=data, headers=headers)
             response = connection.getresponse()
+            with context(correlationId=correlation):
+                event(Event.HTTP_FINISHED, level=logging.DEBUG, httpStatus=response.status)
             exchange.response = response
             if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
                 raise ValueError('PULL_ENCODING')

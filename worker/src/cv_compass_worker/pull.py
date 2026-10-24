@@ -15,6 +15,9 @@ import threading
 import time
 import tomllib
 import uuid
+import logging
+from contextvars import copy_context
+from .observability import configure, context, event, Event
 from .config import Config
 from .pull_config import PullConfig
 from .pull_http import BASE, PROTOCOL, WorkerHttp, HttpFailure, InputIntegrityError, DownloadUnavailable, json_bytes, strict_json
@@ -27,7 +30,8 @@ class Lease:
         self._lock = threading.Lock()
         self._hard = float('inf')
         self._update(claim)
-        self.thread = threading.Thread(target=self._renew, name='ocr-heartbeat', daemon=True)
+        inherited = copy_context()
+        self.thread = threading.Thread(target=lambda: inherited.run(self._renew), name='ocr-heartbeat', daemon=True)
 
     def _update(self, claim):
         def instant(name):
@@ -61,7 +65,9 @@ class Lease:
                 if response['attempt_id'] != self.claim['attempt_id']:
                     raise ValueError('LEASE_IDENTITY')
                 self._update(response)
+                event(Event.HEARTBEAT, level=logging.DEBUG)
             except Exception:
+                event(Event.HEARTBEAT_FAILED, level=logging.WARN, error_code='LEASE_RENEWAL_FAILED')
                 self.cancelled.set()
                 return
 
@@ -155,6 +161,16 @@ class PullSupervisor:
             raise ValueError('SPOOL_LIMIT')
 
     def once(self):
+        # One turn owns context, including recovery/error paths. Do not leak IDs into the next poll.
+        with context(workerId=os.environ.get('CV_LOG_WORKER_ID', 'unconfigured')):
+            try:
+                return self._once()
+            except Exception:
+                if not getattr(sys.exception(), '_operational_logged', False):
+                    event(Event.WORKER_HALTED, level=logging.ERROR, error_code='OPERATOR_RECOVERY_REQUIRED')
+                raise
+
+    def _once(self):
         self._quota()
         if (self.root/'halt.json').exists():
             raise ValueError('OPERATOR_RECOVERY_REQUIRED')
@@ -170,23 +186,46 @@ class PullSupervisor:
         if (directory/'submission.json').exists():
             saved = strict_json(read_bounded(directory/'claim-response.json', 16384))
             raw = read_bounded(directory/'submission.json', self.config.max_envelope_bytes)
-            receipt = self.http.request('PUT', BASE+'/attempts/'+saved['attempt_id']+'/result', raw, token)
-            self._receipt(receipt, saved)
-            self._clean(directory, pending)
-            return True
+            return self._recover(saved, directory, pending, token, 'result', raw)
         if (directory/'failure.json').exists():
             saved = strict_json(read_bounded(directory/'claim-response.json', 16384))
             raw = read_bounded(directory/'failure.json', 16384)
-            receipt = self.http.request('PUT', BASE+'/attempts/'+saved['attempt_id']+'/failure', raw, token)
-            self._receipt(receipt, saved)
-            self._clean(directory, pending)
-            return True
+            return self._recover(saved, directory, pending, token, 'failure', raw)
         body = json_bytes(dict(protocol=PROTOCOL, profile_revision=self.config.profile_revision))
         claim = self.http.request('POST', BASE+'/claims', body, token, claim_id)
         if claim is None:
+            event(Event.POLL_EMPTY, level=logging.DEBUG)
             pending.unlink()
             return False
         self._claim(claim)
+        with context(documentId=claim['ocr_request']['document_id'], jobId=claim['job_id'], attemptId=claim['attempt_id']):
+            event(Event.JOB_RECEIVED)
+            try:
+                return self._execute(claim, directory, pending, token)
+            except Exception as failure:
+                known = {'CLEANUP_FAILED', 'LEASE_LOST', 'LEASE_OR_CLEANUP_FAILED', 'RECEIPT_IDENTITY',
+                         'INCOMPLETE_ATTEMPT_REQUIRES_OPERATOR', 'HEARTBEAT_NOT_REAPED', 'CLEANUP_OWNERSHIP'}
+                code = str(failure) if isinstance(failure, ValueError) and str(failure) in known else 'OPERATOR_RECOVERY_REQUIRED'
+                event(Event.CLEANUP_FAILED if 'CLEANUP' in code else Event.WORKER_HALTED,
+                      level=logging.ERROR, error_code=code)
+                failure._operational_logged = True
+                raise
+
+    def _recover(self, saved, directory, pending, token, outcome, raw):
+        with context(documentId=saved['ocr_request']['document_id'], jobId=saved['job_id'], attemptId=saved['attempt_id']):
+            event(Event.RECOVERY_STARTED)
+            try:
+                event(Event.RESULT_SUBMITTING)
+                receipt = self.http.request('PUT', BASE+'/attempts/'+saved['attempt_id']+'/'+outcome, raw, token)
+                self._receipt(receipt, saved)
+                self._clean(directory, pending)
+                return True
+            except Exception as failure:
+                event(Event.WORKER_HALTED, level=logging.ERROR, error_code='RECOVERY_REQUIRED')
+                failure._operational_logged = True
+                raise
+
+    def _execute(self, claim, directory, pending, token):
         if directory.exists():
             raise ValueError('INCOMPLETE_ATTEMPT_REQUIRES_OPERATOR')
         directory.mkdir(mode=0o700)
@@ -238,6 +277,7 @@ class PullSupervisor:
                 write_once(directory/'submission.json', envelope)
                 if not lease.live():
                     raise ValueError('LEASE_LOST')
+                event(Event.RESULT_SUBMITTING)
                 receipt = self.http.request('PUT', BASE+'/attempts/'+claim['attempt_id']+'/result',
                                             envelope, token, live=lease.live)
             self._receipt(receipt, claim)
@@ -272,6 +312,9 @@ class PullSupervisor:
         if receipt is None or receipt.get('accepted') is not True or receipt.get('attempt_id') != claim['attempt_id'] \
                 or receipt.get('job_id') != claim['job_id']:
             raise ValueError('RECEIPT_IDENTITY')
+        with context(documentId=claim.get('ocr_request', {}).get('document_id', 'unknown'),
+                     jobId=claim['job_id'], attemptId=claim['attempt_id']):
+            event(Event.RESULT_ACKNOWLEDGED)
 
     def _failure(self,directory,claim,token,code,lease):
         failure=json_bytes(dict(protocol=PROTOCOL,code=code))
@@ -298,12 +341,14 @@ def main(argv=None):
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args(argv)
     try:
+        configure()
         config = PullConfig.load(args.config)
         pipeline = Config.load(Path(config.pipeline_config))
         http = WorkerHttp(config, os.environ.get(config.credential_env))
         supervisor = PullSupervisor(config, http, pipeline)
         import fcntl  # Ubuntu host supervisor only, never PDF child.
     except Exception:
+        event(Event.WORKER_HALTED, level=logging.ERROR, error_code='CONFIGURATION_ERROR')
         print('OCR pull configuration unavailable; production BLOCKED',file=sys.stderr)
         return 3
     descriptor=None
