@@ -35,6 +35,7 @@ def main(argv=None, *, cancelled=None):
     for name in ('config', 'workspace', 'request', 'output', 'verification-report'):
         parser.add_argument('--'+name, required=True, type=Path)
     parser.add_argument('--synthetic-only', action='store_true')
+    parser.add_argument('--local-only', action='store_true')
     args = parser.parse_args(argv)
     request, config, diagnostics = None, Config(), []
     stage_code = 'INVALID_REQUEST'
@@ -45,7 +46,7 @@ def main(argv=None, *, cancelled=None):
         validate_request(request)
         stage_code = 'INVALID_CONFIGURATION'
         config = Config.load(args.config)
-        if config.mode != 'diagnostic' or not args.synthetic_only:
+        if config.mode != 'diagnostic' or args.synthetic_only == args.local_only:
             raise ValueError('INVALID_CONFIGURATION')
         stage_code = 'INTERNAL_ERROR'
         result = (process(request, args.workspace, config, diagnostics) if cancelled is None

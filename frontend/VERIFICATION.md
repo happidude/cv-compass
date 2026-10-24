@@ -1,5 +1,9 @@
 # M9 PR #12 revision verification — 2026-10-24
 
+Historical frontend-only evidence below. The subsequent full local UI → OCR → JSONB
+flow and current branch evidence are recorded in
+[LOCAL_OCR_VERIFICATION.md](../backend/LOCAL_OCR_VERIFICATION.md).
+
 ## Version, scope and review
 
 Base: `95e0e7c8f2216052f666ccca53127a0e266bcd80`; branch `feature/cv-management-frontend`; worktree `E:\cv-compass-m9`.

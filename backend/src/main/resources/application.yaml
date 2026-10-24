@@ -25,6 +25,9 @@ cv:
     enabled: ${CV_OCR_ENABLED:false}
     integration:
       enabled: ${CV_OCR_INTEGRATION_ENABLED:false}
+      admission:
+        mode: ${CV_OCR_ADMISSION_MODE:synthetic-only}
+        local-profile-revision: ${CV_OCR_LOCAL_PROFILE_REVISION:}
       namespace: ${CV_OCR_SYNTHETIC_NAMESPACE:}
       synthetic-storage-root: ${CV_OCR_SYNTHETIC_STORAGE_ROOT:}
       control-body-bytes: ${CV_OCR_CONTROL_BODY_BYTES:16384}

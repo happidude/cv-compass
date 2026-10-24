@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 
-/** Operator-owned synthetic enrollment and immutable deployment registry; never HTTP input. */
+/** Operator-owned enrollment and immutable deployment registry; never HTTP input. */
 @Getter @Setter @Validated
 @ConfigurationProperties("cv.ocr.integration")
 public class OcrIntegrationProperties {
@@ -44,15 +44,15 @@ public class OcrIntegrationProperties {
         @Min(1) @Max(10485760) private long sizeBytes;
         @NotNull @Pattern(regexp="[A-Za-z0-9][A-Za-z0-9_.-]{0,127}") private String profileRevision;
     }
-    @AssertTrue(message="Invalid synthetic OCR registry or timing")
+    @AssertTrue(message="Invalid OCR deployment registry or timing")
     public boolean isRegistryValid() {
         if (reaperDelay == null || downloadTimeout == null || reaperDelay.toMillis() < 1
                 || downloadTimeout.toMillis() < 1 || reaperDelay.compareTo(Duration.ofDays(1)) > 0
                 || downloadTimeout.compareTo(Duration.ofDays(1)) > 0) return false;
         if (!enabled) return true;
         if (namespace == null || !namespace.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
-                || syntheticStorageRoot == null || !syntheticStorageRoot.isAbsolute()
-                || workers.isEmpty() || profiles.isEmpty() || fixtures.isEmpty()) return false;
+                || syntheticStorageRoot != null && !syntheticStorageRoot.isAbsolute()
+                || workers.isEmpty() || profiles.isEmpty()) return false;
         Set<String> hashes = new HashSet<>(), credentials = new HashSet<>();
         for (var entry : workers.entrySet()) {
             if (!entry.getKey().matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}")

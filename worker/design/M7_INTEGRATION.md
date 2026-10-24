@@ -1,5 +1,13 @@
 # M7.3 → M7.5 integration — implementation, not acceptance evidence
 
+Local admission extension: the default contract below remains synthetic-only.
+An explicitly configured local deployment sends `synthetic_only=false` and
+`local_only=true` in claim data; the worker must opt in to the same mode in
+`pull.toml`. Local admission snapshots bind actual document hash/size and measured
+profile provenance with `admission_mode=local`, without a fabricated `fixture_id`.
+No result schema, auth, lease, fencing, replay or isolation rule changes. See
+[LOCAL_OCR.md](../../backend/LOCAL_OCR.md); this is not a production gate waiver.
+
 Base origin/main `afba013d0e40355b13f4adf9dbd59302d162988d`. Dedicated branch
 feature/m7-integration. No new migration or broker, no changes to old migrations,
 no candidate mapping, frontend or worker DB access. Accuracy has not been evaluated;
@@ -68,7 +76,7 @@ External TOML template (placeholders intentionally invalid; NOT measured pins):
 ```toml
 enabled = false
 synthetic_only = true
-origin = "http://127.0.0.1:8080"
+origin = "<configured-backend-origin>"
 credential_env = "CV_COMPASS_OCR_TOKEN"
 spool_root = "/private/ocr-synthetic-spool"
 pipeline_config = "/private/m6-diagnostic.toml"

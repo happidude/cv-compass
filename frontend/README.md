@@ -9,10 +9,11 @@ Node LTS 22.22.2+ or 24.15+ (verified with Node 24.22.0). From `frontend/`:
 ```powershell
 npm ci
 Copy-Item .env.example .env.local
+# Set API_PROXY_TARGET to your configured backend origin; keep VITE_MOCK=false.
 npm run dev
 ```
 
-Default API base `/api`; Vite proxies to `http://127.0.0.1:8080`. Set server-only `API_PROXY_TARGET` for another dev backend. Backend CORS is unchanged. All `VITE_*` values are public; never put worker/user credentials there. Upload defaults cap at 10 files, 10 MiB/file; configure both lower if deployment limits are lower. Single and batch backend limits must support the configured value. Poll interval, maximum wall-clock duration and display timezone are validated at startup. Default display timezone: Asia/Ho_Chi_Minh.
+Default API base `/api`; live Vite development requires server-only `API_PROXY_TARGET` matching the configured backend origin. No backend port is hardcoded or silently selected by the proxy. Backend CORS is unchanged. All `VITE_*` values are public; never put worker/user credentials there. Upload defaults cap at 10 files, 10 MiB/file; configure both lower if deployment limits are lower. Single and batch backend limits must support the configured value. Poll interval, maximum wall-clock duration and display timezone are validated at startup. Default display timezone: Asia/Ho_Chi_Minh. The complete local OCR configuration and commands are in [backend/LOCAL_OCR.md](../backend/LOCAL_OCR.md).
 
 Set `VITE_MOCK=true` in development for synthetic fixtures and a persistent “Dữ liệu mẫu” banner. MSW is never an API failure fallback. Production rejects mock mode and excludes mock modules and service worker files. Browser demo uploads do not persist new records in the synthetic list.
 
@@ -68,4 +69,6 @@ Frontend verification does not evaluate OCR accuracy. GCC/Tesseract still block 
 
 Read API requests omit `size` and accept the backend-selected response size; only `beforeId` (documents) or zero-based `page` (batches/items) is supplied.
 
-Live smoke is separate from mocked CI: create a disposable PostgreSQL 17 instance, an owned schema and empty temporary storage; start the unchanged Java 25 backend with importer/OCR disabled and explicit isolated datasource/storage. Set `M9_SMOKE_RUN_ID` to that run's UUID and `M9_SMOKE_BACKEND_PORT` to its loopback port, then run `npm exec playwright test -- --config playwright.smoke.config.ts`. The config forces mock off and starts Vite on 5185. The test requires an initially empty documents list and uses only generated synthetic PDFs. Never target development/production data or storage. OCR result processing is NOT VERIFIED unless a provisioned synthetic worker is available; this smoke does not bypass the OCR production gate.
+The older isolated smoke is separate from mocked CI and live runtime E2E. It requires a disposable PostgreSQL 17 instance, an owned schema and empty temporary storage; start a Java 25 backend with importer/OCR disabled and explicit isolated datasource/storage. Set `M9_SMOKE_RUN_ID` to that run's UUID and `M9_SMOKE_BACKEND_PORT` to its actual loopback port, then run `npm exec playwright test -- --config playwright.smoke.config.ts`. Vite uses a dynamic port. The test requires an initially empty documents list and uses only generated synthetic PDFs; never target runtime data with this test.
+
+For the actual running backend/database/storage and a provisioned local OCR worker, set `LOCAL_E2E_UI_ORIGIN` to the existing UI origin and run `npm exec playwright -- test --config playwright.local.config.ts`. It starts no backend/database, uploads generated native/scanned PDFs outside the manifest, and checks job creation, persisted text and live UI rendering. Mock mode must be off. Both paths keep the production/accuracy gates closed.

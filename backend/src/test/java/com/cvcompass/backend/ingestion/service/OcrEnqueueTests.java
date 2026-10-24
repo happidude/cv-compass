@@ -15,7 +15,9 @@ class OcrEnqueueTests {
     private final OcrJobProperties limits=new OcrJobProperties();
     private final CvProcessingJobRepository jobs=mock(CvProcessingJobRepository.class);
     private final OcrStateRepository state=mock(OcrStateRepository.class);
-    private final OcrEnqueueService service=new OcrEnqueueService(config,limits,jobs,JsonMapper.builder().build(),state);
+    private final OcrAdmissionProperties admission = new OcrAdmissionProperties();
+    private final OcrEnqueueService service=new OcrEnqueueService(config,limits,jobs,JsonMapper.builder().build(),state,
+            new OcrAdmissionPolicy(admission, config));
     private CvDocument document() {
         var document=new CvDocument(); org.springframework.test.util.ReflectionTestUtils.setField(document,"id",42L);
         document.setFileSize(25L); document.setSha256("a".repeat(64));
@@ -62,9 +64,26 @@ class OcrEnqueueTests {
         enroll();
         for (String raw:java.util.List.of("{\"models\":[]}","null","{\"python\":null}","{} {}")) {
             config.getProfiles().get("test-v1").setEnginesJson(raw);
-            assertThatThrownBy(()->new OcrEnqueueService(config,limits,jobs,JsonMapper.builder().build(),state))
+            assertThatThrownBy(()->new OcrEnqueueService(config,limits,jobs,JsonMapper.builder().build(),state,
+                    new OcrAdmissionPolicy(admission, config)))
                     .isInstanceOf(IllegalStateException.class).hasMessage("Invalid OCR deployment registry");
         }
         verifyNoInteractions(jobs,state);
+    }
+
+    @Test void localAdmissionDoesNotInventFixtureProvenance() {
+        enroll();
+        admission.setMode(OcrAdmissionProperties.Mode.LOCAL);
+        admission.setLocalProfileRevision("test-v1");
+        config.getFixtures().clear();
+        var document = document();
+        document.setSha256("f".repeat(64));
+        service.enqueue(document);
+        verify(jobs).saveAndFlush(argThat(job -> {
+            assertThat(job.getProfileRevision()).isEqualTo("test-v1");
+            assertThat(job.getAdmissionSnapshot()).containsEntry("admission_mode", "local")
+                    .containsEntry("sha256", "f".repeat(64)).doesNotContainKey("fixture_id");
+            return true;
+        }));
     }
 }
