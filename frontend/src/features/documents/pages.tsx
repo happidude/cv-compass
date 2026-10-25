@@ -122,7 +122,7 @@ function OcrResult({
   if (ocr.availability === "LEGACY")
     return (
       <>
-        <p className="notice">Kết quả legacy — text được lưu nguyên khối.</p>
+        <p className="notice">Kết quả cũ — nội dung được lưu nguyên khối.</p>
         {ocr.legacyRawText === null ? (
           <Empty>Kết quả cũ không có văn bản</Empty>
         ) : (
@@ -151,16 +151,11 @@ function OcrResult({
           <h3>
             Trang {page.pageNumber} <Status domain="page" value={page.status} />
           </h3>
-          {page.text ? (
-            <LongText text={page.text} />
+          <h4>Nội dung trích xuất</h4>
+          {page.rawText ? (
+            <LongText text={page.rawText} />
           ) : (
             <p className="muted">{statusInfo("page", page.status)[2]}</p>
-          )}
-          {page.rawText && (
-            <details>
-              <summary>Text gốc (rawText)</summary>
-              <LongText text={page.rawText} />
-            </details>
           )}
           {page.warnings.map((code, i) => (
             <Issue key={i} code={code} warning />
@@ -293,7 +288,7 @@ function DocumentContent({ id }: { id: string }) {
           </section>
         </div>
         <section className="panel padded">
-          <h2>Text OCR theo trang</h2>
+          <h2>Nội dung trích xuất theo trang</h2>
           <OcrResult ocr={d.ocr} processing={d.processing} />
         </section>
       </div>

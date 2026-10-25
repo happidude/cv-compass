@@ -50,7 +50,7 @@ class HardeningReviewTests(unittest.TestCase):
 
     def test_scope_cleanup_halts_without_changing_completed_page(self):
         source=self.root/('1'*32+'.pdf');native(source)
-        example=json.loads((ROOT/'design/examples/result-success.json').read_text(encoding='utf-8'))
+        example=json.loads((ROOT/'design/examples-v2/result-success.json').read_text(encoding='utf-8'))
         good=example['pages'][0]
         def child(task,directory,cfg,timeout):
             directory.mkdir()

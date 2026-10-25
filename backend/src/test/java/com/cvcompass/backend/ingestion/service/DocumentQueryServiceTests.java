@@ -102,7 +102,7 @@ class DocumentQueryServiceTests {
     @Test
     void partialPagesPreserveOrderRawTextBlankAndFailure() {
         String json = """
-                {"status":"partial","page_count":3,"pages":[
+                {"schema_version":"cv-compass.ocr/1.0","status":"partial","page_count":3,"pages":[
                   {"page_number":1,"status":"ok","method":"native","text":"Synthetic Tiếng Việt\n",
                    "raw_text":" Synthetic Tiếng Việt ","warnings":[],"error":null},
                   {"page_number":2,"status":"blank","method":"none","text":"","raw_text":"",
@@ -117,9 +117,8 @@ class DocumentQueryServiceTests {
         var detail = service.find(1);
         assertThat(detail.ocr().status()).isEqualTo("partial");
         assertThat(detail.ocr().pages()).extracting(page -> page.pageNumber()).containsExactly(1, 2, 3);
-        assertThat(detail.ocr().pages().getFirst().text()).isEqualTo("Synthetic Tiếng Việt\n");
         assertThat(detail.ocr().pages().getFirst().rawText()).isEqualTo(" Synthetic Tiếng Việt ");
-        assertThat(detail.ocr().pages().get(1).text()).isEmpty();
+        assertThat(JsonMapper.builder().build().writeValueAsString(detail)).doesNotContain("\"text\"");
         assertThat(detail.ocr().pages().get(2).error().code()).isEqualTo("DOCUMENT_TIMEOUT");
         assertThat(JsonMapper.builder().build().writeValueAsString(detail)).doesNotContain("must-not-leak");
     }
@@ -129,7 +128,7 @@ class DocumentQueryServiceTests {
         when(repository.find(1)).thenReturn(Optional.of(new DocumentDetailRow(
                 overview(1, "PAGE_RESULT", "FAILED"), 9L,
                 """
-                {"status":"failed","page_count":null,"pages":[],"warnings":[],
+                {"schema_version":"cv-compass.ocr/1.0","status":"failed","page_count":null,"pages":[],"warnings":[],
                  "errors":[{"code":"FILE_CORRUPT","stage":"preflight"}]}
                 """, null)));
         var result = service.find(1).ocr();
@@ -139,5 +138,28 @@ class DocumentQueryServiceTests {
         assertThat(result.pageCount()).isNull();
         assertThat(result.pages()).isEmpty();
         assertThat(result.errors().getFirst().code()).isEqualTo("FILE_CORRUPT");
+    }
+
+    @Test
+    void v2ProjectsOnlyRawTextAndInvalidStoredPayloadIsUnavailable() {
+        String raw = "Original\r\nspacing 😀";
+        String result = """
+                {"schema_version":"cv-compass.ocr/2.0","status":"success","page_count":1,
+                 "pages":[{"page_number":1,"status":"ok","method":"native",
+                  "raw_text":"Original\\r\\nspacing 😀","warnings":[],"error":null}],
+                 "warnings":[],"errors":[]}
+                """;
+        when(repository.find(1)).thenReturn(Optional.of(new DocumentDetailRow(
+                overview(1, "PAGE_RESULT", "COMPLETED"), 10L, result, null)));
+        var detail = service.find(1);
+        assertThat(detail.ocr().pages().getFirst().rawText()).isEqualTo(raw);
+        assertThat(JsonMapper.builder().build().writeValueAsString(detail)).doesNotContain("\"text\"");
+        for (String malformed : List.of(result.replace("raw_text", "removed"),
+                result.replace("cv-compass.ocr/2.0", "unknown"))) {
+            when(repository.find(1)).thenReturn(Optional.of(new DocumentDetailRow(
+                    overview(1, "PAGE_RESULT", "COMPLETED"), 10L, malformed, null)));
+            assertThatThrownBy(() -> service.find(1)).isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("503");
+        }
     }
 }

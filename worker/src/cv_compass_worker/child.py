@@ -5,8 +5,8 @@ from pathlib import Path
 import sys
 import time
 from .config import Config
-from .contracts import SCHEMA, normalized, page
-from .layout import native_order, usable
+from .contracts import SCHEMA, page
+from .layout import usable
 
 
 def _process_page(path, number, config, root, result):
@@ -16,15 +16,12 @@ def _process_page(path, number, config, root, result):
     started = time.monotonic()
     timings = result['timings_ms']
     tick = time.monotonic()
-    native, raw = '', ''
+    raw = ''
     image_fraction = 1
     try:
         with pdfplumber.open(path) as pdf:
             p = pdf.pages[number-1]
             raw = p.extract_text(layout=False) or ''
-            native, uncertain = native_order(p)
-            if uncertain:
-                result['warnings'].append('READING_ORDER_UNCERTAIN')
             area = max(1, p.width*p.height)
             image_area = sum(max(0, i['x1']-i['x0'])*max(0, i['bottom']-i['top']) for i in p.images)
             char_area = sum(max(0, c['x1']-c['x0'])*max(0, c['bottom']-c['top']) for c in p.chars)
@@ -32,8 +29,8 @@ def _process_page(path, number, config, root, result):
     except Exception:
         result['warnings'].append('NATIVE_EXTRACTION_FAILED')
     timings['native'] = (time.monotonic()-tick)*1000
-    if usable(native) and image_fraction < .25 and native.count('\n') >= 1:
-        result.update(status='ok', method='native', text=normalized(native), raw_text=raw)
+    if usable(raw) and image_fraction < .25:
+        result.update(status='ok', method='native', raw_text=raw)
     else:
         result['warnings'].append('NATIVE_TEXT_UNUSABLE')
         if raw.strip() and not usable(raw):
@@ -73,7 +70,7 @@ def _process_page(path, number, config, root, result):
             finally:
                 gray.close()
             if blank:
-                result.update(status='blank', method='none', text='', raw_text='', error=None)
+                result.update(status='blank', method='none', raw_text='', error=None)
                 result['warnings'].append('BLANK_PAGE')
             else:
                 target = root / 'page.png'
@@ -93,14 +90,14 @@ def _process_page(path, number, config, root, result):
                 timings['ocr'] = (time.monotonic()-tick)*1000
                 if not usable(raw):
                     raise ValueError('NO_USABLE_TEXT')
-                result.update(status='ok', method='ocr', raw_text=raw, text=normalized(raw), confidence=confidence)
+                result.update(status='ok', method='ocr', raw_text=raw, confidence=confidence)
                 # PSM3 proposes layout; this is not a guarantee of column order.
                 result['warnings'].append('READING_ORDER_UNCERTAIN')
                 if confidence and confidence['value'] < 60:
                     result['warnings'].append('LOW_OCR_CONFIDENCE')
         finally:
             image.close()
-    if any(len(result[k]) > config.max_text_code_points_per_field for k in ('text', 'raw_text')):
+    if len(result['raw_text']) > config.max_text_code_points_per_field:
         result = page(number, status='failed', code='OUTPUT_LIMIT', stage='output')
         result['timings_ms'] = timings
     result['warnings'] = list(dict.fromkeys(result['warnings']))
@@ -125,7 +122,7 @@ def process_page(path, number, config, root):
         total = (time.monotonic()-started)*1000
         if stage in timings and timings[stage] is None:
             timings[stage] = max(0, total-sum(v for k, v in timings.items() if k != 'total' and v is not None))
-        result.update(status='failed', method='none', text='', raw_text='', confidence=None,
+        result.update(status='failed', method='none', raw_text='', confidence=None,
                       error={'code': code, 'stage': stage})
     result['warnings'] = list(dict.fromkeys(result['warnings']))
     result['timings_ms']['total'] = (time.monotonic()-started)*1000

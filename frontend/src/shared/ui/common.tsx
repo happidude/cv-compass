@@ -102,10 +102,10 @@ export function Pagination({
   );
 }
 export function LongText({ text }: { text: string }) {
-  return text.length > 1200 ? (
+  return [...text].length > 1200 ? (
     <details className="long-text">
       <summary>
-        Hiện thêm text ({text.length.toLocaleString("vi-VN")} ký tự)
+        Hiện thêm nội dung ({[...text].length.toLocaleString("vi-VN")} ký tự)
       </summary>
       <pre>{text}</pre>
     </details>

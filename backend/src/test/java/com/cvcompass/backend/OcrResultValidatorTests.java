@@ -16,7 +16,8 @@ import static org.assertj.core.api.Assertions.*;
 
 class OcrResultValidatorTests {
     private final JsonMapper json = JsonMapper.builder().build();
-    private final OcrResultValidator validator = new OcrResultValidator(json,new OcrJobProperties(),new ClassPathResource("ocr/ocr-v1.schema.json"));
+    private final OcrResultValidator validator = new OcrResultValidator(json,new OcrJobProperties(),
+            new ClassPathResource("ocr/ocr-v2.schema.json"),new ClassPathResource("ocr/ocr-v1.schema.json"));
     OcrResultValidatorTests() throws Exception { }
     private String valid() { return OcrFixtures.envelope("request","1","synthetic-v1"); }
     private ObjectNode tree() { return (ObjectNode) json.readTree(valid()); }
@@ -29,6 +30,15 @@ class OcrResultValidatorTests {
         assertThat(payload.method()).isEqualTo(ExtractionMethod.TEXT_EXTRACTION);
         assertThat(json.readTree(payload.resultJson()).at("/pages/0/raw_text").asString()).isEqualTo("Synthetic text");
         assertThat(payload.toString()).doesNotContain("Synthetic text");
+    }
+    @Test void acceptsV2RawOnlyAndRejectsTextOrMissingRaw() {
+        var tree = tree(); var result = (ObjectNode)tree.get("ocr_result");
+        result.put("schema_version", OcrProtocol.RESULT_VERSION);
+        var page = (ObjectNode)result.withArray("pages").get(0);
+        page.remove("text");
+        assertThat(validator.parse(tree.toString()).schemaVersion()).isEqualTo(OcrProtocol.RESULT_VERSION);
+        page.put("text", "Synthetic text"); rejected(tree.toString());
+        page.remove("text"); page.remove("raw_text"); rejected(tree.toString());
     }
     @Test void rejectsDuplicateTrailingUnknownAndIncorrectTypes() {
         rejected(valid().replace("\"delivered\":true","\"delivered\":true,\"delivered\":true"));
@@ -85,7 +95,8 @@ class OcrResultValidatorTests {
         } else rejected(tree.toString());
     }
     @Test void schemaAndCanonicalLimitsAreByteIdenticalToWorker() throws Exception {
-        for (String name : java.util.List.of("ocr-v1.schema.json","ocr-v1.limits.json")) {
+        for (String name : java.util.List.of("ocr-v1.schema.json","ocr-v1.limits.json",
+                "ocr-v2.schema.json","ocr-v2.limits.json")) {
             try (var input = new ClassPathResource("ocr/"+name).getInputStream()) {
                 assertThat(input.readAllBytes()).isEqualTo(Files.readAllBytes(Path.of("../worker/design/"+name)));
             }

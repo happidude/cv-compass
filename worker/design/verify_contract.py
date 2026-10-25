@@ -7,8 +7,8 @@ import unittest
 from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parent
-LIMITS = json.loads((ROOT / 'ocr-v1.limits.json').read_text(encoding='utf-8'))
-SCHEMA = json.loads((ROOT / 'ocr-v1.schema.json').read_text(encoding='utf-8'))
+LIMITS = json.loads((ROOT / 'ocr-v2.limits.json').read_text(encoding='utf-8'))
+SCHEMA = json.loads((ROOT / 'ocr-v2.schema.json').read_text(encoding='utf-8'))
 
 
 def effective_limits(config: dict) -> dict:
@@ -45,14 +45,13 @@ def semantic_check(result: dict, config: dict | None = None) -> None:
     for index, page in enumerate(pages, 1):
         if page['page_number'] != index:
             raise ValueError('PAGE_ORDER')
-        for key in ('text', 'raw_text'):
-            if len(page[key]) > limits['max_text_code_points_per_field']:
-                raise ValueError('OUTPUT_LIMIT')
-        if page['status'] == 'ok' and (not page['text'].strip() or page['error'] is not None):
+        if len(page['raw_text']) > limits['max_text_code_points_per_field']:
+            raise ValueError('OUTPUT_LIMIT')
+        if page['status'] == 'ok' and (not page['raw_text'].strip() or page['error'] is not None):
             raise ValueError('PAGE_STATUS')
-        if page['status'] in ('failed', 'not_processed') and (page['text'] or page['error'] is None):
+        if page['status'] in ('failed', 'not_processed') and (page['error'] is None):
             raise ValueError('PAGE_STATUS')
-        if page['status'] == 'blank' and (page['text'] or page['raw_text'] or page['error'] is not None):
+        if page['status'] == 'blank' and (page['raw_text'] or page['error'] is not None):
             raise ValueError('PAGE_STATUS')
     if result['status'] != classify(pages, result['errors']):
         raise ValueError('DOCUMENT_STATUS')
@@ -67,20 +66,20 @@ def serialize_if_fits(result: dict, byte_cap: int) -> bytes:
 
 
 def example(name: str) -> dict:
-    return json.loads((ROOT / 'examples' / name).read_text(encoding='utf-8'))
+    return json.loads((ROOT / 'examples-v2' / name).read_text(encoding='utf-8'))
 
 
 class ContractChecks(unittest.TestCase):
-    def test_canonical_v1_ceiling_and_schema_projections(self):
-        # Frozen compatibility guard: raising v1 caps requires contract review.
-        self.assertEqual(LIMITS, {'schema_version': 'cv-compass.ocr/1.0', 'max_pages': 50,
+    def test_canonical_v2_ceiling_and_schema_projections(self):
+        # Frozen compatibility guard: raising v2 caps requires contract review.
+        self.assertEqual(LIMITS, {'schema_version': 'cv-compass.ocr/2.0', 'max_pages': 50,
                                   'max_text_code_points_per_field': 50000})
         r, p = SCHEMA['$defs']['result'], SCHEMA['$defs']['page']
         for value in (r['properties']['pages']['maxItems'], r['properties']['page_count']['maximum'],
                       p['properties']['page_number']['maximum']):
             self.assertEqual(value, LIMITS['max_pages'])
-        for field in ('text', 'raw_text'):
-            self.assertEqual(p['properties'][field]['maxLength'], LIMITS['max_text_code_points_per_field'])
+        self.assertEqual(p['properties']['raw_text']['maxLength'], LIMITS['max_text_code_points_per_field'])
+        self.assertNotIn('text', p['properties'])
         self.assertEqual(effective_limits({}), {k: LIMITS[k] for k in ('max_pages', 'max_text_code_points_per_field')})
 
     def test_config_lower_or_equal(self):
@@ -100,7 +99,7 @@ class ContractChecks(unittest.TestCase):
                 opener.assert_not_called()
 
     def test_every_result_example_semantics(self):
-        for path in sorted((ROOT / 'examples').glob('result-*.json')):
+        for path in sorted((ROOT / 'examples-v2').glob('result-*.json')):
             with self.subTest(example=path.name):
                 semantic_check(example(path.name))
 
@@ -140,13 +139,12 @@ class ContractChecks(unittest.TestCase):
                 semantic_check(result)
 
     def test_unicode_code_points_and_effective_limits(self):
-        for field in ('text', 'raw_text'):
-            result = example('result-success.json')
-            result['pages'][0][field] = '\U0001f600' * 50000
-            semantic_check(result)  # 50k code points, 100k UTF-16 units, 200k UTF-8 bytes.
-            result['pages'][0][field] += '\U0001f600'
-            with self.assertRaisesRegex(ValueError, 'OUTPUT_LIMIT'):
-                semantic_check(result)
+        result = example('result-success.json')
+        result['pages'][0]['raw_text'] = '\U0001f600' * 50000
+        semantic_check(result)  # 50k code points, 100k UTF-16 units, 200k UTF-8 bytes.
+        result['pages'][0]['raw_text'] += '\U0001f600'
+        with self.assertRaisesRegex(ValueError, 'OUTPUT_LIMIT'):
+            semantic_check(result)
         result = example('result-success.json')
         result['pages'][0]['raw_text'] = 'a\u0301' * 25000
         semantic_check(result)  # 25k graphemes but 50k code points in raw_text.
@@ -179,7 +177,7 @@ class ContractChecks(unittest.TestCase):
         from jsonschema import Draft202012Validator
         Draft202012Validator.check_schema(SCHEMA)
         validator = Draft202012Validator(SCHEMA)
-        for path in sorted((ROOT / 'examples').glob('*.json')):
+        for path in sorted((ROOT / 'examples-v2').glob('*.json')):
             with self.subTest(example=path.name):
                 validator.validate(json.loads(path.read_text(encoding='utf-8')))
 
@@ -194,7 +192,7 @@ class ContractChecks(unittest.TestCase):
         x = example('result-success.json'); x['isolation'] = {'status': 'enforced'}; mutations.append(x)
         x = example('result-success.json'); x['errors'] = [{'code': 'OUTPUT_LIMIT', 'stage': 'output'}]; mutations.append(x)
         x = example('result-mixed.json'); x['pages'][1]['confidence']['value'] = 101; mutations.append(x)
-        x = example('result-mixed.json'); x['pages'][2]['text'] = 'not truncated'; mutations.append(x)
+        x = example('result-mixed.json'); x['pages'][2]['text'] = 'removed v2 field'; mutations.append(x)
         for index, candidate in enumerate(mutations):
             with self.subTest(case=index):
                 self.assertTrue(list(v.iter_errors(candidate)))
@@ -202,12 +200,11 @@ class ContractChecks(unittest.TestCase):
     def test_schema_unicode_and_page_boundaries(self):
         from jsonschema import Draft202012Validator
         v = Draft202012Validator(SCHEMA)
-        for field in ('text', 'raw_text'):
-            result = example('result-success.json')
-            result['pages'][0][field] = '\U0001f600' * 50000
-            v.validate(result)
-            result['pages'][0][field] += '\U0001f600'
-            self.assertTrue(list(v.iter_errors(result)))
+        result = example('result-success.json')
+        result['pages'][0]['raw_text'] = '\U0001f600' * 50000
+        v.validate(result)
+        result['pages'][0]['raw_text'] += '\U0001f600'
+        self.assertTrue(list(v.iter_errors(result)))
         result = example('result-success.json')
         page = result['pages'][0]
         result['pages'] = [dict(copy.deepcopy(page), page_number=i) for i in range(1, 51)]

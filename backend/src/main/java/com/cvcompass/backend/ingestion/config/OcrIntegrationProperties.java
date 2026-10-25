@@ -31,6 +31,8 @@ public class OcrIntegrationProperties {
     }
     @Getter @Setter
     public static class Profile {
+        /** Existing profiles remain v1 until an operator explicitly pins a v2 profile. */
+        @NotNull @Pattern(regexp="cv-compass\\.ocr/(1|2)\\.0") private String resultVersion = "cv-compass.ocr/1.0";
         @NotNull @Pattern(regexp="[0-9a-f]{40}") private String workerCommit;
         @NotNull @Pattern(regexp="sha256:[0-9a-f]{64}") private String imageId;
         @NotNull @Pattern(regexp="[0-9a-f]{64}") private String configFingerprint;

@@ -1,5 +1,9 @@
 # Local UI → OCR flow
 
+For new OCR deployments use [RAW_TEXT_V2_LOCAL.md](RAW_TEXT_V2_LOCAL.md). This
+file records the earlier local admission setup; its old image evidence does not
+apply to v2.
+
 This is an explicit local diagnostic mode. The default remains synthetic-only;
 production is still blocked by the unresolved GCC/Tesseract gate, and OCR accuracy
 has not been evaluated. There is no candidate/field mapping or backfill.
@@ -69,6 +73,7 @@ cv:
           profiles: ["<registered-profile>"]
       profiles:
         "<registered-profile>":
+          result-version: "cv-compass.ocr/2.0"
           worker-commit: "<source-commit-of-pinned-OCR-image>"
           image-id: "sha256:<measured-image-ID>"
           config-fingerprint: "<measured-pipeline-fingerprint>"
@@ -133,7 +138,8 @@ replace it with cleartext non-loopback HTTP or disable origin validation.
 
 Backend PowerShell, from the source checkout's `backend/`, with the existing private
 database/storage config imported explicitly (the existing file can stay in its
-runtime directory). Use the `feature/local-ocr-flow` checkout until it is merged:
+runtime directory). Use the checkout containing the version selected by the
+registered profile:
 
 ```powershell
 $env:JAVA_HOME = '<JDK25-home>'
@@ -174,7 +180,7 @@ npm run dev -- --port <your-UI-port>
 ```
 
 Open the UI origin printed by Vite, upload a PDF, then choose **Mở CV**. Detail polls
-PENDING/PROCESSING and displays persisted page text/rawText and partial/failed states.
+PENDING/PROCESSING and displays only persisted per-page rawText and partial/failed states.
 No fixture registration is required in local mode. GET `/api/documents/{id}` returns
 the processing job and OCR pages; upload itself still returns metadata only.
 Polling remains bounded; if a long job outlives the configured UI budget, use the

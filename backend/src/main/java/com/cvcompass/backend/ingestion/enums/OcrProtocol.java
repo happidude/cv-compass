@@ -2,7 +2,8 @@ package com.cvcompass.backend.ingestion.enums;
 
 /** Fixed contract ceilings. Configuration may reduce these, never increase them. */
 public final class OcrProtocol {
-    public static final String RESULT_VERSION = "cv-compass.ocr/1.0";
+    public static final String LEGACY_RESULT_VERSION = "cv-compass.ocr/1.0";
+    public static final String RESULT_VERSION = "cv-compass.ocr/2.0";
     public static final String JOB_VERSION = "cv-compass.ocr-job/1.0";
     public static final int MAX_ATTEMPTS = 3;
     public static final int MAX_PAGES = 50;

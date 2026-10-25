@@ -255,7 +255,7 @@ class SubmissionTests(unittest.TestCase):
     def test_raw_m6_bytes_preserved_and_exit_contract_checked(self):
         from cv_compass_worker.pipeline import empty_result
         pipeline=Config()
-        result=empty_result(dict(schema_version='cv-compass.ocr/1.0',request_id='synthetic',document_id='42'),pipeline)
+        result=empty_result(dict(schema_version='cv-compass.ocr/2.0',request_id='synthetic',document_id='42'),pipeline)
         result['timings_ms']['total']=0
         raw=json_bytes(result)+b'\r\n'
         body,_=submission(raw,2,config(),pipeline)
@@ -295,7 +295,7 @@ class SupervisorTests(unittest.TestCase):
             server_time='2026-01-01T00:00:00Z',lease_expires_at='2026-01-01T00:02:00Z',
             hard_deadline_at='2026-01-01T00:15:00Z',profile_revision='synthetic-v1',synthetic_only=True,
             input_path=BASE+'/attempts/'+self.attempt+'/input',size_bytes=5,
-            ocr_request=dict(type='request',schema_version='cv-compass.ocr/1.0',request_id='a_'+self.attempt.replace('-',''),
+            ocr_request=dict(type='request',schema_version='cv-compass.ocr/2.0',request_id='a_'+self.attempt.replace('-',''),
                 document_id='42',input_ref=self.attempt.replace('-','')+'.pdf',expected_sha256=hashlib.sha256(b'%PDF-').hexdigest(),profile='baseline-v1'))
         from unittest.mock import Mock
         self.http=Mock()
@@ -457,7 +457,7 @@ class CancellationTests(unittest.TestCase):
         from cv_compass_worker.pipeline import process
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); source=root/('a'*32+'.pdf'); source.write_bytes(b'%PDF-synthetic')
-            request=dict(type='request',schema_version='cv-compass.ocr/1.0',request_id='synthetic',document_id='42',
+            request=dict(type='request',schema_version='cv-compass.ocr/2.0',request_id='synthetic',document_id='42',
                          input_ref=source.name,expected_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),profile='baseline-v1')
             event=threading.Event(); event.set()
             with patch('cv_compass_worker.pipeline.run_child') as child:

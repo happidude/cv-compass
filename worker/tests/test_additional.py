@@ -56,7 +56,7 @@ class AdditionalBehaviorTests(unittest.TestCase):
         validate_result(result, self.cfg)
         self.assertEqual(result['pages'][0]['method'], 'ocr')
         self.assertIn('NATIVE_TEXT_WITH_IMAGES', result['pages'][0]['warnings'])
-        self.assertIn('tiếng Việt', result['pages'][0]['text'])
+        self.assertIn('tiếng Việt', result['pages'][0]['raw_text'])
 
     def test_metadata_rotation_real_engine(self):
         scanned = self.root/'scan.pdf'
@@ -67,18 +67,18 @@ class AdditionalBehaviorTests(unittest.TestCase):
         result = process(request(self.source), self.root, self.cfg)
         validate_result(result, self.cfg)
         self.assertEqual(result['pages'][0]['method'], 'ocr', result['pages'])
-        self.assertIn('Synthetic English', result['pages'][0]['text'])
+        self.assertIn('Synthetic English', result['pages'][0]['raw_text'])
 
-    def test_native_columns_word_conservation_and_order(self):
+    def test_native_columns_preserve_initial_extraction_without_reordering(self):
         import pdfplumber
-        from cv_compass_worker.layout import native_order
         native(self.source, columns=True)
         with pdfplumber.open(self.source) as pdf:
-            text, uncertain = native_order(pdf.pages[0])
-            words = pdf.pages[0].extract_words(use_text_flow=False)
-        self.assertTrue(uncertain)
-        self.assertEqual(sorted(text.split()), sorted(w['text'] for w in words))
-        self.assertLess(text.index('Left column second'), text.index('Right column first'))
+            expected = pdf.pages[0].extract_text(layout=False)
+        result = process(request(self.source), self.root, self.cfg)
+        validate_result(result, self.cfg)
+        self.assertEqual(result['pages'][0]['method'], 'native')
+        self.assertEqual(result['pages'][0]['raw_text'], expected)
+        self.assertNotIn('text', result['pages'][0])
 
     def test_cleanup_failure_warns_keeps_success_and_halts_intake(self):
         original = shutil.rmtree

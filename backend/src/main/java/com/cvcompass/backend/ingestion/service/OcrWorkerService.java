@@ -40,7 +40,9 @@ public class OcrWorkerService {
         if (local) data.put("local_only", true);
         data.put("input_path","/internal/ocr/v1/attempts/"+claim.attemptId()+"/input");
         data.put("size_bytes",job.getDocument().getFileSize());
-        data.put("ocr_request",Map.of("type","request","schema_version",OcrProtocol.RESULT_VERSION,
+        String resultVersion = job.getAdmissionSnapshot().getOrDefault("result_version",
+                OcrProtocol.LEGACY_RESULT_VERSION).toString();
+        data.put("ocr_request",Map.of("type","request","schema_version",resultVersion,
                 "request_id","a_"+claim.attemptId().toString().replace("-",""),
                 "document_id",Long.toString(claim.documentId()),
                 "input_ref",claim.attemptId().toString().replace("-","")+".pdf",
@@ -64,6 +66,9 @@ public class OcrWorkerService {
         var snapshot=json.valueToTree(job.getAdmissionSnapshot());
         // Immutable admission snapshot, not a mutable deployment registry, attests this attempt.
         JsonNode result=envelope.path("ocr_result"), provenance=envelope.path("provenance");
+        String expectedVersion = job.getAdmissionSnapshot().getOrDefault("result_version",
+                OcrProtocol.LEGACY_RESULT_VERSION).toString();
+        require(expectedVersion.equals(result.path("schema_version").asString()),422,"INVALID_RESULT");
         boolean preflight=result.path("page_count").isNull() && "failed".equals(result.path("status").asString());
         require(snapshot.path("worker_commit").equals(provenance.path("worker_commit"))
                 && snapshot.path("image_id").equals(provenance.path("image_id")),422,"INVALID_PROVENANCE");

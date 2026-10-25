@@ -60,6 +60,7 @@ public class OcrEnqueueService {
                 "config_fingerprint",profile.getConfigFingerprint(),"engines",json.convertValue(engines(profile),
                         new tools.jackson.core.type.TypeReference<Map<String,Object>>() { })));
         snapshot.put("admission_mode", enrolled.mode());
+        snapshot.put("result_version", profile.getResultVersion());
         if (enrolled.fixtureId() != null) snapshot.put("fixture_id", enrolled.fixtureId());
         job.setAdmissionSnapshot(snapshot);
         repository.saveAndFlush(job);

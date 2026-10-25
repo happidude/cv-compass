@@ -7,7 +7,7 @@ from pathlib import Path
 import tomllib
 
 DESIGN = Path(__file__).resolve().parents[2] / 'design'
-LIMITS = json.loads((DESIGN / 'ocr-v1.limits.json').read_text(encoding='utf-8'))
+LIMITS = json.loads((DESIGN / 'ocr-v2.limits.json').read_text(encoding='utf-8'))
 
 
 @dataclass(frozen=True)
