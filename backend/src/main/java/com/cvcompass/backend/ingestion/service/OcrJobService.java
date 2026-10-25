@@ -12,6 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Map;
+import com.cvcompass.backend.web.OperationalLog;
+import static com.cvcompass.backend.web.OperationalLog.Event.*;
+import static org.slf4j.event.Level.*;
 
 /** Trusted internal state-machine seam; HTTP callers must first authenticate worker/profile. */
 @Service
@@ -37,14 +41,20 @@ public class OcrJobService {
                     || !job.profileRevision().equals(request.profileRevision())) throw error(OcrStateError.CLAIM_CONFLICT);
             Instant now = state.wallClock(); // Deliberately after both row locks, never transaction_timestamp().
             live(job,attempt,now);
+            event(INFO, OCR_CLAIMED, "CLAIM_REPLAY", job, attempt, "PROCESSING");
             return Optional.of(claimView(job,attempt,now));
         }
         var ready = state.lockReady(request.profileRevision());
-        if (ready.isEmpty()) return Optional.empty();
+        if (ready.isEmpty()) {
+            OperationalLog.write(DEBUG, OCR_POLL_EMPTY, null, Map.of("workerId", request.workerId()));
+            return Optional.empty();
+        }
         OcrJobState job = ready.get();
         Instant now = state.wallClock();
         if (job.attemptsStarted() >= budget(job)) {
             state.finishJob(job,JobStatus.FAILED,OcrEndReason.RETRIES_EXHAUSTED,"RETRIES_EXHAUSTED",now);
+            OperationalLog.committed(ERROR, OCR_TERMINAL_FAILURE, "RETRIES_EXHAUSTED",
+                    Map.of("jobId", job.id(), "documentId", job.documentId(), "status", "FAILED"));
             return Optional.empty();
         }
         if (now.isBefore(job.nextAttemptAt())) return Optional.empty();
@@ -52,6 +62,7 @@ public class OcrJobService {
         OcrAttemptState attempt = state.insertAttempt(job,request,digest,now,
                 now.plus(properties.getLeaseDuration()),deadline,deadline.plus(properties.getQuarantineGrace()));
         state.claimed(job,attempt,now);
+        event(INFO, OCR_CLAIMED, null, job, attempt, "PROCESSING");
         if (!state.wallClock().isBefore(attempt.leaseExpiresAt())) throw error(OcrStateError.STALE_ATTEMPT);
         return Optional.of(claimView(job,attempt,now));
     }
@@ -67,6 +78,7 @@ public class OcrJobService {
         // DB wall-clock may move backwards: never retract a lease already granted.
         Instant expiry = min(max(attempt.leaseExpiresAt(),now.plus(properties.getLeaseDuration())),attempt.hardDeadlineAt());
         state.renewed(attempt.id(),expiry);
+        event(DEBUG, OCR_HEARTBEAT, null, job, attempt, "PROCESSING");
         return new OcrClaim(job.id(),job.documentId(),job.profileRevision(),attempt.publicId(),attempt.attemptNo(),now,expiry,attempt.hardDeadlineAt());
     }
 
@@ -90,6 +102,7 @@ public class OcrJobService {
         OcrJobState job = job(found.jobId());
         OcrAttemptState attempt = state.lockAttempt(found.id());
         proof(key,attempt);
+        OperationalLog.write(INFO, OCR_RESULT_RECEIVED, null, context(job, attempt, "RECEIVED"));
         if (attempt.status() == OcrAttemptStatus.ACCEPTED) {
             sameOutcome(attempt,result.digest());
             return new OcrReceipt(job.id(),attempt.publicId(),state.extractionId(attempt.id()),true);
@@ -108,6 +121,11 @@ public class OcrJobService {
         state.finishJob(job,status,reason,code,now);
         // A blocked document update must not let a pre-expiry check admit a post-expiry commit.
         live(job,attempt,state.wallClock());
+        OperationalLog.committed(INFO, OCR_EXTRACTION_STORED, null,
+                Map.of("jobId", job.id(), "documentId", job.documentId(), "attemptId", attempt.publicId(),
+                        "workerId", attempt.workerId(), "extractionId", extractionId, "status", status.name()));
+        event(status == JobStatus.FAILED ? ERROR : INFO, OCR_STATE_CHANGED, code, job, attempt, status.name());
+        if (status == JobStatus.FAILED) event(ERROR, OCR_TERMINAL_FAILURE, code, job, attempt, "FAILED");
         return new OcrReceipt(job.id(),attempt.publicId(),extractionId,false);
     }
 
@@ -144,6 +162,7 @@ public class OcrJobService {
             if (attempt.status() != OcrAttemptStatus.ACTIVE || now.isBefore(attempt.leaseExpiresAt())) continue;
             state.finishAttempt(attempt.id(),OcrAttemptStatus.EXPIRED,OcrEndReason.LEASE_EXPIRED,
                     OcrFailureCode.LEASE_EXPIRED.name(),null,now);
+            event(WARN, OCR_LEASE_EXPIRED, "LEASE_EXPIRED", job, attempt, "EXPIRED");
             retryOrFinish(job,attempt,OcrFailureCode.LEASE_EXPIRED,OcrEndReason.LEASE_EXPIRED,now);
             expired++;
         }
@@ -154,13 +173,23 @@ public class OcrJobService {
         if (code.isRetryable() && job.attemptsStarted() < budget(job)) {
             Instant backoff = now.plus(properties.getRetryBackoffs().get(attempt.attemptNo()-1));
             state.retry(job,code.name(),max(backoff,attempt.reclaimAfter()));
+            event(WARN, OCR_RETRY_SCHEDULED, code.name(), job, attempt, "PENDING");
         } else {
             OcrEndReason end = code.isRetryable() ? OcrEndReason.RETRIES_EXHAUSTED : reason;
             state.finishJob(job,JobStatus.FAILED,end,code.name(),now);
+            event(ERROR, OCR_TERMINAL_FAILURE, code.name(), job, attempt, "FAILED");
         }
     }
     private OcrAttemptState find(OcrAttemptKey key) {
         return state.findAttempt(key.attemptId()).orElseThrow(() -> error(OcrStateError.NOT_FOUND));
+    }
+    private static Map<String, Object> context(OcrJobState job, OcrAttemptState attempt, String status) {
+        return Map.of("documentId", job.documentId(), "jobId", job.id(), "attemptId", attempt.publicId(),
+                "workerId", attempt.workerId(), "status", status);
+    }
+    private static void event(org.slf4j.event.Level level, OperationalLog.Event event, String code,
+                              OcrJobState job, OcrAttemptState attempt, String status) {
+        OperationalLog.committed(level, event, code, context(job, attempt, status));
     }
     private OcrJobState job(long id) {
         OcrJobState job = state.lockJob(id).orElseThrow(() -> error(OcrStateError.NOT_FOUND));

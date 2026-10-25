@@ -133,6 +133,8 @@ def process_page(path, number, config, root):
 
 
 def main():
+    from .observability import configure_child_diagnostics
+    configure_child_diagnostics()
     spec, output = map(Path, sys.argv[1:])
     task = json.loads(spec.read_text(encoding='utf-8'))
     try:

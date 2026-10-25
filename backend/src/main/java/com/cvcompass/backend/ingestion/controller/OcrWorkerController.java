@@ -37,7 +37,9 @@ public class OcrWorkerController {
     @ExceptionHandler({StorageException.class,org.springframework.dao.TransientDataAccessException.class,
             org.springframework.dao.DataAccessResourceFailureException.class})
     public ResponseEntity<ApiError> unavailable(RuntimeException failure,HttpServletResponse response) {
-        log.warn("OCR transport unavailable type={}",failure.getClass().getName());
+        com.cvcompass.backend.web.OperationalLog.write(org.slf4j.event.Level.WARN,
+                com.cvcompass.backend.web.OperationalLog.Event.OCR_TRANSPORT_FAILED,
+                "OCR_UNAVAILABLE", Map.of());
         return ResponseEntity.status(503).body(new ApiError("OCR_UNAVAILABLE","OCR dependency unavailable",
                 response.getHeader("X-Correlation-ID"),List.of()));
     }

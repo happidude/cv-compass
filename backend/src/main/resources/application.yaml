@@ -11,8 +11,25 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 logging:
+  level:
+    root: ${CV_LOG_LEVEL:INFO}
+  structured:
+    format:
+      console: ${CV_LOG_FORMAT:}
+      file: ${CV_LOG_FORMAT:}
+    json:
+      rename:
+        "[@timestamp]": timestamp
+      add:
+        service: ${spring.application.name}
+  logback:
+    rollingpolicy:
+      max-file-size: ${CV_LOG_MAX_FILE_SIZE:10MB}
+      max-history: ${CV_LOG_MAX_HISTORY:7}
+      total-size-cap: ${CV_LOG_TOTAL_SIZE_CAP:100MB}
   pattern:
-    level: "%5p [correlationId=%X{correlationId:-}]"
+    console: &readable-log "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %level service=${spring.application.name} event=%X{event:--} correlationId=%X{correlationId:--} documentId=%X{documentId:--} jobId=%X{jobId:--} attemptId=%X{attemptId:--} workerId=%X{workerId:--} status=%X{status:--} storageKey=%X{storageKey:--} exceptionType=%X{exceptionType:--} applicationStack=%X{applicationStack:--} errorCode=%X{errorCode:-NONE} %logger{36} : %msg%n"
+    file: *readable-log
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:

@@ -153,6 +153,8 @@ class HttpFoundationTests {
                 .andReturn().getResponse();
         assertThat(response.getContentAsString()).doesNotContain(SECRET, "IllegalStateException", "stack");
         assertThat(output.getOut()).contains("IllegalStateException", "failure-123").doesNotContain(SECRET);
+        assertThat(output.getOut()).contains("applicationStack=com.cvcompass.backend.", "HttpFoundationTests");
+        assertThat(response.getContentAsString()).doesNotContain("applicationStack", "HttpFoundationTests");
     }
 
     @Test
@@ -234,7 +236,9 @@ class HttpFoundationTests {
 
         @GetMapping("/_test/failure")
         void failure() {
-            throw new IllegalStateException(SECRET);
+            var failure = new IllegalStateException(SECRET, new RuntimeException(SECRET));
+            failure.addSuppressed(new RuntimeException(SECRET));
+            throw failure;
         }
 
         @GetMapping("/_test/conflict")

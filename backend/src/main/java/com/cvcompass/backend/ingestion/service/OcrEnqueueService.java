@@ -14,6 +14,9 @@ import tools.jackson.core.StreamReadFeature;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import com.cvcompass.backend.web.OperationalLog;
+import static com.cvcompass.backend.web.OperationalLog.Event.*;
+import static org.slf4j.event.Level.INFO;
 
 /** Participates in the metadata transaction; failure triggers existing storage compensation. */
 @Service
@@ -34,9 +37,16 @@ public class OcrEnqueueService {
     }
     @Transactional(propagation=Propagation.MANDATORY)
     public void enqueue(CvDocument document) {
-        if (!integration.isEnabled()) return;
+        OperationalLog.committed(INFO, DOCUMENT_STORED, null, Map.of("documentId", document.getId()));
+        if (!integration.isEnabled()) {
+            notEnqueued(document, "INTEGRATION_DISABLED");
+            return;
+        }
         var decision = admission.admit(document);
-        if (decision.isEmpty()) return; // Ingested, but not authorized for OCR.
+        if (decision.isEmpty()) {
+            notEnqueued(document, "NOT_ADMITTED");
+            return;
+        }
         var enrolled = decision.get();
         var profile = integration.getProfiles().get(enrolled.profileRevision());
         var job = new CvProcessingJob();
@@ -53,6 +63,13 @@ public class OcrEnqueueService {
         if (enrolled.fixtureId() != null) snapshot.put("fixture_id", enrolled.fixtureId());
         job.setAdmissionSnapshot(snapshot);
         repository.saveAndFlush(job);
+        var eventContext = new java.util.HashMap<String, Object>();
+        eventContext.put("documentId", document.getId()); eventContext.put("jobId", job.getId());
+        eventContext.put("status", "PENDING");
+        OperationalLog.committed(INFO, OCR_ENQUEUED, null, eventContext);
+    }
+    private void notEnqueued(CvDocument document, String reason) {
+        OperationalLog.committed(INFO, OCR_NOT_ENQUEUED, reason, Map.of("documentId", document.getId()));
     }
     private JsonNode engines(OcrIntegrationProperties.Profile profile) {
         try {

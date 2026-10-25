@@ -17,7 +17,7 @@ class OcrLeaseReaperTests {
         when(jobs.expireDue()).thenThrow(new IllegalStateException("synthetic-private-sql-detail")).thenReturn(0);
         var reaper=new OcrLeaseReaper(jobs); reaper.expire(); reaper.expire();
         verify(jobs,times(2)).expireDue();
-        assertThat(output.getOut()).contains("OCR lease reaper failed type=java.lang.IllegalStateException")
+        assertThat(output.getOut()).contains("OCR_REAPER_FAILED", "exceptionType=java.lang.IllegalStateException")
                 .doesNotContain("synthetic-private-sql-detail");
     }
     @Test void reaperBeanIsNotRegisteredWhenIntegrationIsDisabled() {
