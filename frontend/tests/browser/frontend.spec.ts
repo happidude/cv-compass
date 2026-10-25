@@ -66,12 +66,12 @@ test("multi-upload shows actual aggregate result", async ({ page }) => {
 });
 test("detail NONE/LEGACY, route change and 404", async ({ page }) => {
   await page.goto("/documents/6");
-  await expect(page.getByText(/Kết quả legacy/)).toBeVisible();
-  await page.getByText(/Hiện thêm text/).click();
+  await expect(page.getByText(/Kết quả cũ — nội dung/)).toBeVisible();
+  await page.getByText(/Hiện thêm nội dung/).click();
   await expect(page.getByText(/Synthetic legacy text/)).toBeVisible();
   await page.goto("/documents/5");
   await expect(page.getByText(/Chưa có kết quả OCR/)).toBeVisible();
-  await expect(page.getByText(/Kết quả legacy/)).toHaveCount(0);
+  await expect(page.getByText(/Kết quả cũ — nội dung/)).toHaveCount(0);
   await expect(page.getByText(/Đã dừng tự cập nhật/)).toBeVisible({
     timeout: 6000,
   });

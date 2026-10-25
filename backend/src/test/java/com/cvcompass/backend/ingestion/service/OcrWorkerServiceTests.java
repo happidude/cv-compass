@@ -79,7 +79,7 @@ class OcrWorkerServiceTests {
     }
     private String envelope(boolean preflight) {
         return "{\"provenance\":{\"worker_commit\":\""+"c".repeat(40)+"\",\"image_id\":\"sha256:"+"d".repeat(64)
-                +"\"},\"ocr_result\":{\"status\":\"failed\",\"page_count\":"+(preflight?"null":"1")
+                +"\"},\"ocr_result\":{\"schema_version\":\"cv-compass.ocr/1.0\",\"status\":\"failed\",\"page_count\":"+(preflight?"null":"1")
                 +",\"config_fingerprint\":null,\"engines\":{\"python\":null,\"models\":[]}}}";
     }
     @Test void preflightNullMetadataRemainsNullAndReplayReceiptComesFromStateMachine() {
