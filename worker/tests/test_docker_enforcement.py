@@ -148,7 +148,7 @@ class DockerEnforcementTests(unittest.TestCase):
         self.assertTrue(all(d.get('isolation') for d in diagnostics))
         packet_root=self.root/'private-ipc'
         packet=run_scope({'action':'page','number':1},packet_root,cfg,20,source=source)
-        self.assertIn('Synthetic native',packet['result']['value']['text'])
+        self.assertIn('Synthetic native',packet['result']['value']['raw_text'])
         self.assertTrue((packet_root/'container.response.json').exists())
         for log in packet_root.glob('*.log'):
             data=log.read_text(encoding='utf-8')

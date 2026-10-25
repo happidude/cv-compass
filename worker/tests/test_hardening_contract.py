@@ -133,7 +133,7 @@ class AdditionalEngineBoundaries(unittest.TestCase):
                 cfg=config();result=process(request(self.source),self.root,cfg)
                 validate_result(result,cfg)
                 self.assertEqual(result['pages'][0]['method'],'ocr',result['pages'][0]['error'])
-                self.assertIn('Synthetic English',result['pages'][0]['text'])
+                self.assertIn('Synthetic English',result['pages'][0]['raw_text'])
 
     def test_nearblank_is_not_silently_blank(self):
         native(self.source,content=b'BT /F1 8 Tf .94 g 50 760 Td (x) Tj ET')

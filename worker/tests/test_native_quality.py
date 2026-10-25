@@ -2,60 +2,53 @@ from pathlib import Path
 import tempfile
 import unittest
 import pdfplumber
-from cv_compass_worker.layout import native_order, normalize_native
+from cv_compass_worker.child import process_page
 from native_quality import corpus, generate, evaluate
+from test_pipeline import config
 
 
 class NativeQualityTests(unittest.TestCase):
-    def test_ground_truth_content_spacing_order_and_uncertainty(self):
-        for name, scores in evaluate(native_order).items():
-            with self.subTest(fixture=name):
-                self.assertTrue(scores['exact'], scores)
-                self.assertEqual(scores['content'], 1)
-                self.assertEqual(scores['whitespace'], 1)
-                self.assertEqual(scores['readingOrder'], 1)
-                if 'columns' in name or name == 'unknown_font_icon':
-                    self.assertTrue(scores['uncertain'])
-
-    def test_layout_is_not_tied_to_fixture_coordinates_or_font_size(self):
+    def test_raw_native_equals_initial_library_output_across_synthetic_layouts(self):
         with tempfile.TemporaryDirectory() as directory:
-            for factor in (.75, 1, 1.2):
-                for name, (regions, truth) in corpus().items():
-                    with self.subTest(scale=factor, fixture=name):
-                        transformed = [(t, x*factor+11, y*factor-100, size*factor) for t,x,y,size in regions]
-                        path = Path(directory)/'scaled.pdf'
-                        generate(path, name, transformed)
-                        with pdfplumber.open(path) as pdf:
-                            actual, _ = native_order(pdf.pages[0])
-                        self.assertEqual(actual, '\n'.join(truth))
+            for name, (regions, _) in corpus().items():
+                with self.subTest(fixture=name):
+                    path = Path(directory)/(name+'.pdf')
+                    generate(path, name, regions)
+                    with pdfplumber.open(path) as pdf:
+                        expected = pdf.pages[0].extract_text(layout=False)
+                    child = Path(directory)/(name+'-child'); child.mkdir()
+                    result = process_page(path, 1, config(), child)
+                    self.assertNotIn('text', result)
+                    if name == 'tight_word_gaps':
+                        self.assertEqual(result['method'], 'ocr')
+                    else:
+                        self.assertEqual(result['method'], 'native')
+                        self.assertEqual(result['raw_text'], expected)
 
-    def test_raw_extraction_is_unchanged_and_unknown_glyph_not_deleted(self):
+    def test_raw_quality_metrics_are_observations_not_corrected_output(self):
+        scores = evaluate(lambda page: (page.extract_text(layout=False) or '', False))
+        self.assertEqual(set(scores), set(corpus()))
+        for quality in scores.values():
+            self.assertTrue(0 <= quality['content'] <= 1)
+            self.assertTrue(0 <= quality['whitespace'] <= 1)
+            self.assertTrue(0 <= quality['readingOrder'] <= 1)
+
+    def test_raw_keeps_initial_library_soft_hyphen_and_unknown_glyph(self):
         with tempfile.TemporaryDirectory() as directory:
-            for name in ('tight_word_gaps', 'unknown_font_icon', 'bullets_hyphens'):
-                path = Path(directory)/'source.pdf'
-                generate(path, name, corpus()[name][0])
-                with pdfplumber.open(path) as pdf:
-                    page = pdf.pages[0]
-                    raw = page.extract_text(layout=False)
-                    native, _ = native_order(page)
-                    self.assertEqual(raw, page.extract_text(layout=False))
-                if name == 'unknown_font_icon':
-                    self.assertIn('(cid:65535)', native)
-                else:
-                    self.assertNotEqual(raw, native)
+            for name in ('bullets_hyphens', 'unknown_font_icon'):
+                with self.subTest(fixture=name):
+                    path = Path(directory)/(name+'.pdf')
+                    generate(path, name, corpus()[name][0])
+                    with pdfplumber.open(path) as pdf:
+                        raw = pdf.pages[0].extract_text(layout=False)
+                    child = Path(directory)/(name+'-child'); child.mkdir()
+                    result = process_page(path, 1, config(), child)
+                    self.assertEqual(result['method'], 'native')
+                    self.assertEqual(result['raw_text'], raw)
+                    if name == 'unknown_font_icon':
+                        self.assertIn('(cid:65535)', result['raw_text'])
 
-    def test_hard_hyphens_codes_and_technologies_are_preserved(self):
-        source = 'scikit-learn C++ C# .NET UTF-8 ISO-9001\ncross-\nplatform'
-        self.assertEqual(normalize_native(source), source)
-        self.assertEqual(normalize_native('exam\u00ad\nple'), 'example')
-
-    def test_staggered_columns_and_soft_hyphen_at_column_boundary(self):
-        regions = [('Left first paragraph', 40, 740, 12), ('Right first paragraph', 350, 730, 12),
-                   ('Left final word\u00ad', 40, 700, 12), ('Right second paragraph', 350, 680, 12)]
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory)/'staggered.pdf'
-            generate(path, 'staggered', regions)
-            with pdfplumber.open(path) as pdf:
-                text, uncertain = native_order(pdf.pages[0])
-            self.assertEqual(text, '\n'.join(regions[i][0] for i in (0, 2, 1, 3)))
-            self.assertTrue(uncertain)
+    def test_native_usability_stays_independent_of_layout_reconstruction(self):
+        from cv_compass_worker.layout import usable
+        self.assertTrue(usable('Ordinary synthetic long text with enough visible characters for a native page.'))
+        self.assertFalse(usable('   '))

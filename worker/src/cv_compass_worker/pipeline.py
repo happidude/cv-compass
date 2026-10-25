@@ -175,7 +175,7 @@ def _process(request, workspace, config, diagnostics=None, *, cancelled=None):
                     validate_page(item, n, config)
                 except Exception:
                     raise ChildFailure('ENGINE_CRASH') from None
-                chars = len(item['text']) + len(item['raw_text'])
+                chars = len(item['raw_text'])
                 if used_text + chars > config.max_document_text:
                     for index in range(n-1, count):
                         result['pages'][index] = page(index+1, code='OUTPUT_LIMIT', stage='output')

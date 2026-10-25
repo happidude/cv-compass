@@ -201,7 +201,7 @@ class CleanupPropagationTests(unittest.TestCase):
     def test_successful_page_cleanup_failure_halts_without_ledger(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp); source=root/('a'*32+'.pdf'); native(source)
-            example=json.loads((ROOT/'design/examples/result-success.json').read_text(encoding='utf-8'))
+            example=json.loads((ROOT/'design/examples-v2/result-success.json').read_text(encoding='utf-8'))
             def child(task,directory,cfg,timeout):
                 directory.mkdir()
                 value=ds.ChildValue({'page_count':2,'engines':example['engines']} if task['action']=='preflight' else copy.deepcopy(example['pages'][0]))

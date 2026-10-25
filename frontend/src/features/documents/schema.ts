@@ -39,7 +39,6 @@ export const ocrSchema = z
         pageNumber: countSchema.refine((n) => n > 0),
         status: z.string(),
         method: z.string(),
-        text: z.string(),
         rawText: z.string(),
         warnings: z.array(z.string()),
         error: issue.nullable(),

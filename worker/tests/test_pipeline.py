@@ -27,7 +27,7 @@ def config(**values):
 
 
 def request(path):
-    return dict(type='request', schema_version='cv-compass.ocr/1.0', request_id='synthetic-request',
+    return dict(type='request', schema_version='cv-compass.ocr/2.0', request_id='synthetic-request',
                 document_id='synthetic-document', input_ref=path.name,
                 expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), profile='baseline-v1')
 
@@ -56,7 +56,7 @@ class PipelineTests(unittest.TestCase):
         result = self.run_pdf()
         self.assertEqual(result['status'], 'success', result['errors'])
         self.assertEqual(result['pages'][0]['method'], 'native')
-        self.assertIn('Second line', result['pages'][0]['text'])
+        self.assertIn('Second line', result['pages'][0]['raw_text'])
         self.assertIsNone(result['pages'][0]['confidence'])
         self.assertEqual(len(result['engines']['models']), 3)
 
@@ -68,7 +68,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result['status'], 'success', result['errors'])
         self.assertEqual([p['status'] for p in result['pages']], ['ok', 'ok', 'blank'])
         self.assertEqual([p['method'] for p in result['pages']], ['native', 'ocr', 'none'])
-        text = result['pages'][1]['text']
+        text = result['pages'][1]['raw_text']
         self.assertIn('tiếng Việt', text)
         self.assertIn('kiểm thử', text)
         self.assertIn('contact@example.com', text)
@@ -84,7 +84,7 @@ class PipelineTests(unittest.TestCase):
         result = self.run_pdf(config(max_text_code_points_per_field=10))
         self.assertEqual(result['status'], 'failed')
         self.assertEqual(result['pages'][0]['error']['code'], 'OUTPUT_LIMIT')
-        self.assertEqual(result['pages'][0]['text'], '')
+        self.assertEqual(result['pages'][0]['raw_text'], '')
         self.assertGreater(result['pages'][0]['timings_ms']['native'], 0)
         self.assertGreater(result['pages'][0]['timings_ms']['total'], 0)
 
@@ -179,9 +179,9 @@ class ContractRuntimeTests(unittest.TestCase):
         self.assertEqual(config().max_text_code_points_per_field, LIMITS['max_text_code_points_per_field'])
 
     def test_output_keeps_whole_prefix(self):
-        source = json.loads((ROOT/'design/examples/result-success.json').read_text(encoding='utf-8'))
+        source = json.loads((ROOT/'design/examples-v2/result-success.json').read_text(encoding='utf-8'))
         original = copy.deepcopy(source['pages'][0])
-        cap = len(original['text'])+len(original['raw_text'])
+        cap = len(original['raw_text'])
         result = json.loads(fit_result(source, config(max_document_text=cap)))
         self.assertEqual(result['pages'][0], original)
         self.assertEqual(result['pages'][1]['error']['code'], 'OUTPUT_LIMIT')

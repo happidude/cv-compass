@@ -25,11 +25,14 @@ public class OcrResultValidator {
     private final ObjectMapper json;
     private final OcrJobProperties limits;
     private final JsonNode definitions;
+    private final JsonNode legacyDefinitions;
 
     public OcrResultValidator(ObjectMapper json, OcrJobProperties limits,
-            @Value("classpath:ocr/ocr-v1.schema.json") Resource schema) throws IOException {
+            @Value("classpath:ocr/ocr-v2.schema.json") Resource schema,
+            @Value("classpath:ocr/ocr-v1.schema.json") Resource legacySchema) throws IOException {
         this.json = json; this.limits = limits;
         try (var input = schema.getInputStream()) { definitions = json.readTree(input).get("$defs"); }
+        try (var input = legacySchema.getInputStream()) { legacyDefinitions = json.readTree(input).get("$defs"); }
     }
 
     public OcrResultPayload parse(String raw) {
@@ -50,8 +53,11 @@ public class OcrResultValidator {
                     && text(provenance.get("image_id")).matches("sha256:[0-9a-f]{64}"));
             JsonNode result = envelope.get("ocr_result");
             object(result,"result");
-            require(OcrProtocol.RESULT_VERSION.equals(text(result.get("schema_version")))
+            String version = text(result.get("schema_version"));
+            boolean legacy = OcrProtocol.LEGACY_RESULT_VERSION.equals(version);
+            require((legacy || OcrProtocol.RESULT_VERSION.equals(version))
                     && "result".equals(text(result.get("type"))));
+            object(result,"result",legacy ? legacyDefinitions : definitions);
             String status = text(result.get("status"));
             int exit = switch (status) { case "success" -> 0; case "partial" -> 1; case "failed" -> 2; default -> throw invalid(); };
             require(integer(envelope.get("exit_code"),0,2) && envelope.get("exit_code").intValue() == exit);
@@ -72,21 +78,24 @@ public class OcrResultValidator {
             long characters = 0;
             int number = 0;
             for (JsonNode page : pages) {
-                object(page,"page");
+                object(page,"page",legacy ? legacyDefinitions : definitions);
                 require(integer(page.get("page_number"),1,limits.getMaxPages()) && page.get("page_number").intValue() == ++number);
                 String pageStatus = text(page.get("status")), method = text(page.get("method"));
-                String value = text(page.get("text")), source = text(page.get("raw_text"));
-                int n = value.codePointCount(0,value.length()), m = source.codePointCount(0,source.length());
-                require(n <= limits.getMaxTextCodePoints() && m <= limits.getMaxTextCodePoints()
-                        && !value.contains("\r") && Normalizer.isNormalized(value,Normalizer.Form.NFC));
+                String source = text(page.get("raw_text"));
+                String value = legacy ? text(page.get("text")) : null;
+                int n = legacy ? value.codePointCount(0,value.length()) : 0;
+                int m = source.codePointCount(0,source.length());
+                require(n <= limits.getMaxTextCodePoints() && m <= limits.getMaxTextCodePoints());
+                if (legacy) require(!value.contains("\r") && Normalizer.isNormalized(value,Normalizer.Form.NFC));
                 characters += (long)n + m;
                 warnings(page.get("warnings"));
                 timings(page.get("timings_ms"),Set.of("native","render","preprocess","ocr","total"));
                 switch (pageStatus) {
-                    case "ok" -> { require(Set.of("native","ocr").contains(method) && usable(value) && page.get("error").isNull()); ok = true; }
-                    case "blank" -> require(method.equals("none") && value.isEmpty() && source.isEmpty()
+                    case "ok" -> { require(Set.of("native","ocr").contains(method)
+                            && usable(legacy ? value : source) && page.get("error").isNull()); ok = true; }
+                    case "blank" -> require(method.equals("none") && (!legacy || value.isEmpty()) && source.isEmpty()
                             && page.get("error").isNull() && contains(page.get("warnings"),"BLANK_PAGE"));
-                    case "failed", "not_processed" -> { require(method.equals("none") && value.isEmpty()); error(page.get("error")); pageFailure = true; }
+                    case "failed", "not_processed" -> { require(method.equals("none") && (!legacy || value.isEmpty())); error(page.get("error")); pageFailure = true; }
                     default -> throw invalid();
                 }
                 nativePage |= method.equals("native"); ocrPage |= method.equals("ocr");
@@ -99,13 +108,16 @@ public class OcrResultValidator {
             require(resultJson.getBytes(StandardCharsets.UTF_8).length <= limits.getMaxResultBytes());
             ExtractionMethod method = nativePage && ocrPage ? ExtractionMethod.MIXED : nativePage
                     ? ExtractionMethod.TEXT_EXTRACTION : ocrPage ? ExtractionMethod.OCR : ExtractionMethod.NONE;
-            return new OcrResultPayload(profile,request,document,status,method,resultJson,json.writeValueAsString(provenance),digest(raw));
+            return new OcrResultPayload(profile,version,request,document,status,method,resultJson,json.writeValueAsString(provenance),digest(raw));
         } catch (OcrStateException known) { throw known; }
         catch (RuntimeException malformed) { throw invalid(); }
     }
 
     private void object(JsonNode node,String name) {
-        JsonNode definition = definitions.get(name);
+        object(node,name,definitions);
+    }
+    private void object(JsonNode node,String name,JsonNode versionDefinitions) {
+        JsonNode definition = versionDefinitions.get(name);
         require(node != null && node.isObject() && definition.get("properties").propertyNames().containsAll(node.propertyNames()));
         for (JsonNode key : definition.get("required")) require(node.has(key.asString()));
     }

@@ -1,5 +1,7 @@
 # M6 baseline — handoff PR #9 hiện hành
 
+> Historical v1 design/evidence. New results use `cv-compass.ocr/2.0` and only `raw_text`; see `OCR_V2_RAW_TEXT.md`. Existing v1 snapshots/outcomes remain valid.
+
 PR [#9](https://github.com/hoangnguyen229/cv-compass/pull/9), `feature/ocr-worker`.
 Đợt sửa endpoint/staging/build/CI nối tiếp baseline ee6d4a7, giữ pipeline PDF → page
 text. Source đã đổi: evidence80/80 cũ chỉ là lịch sử. Kết quả/fingerprint mới và review

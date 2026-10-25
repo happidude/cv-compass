@@ -1,0 +1,9 @@
+{
+  "type": "request",
+  "schema_version": "cv-compass.ocr/2.0",
+  "request_id": "synthetic-request-001",
+  "document_id": "synthetic-document-001",
+  "input_ref": "0123456789abcdef0123456789abcdef.pdf",
+  "expected_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "profile": "baseline-v1"
+}

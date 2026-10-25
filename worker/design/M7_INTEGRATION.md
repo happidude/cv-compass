@@ -1,5 +1,7 @@
 # M7.3 → M7.5 integration — implementation, not acceptance evidence
 
+> Historical v1 design/evidence. New results use `cv-compass.ocr/2.0` and only `raw_text`; see `OCR_V2_RAW_TEXT.md`. Existing v1 snapshots/outcomes remain valid.
+
 Local admission extension: the default contract below remains synthetic-only.
 An explicitly configured local deployment sends `synthetic_only=false` and
 `local_only=true` in claim data; the worker must opt in to the same mode in

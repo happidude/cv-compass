@@ -31,7 +31,7 @@ function syntheticPdf(text: string) {
   );
 }
 
-test("UI upload outside manifest is processed by the real worker and renders persisted page text", async ({
+test("UI upload outside manifest is processed by the real worker and renders persisted page rawText", async ({
   page,
   request,
 }) => {
@@ -142,9 +142,9 @@ async function verifyUpload(
   const detail = await persisted.json();
   expect(detail.processing.status).toBe("COMPLETED");
   expect(detail.ocr.availability).toBe("PAGE_RESULT");
-  expect(detail.ocr.pages[0].text).toContain(text);
+  expect(detail.ocr.pages[0].rawText).toContain(text);
   console.log(
-    `Synthetic document ID=${document.id}; job ID=${detail.processing.jobId}; persisted page text and UI verified`,
+    `Synthetic document ID=${document.id}; job ID=${detail.processing.jobId}; persisted page rawText and UI verified`,
   );
   return detail;
 }

@@ -2,11 +2,10 @@
 import copy
 import json
 import re
-import unicodedata
 from jsonschema import Draft202012Validator
 from .config import DESIGN
 
-SCHEMA = json.loads((DESIGN / 'ocr-v1.schema.json').read_text(encoding='utf-8'))
+SCHEMA = json.loads((DESIGN / 'ocr-v2.schema.json').read_text(encoding='utf-8'))
 VALIDATOR = Draft202012Validator(SCHEMA)
 
 
@@ -30,12 +29,9 @@ def classify(pages, errors):
     return 'partial' if errors or any(p['status'] in ('failed', 'not_processed') for p in pages) else 'success'
 
 
-def normalized(text):
-    return unicodedata.normalize('NFC', text.replace('\r\n', '\n').replace('\r', '\n'))
-
 
 def page(number, status='not_processed', code=None, stage='supervisor'):
-    return dict(page_number=number, status=status, method='none', text='', raw_text='',
+    return dict(page_number=number, status=status, method='none', raw_text='',
                 warnings=['BLANK_PAGE'] if status == 'blank' else [],
                 error={'code': code, 'stage': stage} if code else None,
                 timings_ms={k: (0 if k == 'total' else None) for k in ('native', 'render', 'preprocess', 'ocr', 'total')},
@@ -51,7 +47,7 @@ def validate_result(result, config):
     pages, count = result['pages'], result['page_count']
     if (count is None and pages) or (count is not None and (len(pages) != count or count > config.max_pages)):
         raise ValueError('PAGE_COUNT_LIMIT')
-    if sum(len(p[k]) for p in pages for k in ('text', 'raw_text')) > config.max_document_text:
+    if sum(len(p['raw_text']) for p in pages) > config.max_document_text:
         raise ValueError('OUTPUT_LIMIT')
     if result['status'] != classify(pages, result['errors']):
         raise ValueError('DOCUMENT_STATUS')
@@ -63,11 +59,9 @@ def validate_page(item, number, config):
     Draft202012Validator({'$ref': '#/$defs/page', '$defs': SCHEMA['$defs']}).validate(item)
     if item['page_number'] != number:
         raise ValueError('PAGE_ORDER')
-    if any(len(item[k]) > config.max_text_code_points_per_field for k in ('text', 'raw_text')):
+    if len(item['raw_text']) > config.max_text_code_points_per_field:
         raise ValueError('OUTPUT_LIMIT')
-    if item['text'] != normalized(item['text']):
-        raise ValueError('TEXT_NORMALIZATION')
-    if item['status'] == 'ok' and not item['text'].strip():
+    if item['status'] == 'ok' and not item['raw_text'].strip():
         raise ValueError('PAGE_STATUS')
 
 
@@ -79,7 +73,7 @@ def fit_result(result, config):
     used = 0
     limited = False
     for item in original:
-        chars = len(item['text']) + len(item['raw_text'])
+        chars = len(item['raw_text'])
         if limited or chars + used > config.max_document_text:
             limited = True
             result['pages'].append(page(item['page_number'], code='OUTPUT_LIMIT', stage='output'))

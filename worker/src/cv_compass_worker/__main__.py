@@ -24,7 +24,7 @@ class SafeParser(argparse.ArgumentParser):
 
 
 def validated_identity(request: object) -> bool:
-    if not isinstance(request, dict) or request.get('schema_version') != 'cv-compass.ocr/1.0':
+    if not isinstance(request, dict) or request.get('schema_version') != 'cv-compass.ocr/2.0':
         return False
     return all(isinstance(request.get(k), str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', request[k])
                for k in ('request_id', 'document_id'))

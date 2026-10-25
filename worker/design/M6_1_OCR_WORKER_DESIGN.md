@@ -1,5 +1,7 @@
 > LỊCH SỬ M6.1: không dùng như mô tả source/acceptance hiện tại. Xem [handoff hiện hành](M6_BASELINE_HANDOFF.md) và [PR9 revision](M6_PR9_REVISION.md). Target quality bên dưới là đề xuất lịch sử; OCR accuracy chưa đánh giá, GCC unresolved chặn production riêng.
 
+> Historical v1 design/evidence. New results use `cv-compass.ocr/2.0` and only `raw_text`; see `OCR_V2_RAW_TEXT.md`. Existing v1 snapshots/outcomes remain valid.
+
 # M6.1 — Thiết kế Python OCR worker độc lập
 
 **DRAFT — chờ review trước M6.2**, khảo sát ngày2026-10-18. Nền main sau PR#8:

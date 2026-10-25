@@ -21,7 +21,7 @@ class ReviewRegressionTests(unittest.TestCase):
         self.source = self.root/('c'*32+'.pdf')
         native(self.source)
         self.req = request(self.source)
-        example = json.loads((ROOT/'design/examples/result-success.json').read_text(encoding='utf-8'))
+        example = json.loads((ROOT/'design/examples-v2/result-success.json').read_text(encoding='utf-8'))
         self.engines = example['engines']
         self.good = example['pages'][0]
 
@@ -32,7 +32,7 @@ class ReviewRegressionTests(unittest.TestCase):
     def test_document_text_cap_stops_before_next_engine(self):
         first, second = copy.deepcopy(self.good), copy.deepcopy(self.good)
         second['page_number'] = 2
-        cap = len(first['text'])+len(first['raw_text'])
+        cap = len(first['raw_text'])
         with self.fake_child(3, first, second) as child:
             result = process(self.req, self.root, config(max_document_text=cap))
         validate_result(result, config(max_document_text=cap))
