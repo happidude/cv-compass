@@ -28,7 +28,7 @@ logging:
       max-history: ${CV_LOG_MAX_HISTORY:7}
       total-size-cap: ${CV_LOG_TOTAL_SIZE_CAP:100MB}
   pattern:
-    console: &readable-log "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %level service=${spring.application.name} event=%X{event:--} correlationId=%X{correlationId:--} documentId=%X{documentId:--} jobId=%X{jobId:--} attemptId=%X{attemptId:--} workerId=%X{workerId:--} status=%X{status:--} storageKey=%X{storageKey:--} exceptionType=%X{exceptionType:--} errorCode=%X{errorCode:-NONE} %logger{36} : %msg%n"
+    console: &readable-log "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %level service=${spring.application.name} event=%X{event:--} correlationId=%X{correlationId:--} documentId=%X{documentId:--} jobId=%X{jobId:--} attemptId=%X{attemptId:--} workerId=%X{workerId:--} status=%X{status:--} storageKey=%X{storageKey:--} exceptionType=%X{exceptionType:--} applicationStack=%X{applicationStack:--} errorCode=%X{errorCode:-NONE} %logger{36} : %msg%n"
     file: *readable-log
 
 # Explicit provider selection and root are mandatory; no production storage default.

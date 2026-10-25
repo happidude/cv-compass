@@ -33,6 +33,10 @@ public final class OperationalLog {
             MDC.put("errorCode", errorCode == null ? "NONE" :
                     errorCode.matches("[A-Z][A-Z0-9_]{0,63}") ? errorCode : "INVALID_LOG_CODE");
             context.forEach((key, value) -> {
+                if (key.equals("applicationStack") && value instanceof SafeStackLocations locations) {
+                    MDC.put(key, locations.value());
+                    return;
+                }
                 if (KEYS.contains(key) && value != null) {
                     String safe = value.toString();
                     String pattern = key.equals("storageKey") ? "[A-Za-z0-9][A-Za-z0-9/_.-]{0,255}" : "[A-Za-z0-9][A-Za-z0-9_.-]{0,127}";

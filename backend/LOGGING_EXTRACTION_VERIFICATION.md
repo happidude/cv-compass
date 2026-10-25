@@ -1,5 +1,11 @@
 # Logging and native extraction — local evidence (2026-10-25)
 
+**Latest logging-findings follow-up:** see
+[LOGGING_DIAGNOSTICS_VERIFICATION.md](LOGGING_DIAGNOSTICS_VERIFICATION.md).
+Its full checks are currently BLOCKED by unavailable PostgreSQL/Docker. The PASS
+counts, image ID and source manifests below are historical evidence for commit
+`9e214ec`, not evidence for the new uncommitted diagnostics source.
+
 Approved scope: shared backend/worker operational logging, native extraction
 quality, synthetic ground truth/regression tests, configuration/docs and measured
 worker image rebuild. Developer explicitly authorized commit/push/PR, no merge,

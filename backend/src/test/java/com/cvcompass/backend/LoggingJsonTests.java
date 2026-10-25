@@ -27,8 +27,9 @@ class LoggingJsonTests {
             event.setTimeStamp(System.currentTimeMillis()); event.setLevel(ch.qos.logback.classic.Level.INFO);
             event.setLoggerName("com.cvcompass.events"); event.setThreadName("synthetic-test");
             event.setMessage("DOCUMENT_STORED");
+            String locations = com.cvcompass.backend.web.SafeStackLocations.capture(new RuntimeException("PRIVATE")).value();
             event.setMDCPropertyMap(Map.of("event", "DOCUMENT_STORED", "errorCode", "NONE",
-                    "documentId", "42", "correlationId", "synthetic-request"));
+                    "documentId", "42", "correlationId", "synthetic-request", "applicationStack", locations));
             var json = JsonMapper.builder().build().readTree(encoder.encode(event));
             assertThat(json.path("timestamp").asString()).contains("T");
             assertThat(json.has("@timestamp")).isFalse();
@@ -37,6 +38,7 @@ class LoggingJsonTests {
             assertThat(json.path("event").asString()).isEqualTo("DOCUMENT_STORED");
             assertThat(json.path("documentId").asString()).isEqualTo("42");
             assertThat(json.path("errorCode").asString()).isEqualTo("NONE");
+            assertThat(json.path("applicationStack").asString()).contains("com.cvcompass.backend.LoggingJsonTests").doesNotContain("PRIVATE");
         } finally { encoder.stop(); context.stop(); }
     }
 }

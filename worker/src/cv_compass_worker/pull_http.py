@@ -12,6 +12,7 @@ import time
 import uuid
 import logging
 from .observability import context, event, Event
+from .diagnostics import WorkerFailure, Reason, annotate, transport_failure, failure_scope
 from urllib.parse import urlsplit
 
 BASE = '/internal/ocr/v1'
@@ -26,14 +27,21 @@ class Exchange:
         try:
             connection.connect()
         except BaseException:
-            connection.close()
+            try:
+                connection.close()
+            except BaseException as cleanup:
+                # Diagnostic only: preserve the existing retry policy for connect/close failures.
+                annotate(cleanup, Reason.HTTP_CLEANUP_FAILED)
+                raise
             raise
         self.socket = connection.sock
+        self.expired = False
         self.timer = threading.Timer(timeout, self.interrupt)
         self.timer.daemon = True
         self.timer.start()
 
     def interrupt(self):
+        self.expired = True
         try:
             self.socket.shutdown(socket.SHUT_RDWR)
         except OSError:
@@ -58,6 +66,8 @@ class Exchange:
                 primary.add_note('HTTP_CLEANUP_FAILED; intake must remain halted')
             else:
                 failure.cleanup_failed=True
+                annotate(failure, Reason.HTTP_CLEANUP_FAILED, correlation_id=getattr(self, 'correlation_id', None),
+                         http_status=getattr(self, 'http_status', None))
                 raise failure
 
 
@@ -65,10 +75,16 @@ class HttpFailure(Exception):
     def __init__(self, status):
         super().__init__('OCR_HTTP_REJECTED')
         self.status = status
+        reason = (Reason.HTTP_AUTHENTICATION_FAILED if status == 401 else
+                  Reason.HTTP_AUTHORIZATION_FAILED if status == 403 else Reason.HTTP_REJECTED)
+        annotate(self, reason, http_status=status)
 
 
 class InputIntegrityError(ValueError):
     """Non-retryable input admission failure; no fabricated M6 JSON."""
+    def __init__(self, code):
+        super().__init__(code)
+        annotate(self, Reason.INPUT_INTEGRITY)
 
 
 class DownloadUnavailable(OSError):
@@ -101,8 +117,10 @@ def strict_json(raw):
 
 class WorkerHttp:
     def __init__(self, config, credential):
+        if credential is None or credential == '':
+            raise WorkerFailure(Reason.CREDENTIAL_MISSING)
         if not isinstance(credential, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43,256}', credential):
-            raise ValueError('PULL_CREDENTIAL')
+            raise WorkerFailure(Reason.CREDENTIAL_INVALID)
         self.config, self._credential = config, credential
         self.origin = urlsplit(config.origin)
 
@@ -110,32 +128,39 @@ class WorkerHttp:
         correlation = str(uuid.uuid4())
         # Job input URLs are never trusted; caller constructs the one allowed relative path.
         if not re.fullmatch(BASE+r'/(?:claims|attempts/[0-9a-f-]{36}/(?:input|lease|result|failure))', path):
-            raise ValueError('PULL_PATH')
-        if self.origin.scheme == 'https':
-            connection = http.client.HTTPSConnection(self.origin.hostname, self.origin.port,
-                    timeout=self.config.http_timeout_seconds, context=ssl.create_default_context())
-        else:
-            connection = http.client.HTTPConnection(self.origin.hostname, self.origin.port,
-                    timeout=self.config.http_timeout_seconds)
+            raise WorkerFailure(Reason.PULL_PATH)
         headers = {'Authorization': 'Bearer '+self._credential, 'X-Lease-Token': token,
                    'X-Correlation-ID': correlation,
                    'Accept-Encoding': 'identity', 'Content-Type': 'application/json'}
         if claim_id is not None:
             headers['Idempotency-Key'] = claim_id
-        exchange = Exchange(connection,self.config.http_timeout_seconds if exchange_timeout is None else exchange_timeout)
+        exchange = None
         try:
+            if self.origin.scheme == 'https':
+                connection = http.client.HTTPSConnection(self.origin.hostname, self.origin.port,
+                        timeout=self.config.http_timeout_seconds, context=ssl.create_default_context())
+            else:
+                connection = http.client.HTTPConnection(self.origin.hostname, self.origin.port,
+                        timeout=self.config.http_timeout_seconds)
+            exchange = Exchange(connection,self.config.http_timeout_seconds if exchange_timeout is None else exchange_timeout)
+            exchange.correlation_id = correlation
+            exchange.http_status = None
             with context(correlationId=correlation):
                 event(Event.HTTP_STARTED, level=logging.DEBUG)
             connection.request(method, path, body=data, headers=headers)
             response = connection.getresponse()
+            exchange.http_status = response.status
             with context(correlationId=correlation):
                 event(Event.HTTP_FINISHED, level=logging.DEBUG, httpStatus=response.status)
             exchange.response = response
             if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
-                raise ValueError('PULL_ENCODING')
+                raise WorkerFailure(Reason.PULL_ENCODING)
             return exchange, response
-        except BaseException:
-            exchange.close()
+        except BaseException as failure:
+            transport_failure(failure, correlation, timed_out=exchange is not None and exchange.expired,
+                              http_status=getattr(exchange, 'http_status', None))
+            if exchange is not None:
+                exchange.close()
             raise
 
     def request(self, method, path, data, token, claim_id=None, *, live=lambda: True):
@@ -143,22 +168,30 @@ class WorkerHttp:
             connection = None
             try:
                 if not live():
-                    raise ValueError('LEASE_LOST')
+                    raise WorkerFailure(Reason.LEASE_LOST)
                 connection, response = self._open(method, path, data, token, claim_id)
                 raw = response.read(16385)
                 if len(raw) > 16384:
-                    raise ValueError('HTTP_BODY_LIMIT')
+                    raise WorkerFailure(Reason.HTTP_BODY_LIMIT)
                 if response.status == 204:
                     if raw:
-                        raise ValueError('HTTP_BODY')
+                        raise WorkerFailure(Reason.HTTP_BODY)
                     return None
                 if response.status not in (200, 201):
                     raise HttpFailure(response.status)
-                tree = strict_json(raw)
+                try:
+                    tree = strict_json(raw)
+                except (ValueError, UnicodeError) as failure:
+                    annotate(failure, Reason.HTTP_BODY)
+                    raise
                 if not isinstance(tree, dict) or set(tree) != {'data'} or not isinstance(tree['data'], dict):
-                    raise ValueError('HTTP_BODY')
+                    raise WorkerFailure(Reason.HTTP_BODY)
                 return tree['data']
-            except (OSError, http.client.HTTPException, HttpFailure) as failure:
+            except Exception as failure:
+                transport_failure(failure, getattr(connection, 'correlation_id', None),
+                        timed_out=getattr(connection, 'expired', False), http_status=getattr(connection, 'http_status', None))
+                if not isinstance(failure, (OSError, http.client.HTTPException, HttpFailure)):
+                    raise
                 if getattr(failure,'cleanup_failed',False):
                     raise
                 if isinstance(failure, HttpFailure) and failure.status < 500:
@@ -169,7 +202,7 @@ class WorkerHttp:
                 if connection is not None:
                     connection.close()
             time.sleep(self.config.retry_backoff_seconds)
-        raise ValueError('HTTP_ATTEMPTS')
+        raise WorkerFailure(Reason.HTTP_ATTEMPTS)
 
     def download(self, attempt, token, target, size, sha256, *, live):
         if type(size) is not int or not 1 <= size <= self.config.max_file_bytes \
@@ -181,7 +214,9 @@ class WorkerHttp:
         except (OSError,http.client.HTTPException) as failure:
             if getattr(failure,'cleanup_failed',False):
                 raise
-            raise DownloadUnavailable('DOWNLOAD_UNAVAILABLE') from None
+            wrapped = DownloadUnavailable('DOWNLOAD_UNAVAILABLE')
+            wrapped._ocr_diagnostic = getattr(failure, '_ocr_diagnostic', None)
+            raise wrapped from None
         try:
             if response.status != 200:
                 raise HttpFailure(response.status)
@@ -190,25 +225,34 @@ class WorkerHttp:
                     or response.getheader('X-Content-SHA256') != sha256:
                 raise InputIntegrityError('INPUT_MANIFEST')
             digest, total = hashlib.sha256(), 0
-            descriptor=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
+            with failure_scope(Reason.SPOOL_IO_FAILED):
+                descriptor=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
             with os.fdopen(descriptor,'wb') as output:
                 while True:
                     if not live():
-                        raise ValueError('LEASE_LOST')
+                        raise WorkerFailure(Reason.LEASE_LOST)
                     try:
                         chunk = response.read(min(65536, size-total+1))
-                    except (OSError,http.client.HTTPException):
-                        raise DownloadUnavailable('DOWNLOAD_UNAVAILABLE') from None
+                    except (OSError,http.client.HTTPException) as failure:
+                        transport_failure(failure, connection.correlation_id, timed_out=connection.expired,
+                                          http_status=response.status)
+                        wrapped = DownloadUnavailable('DOWNLOAD_UNAVAILABLE')
+                        wrapped._ocr_diagnostic = failure._ocr_diagnostic
+                        raise wrapped from None
                     if not chunk:
                         break
                     total += len(chunk)
                     if total > size:
                         raise InputIntegrityError('INPUT_SIZE')
                     digest.update(chunk)
-                    output.write(chunk)
+                    with failure_scope(Reason.SPOOL_IO_FAILED):
+                        output.write(chunk)
             if total != size:
                 raise DownloadUnavailable('DOWNLOAD_UNAVAILABLE')
             if digest.hexdigest() != sha256:
                 raise InputIntegrityError('INPUT_INTEGRITY')
+        except Exception as failure:
+            transport_failure(failure, connection.correlation_id, timed_out=connection.expired, http_status=response.status)
+            raise
         finally:
             connection.close()

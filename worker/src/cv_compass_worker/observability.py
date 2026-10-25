@@ -9,6 +9,7 @@ from logging.handlers import RotatingFileHandler
 import os
 import re
 import sys
+from .diagnostics import diagnostic, Reason
 
 
 class Event(StrEnum):
@@ -60,6 +61,8 @@ def event(name: Event, *, level=logging.INFO, error_code='NONE', **details):
     record = dict(_context.get())
     record.update(event=name.value, message=name.value, errorCode=(error_code if isinstance(error_code, str)
                   and re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', error_code) else 'INTERNAL_ERROR'))
+    if safe_id(details.get('exceptionType')):
+        record['exceptionType'] = safe_id(details['exceptionType'])
     for key in ('method', 'status'):
         if key in details and details[key] in ('native', 'ocr', 'none', 'ok', 'blank', 'failed',
                                               'not_processed', 'success', 'partial'):
@@ -90,7 +93,7 @@ class Formatter(logging.Formatter):
             code = supplied.get('errorCode')
             if isinstance(code, str) and re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', code):
                 data['errorCode'] = code
-            for key in _ids:
+            for key in _ids | {'exceptionType'}:
                 if safe_id(supplied.get(key)):
                     data[key] = safe_id(supplied[key])
             for key in ('pageNumber', 'durationMs', 'httpStatus'):
@@ -102,6 +105,27 @@ class Formatter(logging.Formatter):
                 if value in ('native', 'ocr', 'none', 'ok', 'blank', 'failed', 'not_processed', 'success', 'partial'):
                     data[key] = value
         return json.dumps(data, ensure_ascii=False) if self.json_output else ' '.join(f'{k}={v}' for k, v in data.items())
+
+
+def report_failure(error, fallback=Reason.UNEXPECTED_WORKER_FAILURE, *, name=Event.WORKER_HALTED,
+                   level=logging.ERROR, initialized=True):
+    """Called by the error owner before its ID scope closes; never formats the exception."""
+    if name == Event.WORKER_HALTED and getattr(error, '_operational_logged', False):
+        return
+    info = diagnostic(error, fallback)
+    with context(correlationId=info.correlation_id):
+        if initialized:
+            event(name, level=level, error_code=info.reason.value, exceptionType=safe_id(info.exception_type) or 'Exception',
+                  httpStatus=info.http_status)
+        else:
+            # No logger/handler exists yet. A fixed safe JSON diagnostic still reaches stderr.
+            record = dict(timestamp=datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
+                          level='ERROR', service='cv-compass-worker', event=name.value, message=name.value,
+                          errorCode=info.reason.value, exceptionType=safe_id(info.exception_type) or 'Exception')
+            record.update(_context.get())
+            print(json.dumps(record), file=sys.stderr)
+    if name == Event.WORKER_HALTED:
+        error._operational_logged = True
 
 
 def configure_child_diagnostics():

@@ -46,6 +46,16 @@ class OperationalLogTests {
             OperationalLog.committed(INFO, DOCUMENT_STORED, null, Map.of("documentId", 43L));
             TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCompletion(1));
             assertThat(appender.list).hasSize(2);
+            var failure = new RuntimeException("PRIVATE");
+            OperationalLog.write(ERROR, HTTP_REQUEST_FAILED, "INTERNAL_ERROR", Map.of(
+                    "applicationStack", com.cvcompass.backend.web.SafeStackLocations.capture(failure),
+                    "exceptionType", failure.getClass().getName()));
+            assertThat(appender.list.getLast().getMDCPropertyMap()).containsKey("applicationStack");
+            assertThat(appender.list.getLast().getMDCPropertyMap().get("applicationStack"))
+                    .contains("com.cvcompass.backend.OperationalLogTests").doesNotContain("PRIVATE");
+            assertThat(MDC.get("applicationStack")).isNull();
+            OperationalLog.write(ERROR, HTTP_REQUEST_FAILED, "INTERNAL_ERROR", Map.of("applicationStack", "PRIVATE"));
+            assertThat(appender.list.getLast().getMDCPropertyMap()).doesNotContainKey("applicationStack");
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
             TransactionSynchronizationManager.setActualTransactionActive(false);
