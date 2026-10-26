@@ -81,11 +81,18 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 spotless {
-    enforceCheck = false
+    enforceCheck = true
     lineEndings = com.diffplug.spotless.LineEnding.PRESERVE
     java {
         target 'src/main/java/**/*.java', 'src/test/java/**/*.java'
-        targetExclude '**/generated/**'
+        // Keep original static-import resolution in files whose javap changed after formatting.
+        targetExclude '**/generated/**',
+                'src/test/java/com/cvcompass/backend/DiskImportIntegrationTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/controller/OcrWorkerControllerTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/CvDocumentServiceTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/OcrEnqueueTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/OcrJobHeartbeatTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/OcrWorkerServiceTests.java'
         googleJavaFormat('1.36.1').aosp().reflowLongStrings(false).reorderImports(false).formatJavadoc(false)
     }
 }
