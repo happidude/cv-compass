@@ -61,17 +61,17 @@ Các path viết `.../` trong bảng đều có tiền tố
 
 | Rule | Đúng | Sai / cần tránh | Lý do |
 | --- | --- | --- | --- |
-| 4 spaces, mở brace cùng dòng, statement mỗi dòng | `this.jobs = jobs;` rồi dòng `this.state = state;` | `this.jobs=jobs; this.state=state;` (B01) | Giữ style phần lớn code, làm diff dễ đọc |
+| AOSP: indent 4 spaces, continuation 8 spaces; mở brace cùng dòng, statement mỗi dòng | `this.jobs = jobs;` rồi dòng `this.state = state;` | `this.jobs=jobs; this.state=state;` (B01) | Giữ style phần lớn code, làm diff dễ đọc |
 | Block nhiều dòng cho control flow khi formatter hỗ trợ an toàn | `if (...) {` / body / `}` | Nén `try/catch` một dòng (B03) | Dễ thấy guard; formatter chỉ whitespace, thêm brace là đợt thủ công riêng có review scope |
-| Imports theo nhóm đang phổ biến: non-JDK, trống, java/javax, trống, static; alphabet trong nhóm | `com...`, `jakarta...`, `org...`, `tools...`; sau đó `java...`; static cuối | Wildcard production và thứ tự ngẫu nhiên (B02) | Explicit xuất hiện nhiều hơn; không đổi resolution import mơ hồ; static wildcard test chưa bắt buộc mở rộng |
-| Line width mục tiêu 120 cho Java | Wrap constructor/record dài, không sửa nội dung string/text block | Cắt string SQL hoặc chỉnh whitespace bên trong text block | 120 là mục tiêu đã duyệt để cơ giới hóa, không phải chuẩn đã được đo là đa số |
+| Import theo output google-java-format: static trước non-static; không chia nhóm non-JDK/JDK thủ công | Static imports trước, non-static sau theo formatter | Wildcard production và thứ tự ngẫu nhiên (B02) | Giữ explicit imports production; không đổi resolution mơ hồ hoặc wildcard static test |
+| Line width 100 cố định theo google-java-format (AOSP) | Wrap constructor/record dài, không sửa nội dung string/text block | Cắt string SQL hoặc chỉnh whitespace bên trong text block | Formatter là nguồn chuẩn cho whitespace và wrap, không đặt width riêng |
 
-Java dùng **Spotless + google-java-format**. **Đã duyệt, chờ chốt version và chạy thử ở Giai đoạn 2**.
+Java dùng **Spotless + google-java-format, style AOSP**. **Đã duyệt, chờ chốt version và chạy thử ở Giai đoạn 2**.
 Spotless chịu trách nhiệm tích hợp formatter vào Gradle và kiểm tra format;
 google-java-format là formatter chuẩn cho Java. Chưa cài đặt hoặc cấu hình,
 chưa chọn version, chưa kiểm chứng parser Java 25/Gradle 9.7.1. Giữ nguyên các rule
-format đã duyệt ở bảng trên; khả năng đáp ứng indent/line width/import grouping phải
-được kiểm chứng khi chạy thử, không tự sửa rule nếu output formatter không khớp.
+format đã duyệt ở bảng trên. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự
+import; rule viết tay không được mâu thuẫn output formatter.
 Chạy formatter preview trên sample trước; nếu đổi text block/string bytes hoặc
 không hỗ trợ syntax thì bỏ qua/báo cáo.
 Không cài thêm Checkstyle cùng lúc. Tách format khỏi import cleanup; không bật

@@ -87,9 +87,9 @@ artifacts khỏi mọi formatter/cleanup. Chưa normalize EOL checkout hiện t�
 ## Quyết định đã chốt
 
 1. Bộ README, Backend, Worker và Frontend là Code Conventions chính thức, đã duyệt
-   ngày 26/10/2026. Java dùng **Spotless + google-java-format**: **Đã duyệt, chờ chốt
+   ngày 26/10/2026. Java dùng **Spotless + google-java-format, style AOSP**: **Đã duyệt, chờ chốt
    version và chạy thử ở Giai đoạn 2**. Spotless tích hợp formatter vào Gradle và
-   kiểm tra format; google-java-format là formatter chuẩn cho Java. Ruff
+   kiểm tra format; google-java-format là formatter chuẩn cho Java: indent 4 spaces, continuation 8 spaces, line width 100 cố định. Import theo output formatter, static trước non-static; không chia nhóm thủ công. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự import; rule viết tay không được mâu thuẫn output formatter. Ruff
    formatter/linter cho Python đã duyệt về nguyên tắc, chờ chốt version và kiểm
    chứng ở Giai đoạn 2. Chưa cài đặt hoặc cấu hình các công cụ này; không cài Black
    song song Ruff. Kiểm chứng tương thích Java 25 / Gradle 9.7.1 / Python 3.14.8
