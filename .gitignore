@@ -52,4 +52,8 @@ credentials/
 
 # Local project documentation
 /docs/
+!/docs/
+/docs/*
+!/docs/conventions/
+!/docs/conventions/**
 /AGENTS.md
