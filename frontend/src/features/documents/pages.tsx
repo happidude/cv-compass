@@ -1,7 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { useDocuments, useDocument } from "./queries";
 import { dedupeDocuments } from "./api";
-import type { DocumentDetail } from "./schema";
 import { validRouteId } from "../../shared/schema";
 import { activeJob, usePollingBudget } from "../../shared/polling";
 import { date, bytes, displayName } from "../../shared/format";
@@ -16,6 +15,7 @@ import {
 import { Status, statusInfo } from "../../shared/ui/status";
 import { Button } from "../../shared/ui/button";
 import { errorLabel } from "../../shared/http";
+import type { DocumentDetail } from "./schema";
 export function DocumentsPage() {
   const q = useDocuments();
   const rows = dedupeDocuments(q.data?.pages ?? []);
