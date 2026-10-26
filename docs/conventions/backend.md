@@ -78,9 +78,12 @@ giống hệt trước/sau cho toàn bộ main/test classes. Không dùng `-l`.
 Python và Frontend vẫn cấm xóa unused imports; ngoại lệ này không áp dụng cho hai phần đó.
 Trial 1.37.0 gặp API mismatch (`NoSuchMethodError`); 1.36.1 là default được changelog
 Spotless công bố và chạy được. Không đổi công cụ.
-`./gradlew.bat spotlessApply` / `spotlessCheck` là lệnh dự kiến sau khi giải quyết
-adapter; hiện chưa có các task này trong backend, chưa gắn `spotlessCheck` vào `check`.
-Chi tiết trial và phần chưa áp dụng tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
+Đã tích hợp vào `backend/build.gradle`: từ backend/ chạy `./gradlew.bat spotlessApply`
+hoặc `./gradlew.bat spotlessCheck` (WSL dùng `./gradlew`). `check` bao gồm spotlessCheck.
+Giữ EOL bằng `LineEnding.PRESERVE`, tắt Javadoc reflow. Sáu test files được targetExclude
+vì javap khác sau sorting static imports; toàn bộ source còn giữ đạt javap giống hệt.
+Compile/format gate được kiểm chứng riêng; full DB test gate vẫn NOT VERIFIED khi
+thiếu PostgreSQL test credentials. Chi tiết exclusions/evidence tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 Không cài thêm Checkstyle. Cho phép import cleanup do formatter Java thực hiện;
 `reflowLongStrings(false)`, không đổi giá trị/bytes string hoặc text block.
 Exclude migration, contracts, generated; mở wildcard production bằng đợt riêng có compile/javap.

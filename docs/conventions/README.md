@@ -92,10 +92,14 @@ artifacts khỏi mọi formatter/cleanup. Không normalize EOL checkout hiện t
    kiểm tra format; google-java-format là formatter chuẩn cho Java: indent 4 spaces, continuation 8 spaces, line width 100 cố định. Import theo output formatter, static trước non-static; không chia nhóm thủ công. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự import; rule viết tay không được mâu thuẫn output formatter. Ruff
    formatter/linter 0.17.2 đã cài trong tool venv riêng ngoài repo, có `worker/ruff.toml`;
    đã format và sắp xếp imports trong phạm vi kiểm chứng được. Không cài Black.
-   Trial Spotless 8.10.4 + google-java-format 1.36.1 chạy được trên JDK 25/Gradle 9.7.1,
+   Spotless 8.10.4 + google-java-format 1.36.1 đã tích hợp và chạy trên JDK 25/Gradle 9.7.1;
    quyết định mới cho phép riêng Java xóa unused imports khi compile thành công và
    toàn bộ output `javap -c -p -constants` giống hệt trước/sau. Python/Frontend vẫn
    cấm xóa unused imports; không đổi giá trị string/text block hoặc dependency hiện có.
+   Backend đã format 141 file, mở wildcard ở 29 production files, giữ nguyên sáu test
+   files có javap khác khi thử format. Compile/spotlessCheck và javap 189/189 đạt;
+   full DB test gate vẫn NOT VERIFIED. Lệnh backend: `./gradlew.bat spotlessApply`,
+   `./gradlew.bat spotlessCheck`, `./gradlew.bat check --rerun-tasks`.
    Frontend giữ Prettier 3.6.2 đã có và thêm config explicit, không đổi dependency/lockfile.
 2. Python type hints chỉ áp dụng cho code mới. Giai đoạn 2 không bổ sung type hints
    vào code Python cũ; annotation có thể được inspect/runtime evaluate.

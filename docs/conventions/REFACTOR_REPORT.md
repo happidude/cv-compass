@@ -4,6 +4,105 @@ Ngày: 26/10/2026. Branch duy nhất: `docs/code-conventions`.
 Điểm quay lại trước lượt áp dụng: `6ddbe40d249afb356e276f3426860bc2f0e384d9`.
 Working tree sạch tại preflight; không tạo branch/worktree khác.
 
+## Lượt bổ sung backend Java từ `2e019b4`
+
+Developer cho phép riêng Java xóa unused imports bằng formatter, với compile và
+`javap -c -p -constants` giống hệt. Python/Frontend vẫn cấm xóa import. Không đổi
+dependency/plugin hiện có, lockfile, API/DB/env contract, nội dung string/text block.
+
+Đã tích hợp Spotless 8.10.4 + google-java-format 1.36.1 AOSP, `reflowLongStrings(false)`,
+`formatJavadoc(false)`, `LineEnding.PRESERVE`. Version stable/default đã đối chiếu
+[changelog chính thức](https://raw.githubusercontent.com/diffplug/spotless/main/plugin-gradle/CHANGES.md)
+và chạy thử trên JDK 25.0.4.1/Gradle 9.7.1. Không chọn 1.37.0 vì API mismatch đã biết.
+
+- Format: 147 file ban đầu, hoàn nguyên nguyên file của 6 test files vì output javap
+  khác; giữ format ở 141/159 Java files. 12 file vốn không có format diff.
+- Wildcard: mở toàn bộ 70 wildcard declarations ở 29 production files bằng symbol
+  mapping javac, rồi compiler build thật xác nhận không thiếu/mơ hồ imports.
+  Symbol inspection dùng `-proc:none` và có diagnostics do Lombok không chạy;
+  không coi inspection là compile PASS. Build với annotation processing thật mới là gate.
+  Tổng source Java thực tế thay đổi là 142 file: một file mở wildcard trước đó vốn
+  không có format diff. Cùng build.gradle và ba docs, lượt này đổi 146 file riêng biệt.
+- Javap: so đủ 189 main/test `.class` (kể cả nested classes), output đầy đủ byte-for-byte,
+  không dùng `-l`, không normalize constant-pool indices hay đổi method owner.
+  Lần thử đầu 183/189 khớp; sau hoàn nguyên 6 files: **189/189 khớp**.
+  Sau wildcard: **189/189 khớp** so cùng baseline.
+- SHA-256 output javap cuối/baseline:
+  `a2184008b24a7fbbd08d2de72a606bba019dcc1d20d3bb7f134a8047ed34d25f`.
+- String/text block: parser javac so giá trị string UTF-8, bao gồm decoded text blocks;
+  3.029 giá trị giữ nguyên. Trial ba file thực tế có 194 giá trị cũng khớp. Hash:
+  `5d0c6efe54ee14c4804d0b3738310ecdcb1015792f7ded66c5811b9c49c81ad0`.
+  Whitespace indentation của token text block có thể được formatter dịch theo code;
+  byte nội dung string khi Java diễn giải giữ nguyên. Không reflow literal.
+- EOL: kiểm tra 159 file so original byte backups; không có file đổi loại EOL.
+  Không mở rộng static wildcard imports ở test; sáu file hoàn nguyên giữ nguyên bytes.
+
+Sáu file hoàn nguyên và excluded khỏi Spotless (tương đối `backend/src/test/java/`):
+
+1. `com/cvcompass/backend/DiskImportIntegrationTests.java`
+2. `com/cvcompass/backend/ingestion/controller/OcrWorkerControllerTests.java`
+3. `com/cvcompass/backend/ingestion/service/CvDocumentServiceTests.java`
+4. `com/cvcompass/backend/ingestion/service/OcrEnqueueTests.java`
+5. `com/cvcompass/backend/ingestion/service/OcrJobHeartbeatTests.java`
+6. `com/cvcompass/backend/ingestion/service/OcrWorkerServiceTests.java`
+
+Nguyên nhân: sorting static imports có thể đổi owner của method reference giữa
+`ArgumentMatchers` và `Mockito` (inherited static methods), kéo theo constant-pool
+references. Dù có thể tương đương chức năng, không chấp nhận vì yêu cầu javap tuyệt đối.
+Không sửa assertions/test logic để làm khớp, không normalize output để che khác biệt.
+
+Baseline lượt này: kiểm tra TEST_DB_* chỉ bằng presence, không in/đọc credential values;
+vẫn thiếu TEST_DB_PASSWORD. Theo ủy quyền, full baseline DB tests **NOT VERIFIED**;
+`./gradlew classes testClasses --rerun-tasks --console=plain --warning-mode=all`
+PASS với 3 tasks executed trước sửa source. Baseline full test 331/112/0/0 ở hồ sơ
+lượt trước có cùng source Java, được dùng làm đối chiếu outcome lịch sử, không giả
+nhận là fresh baseline đã chạy lại trong lượt này.
+
+Sau format, `./gradlew check --rerun-tasks --console=plain --warning-mode=all`:
+331 tests / 112 failures / 0 errors / 0 skipped, 44 fresh JUnit suites, 4 tasks executed;
+FAILED vì thiếu PostgreSQL test credential, cùng outcome từng testcase với hồ sơ
+baseline cùng Java source. Compile PASS; full integration gate vẫn **NOT VERIFIED**.
+Không dùng database/schema dev. Môi trường WSL Ubuntu 24.04/OpenJDK 25.0.4.1/Gradle 9.7.1;
+Windows JVM loopback limitation và trạng thái worker/frontend giữ như hồ sơ lượt trước.
+
+SpotlessCheck và compile cuối: `./gradlew spotlessCheck classes testClasses --rerun-tasks
+--console=plain --warning-mode=all` (một dòng), **PASS**, 5 tasks executed. `check`
+đã bao gồm spotlessCheck qua `enforceCheck = true`; task graph đã kiểm tra. Sáu exclusions
+ở trên giữ nguyên bytes source/test, không suppress lỗi hoặc thay assertions.
+
+Full check cuối: `./gradlew spotlessCheck check --rerun-tasks --console=plain
+--warning-mode=all` (một dòng): spotlessJavaCheck/spotlessCheck PASS, 6 tasks freshly
+executed, 331 tests / 112 failures / 0 errors / 0 skipped, 44 fresh JUnit suites.
+Toàn command FAILED ở test vì prerequisite PostgreSQL; outcome mọi testcase không
+khác hồ sơ baseline cùng source. Full DB gate NOT VERIFIED, không tuyên bố full PASS
+hoặc READY. Modulith verification vẫn PASS. Không suppress warnings hoặc bỏ tests.
+
+| Commit lượt backend | Nội dung |
+| --- | --- |
+| `d5f7de9` | docs(conventions): cho phép xóa unused imports ở Java, kèm kiểm chứng bytecode |
+| `db6bb6d` | build(backend): thêm cấu hình Spotless google-java-format (AOSP) |
+| `e1fc227` | style(backend): format Java theo google-java-format (AOSP) |
+| `63e3ae0` | refactor(backend): thay wildcard import bằng explicit import (production) |
+| `6029c19` | build(backend): bật spotlessCheck trong check |
+
+Commit docs cuối dùng message `docs(conventions): cập nhật báo cáo chuẩn hóa Java`;
+hash được cung cấp qua chat/git log để tránh tự tham chiếu hash trong chính commit.
+Compiler/deprecation warnings mới: không ghi nhận. Runtime negative-test logs và
+CRLF advisory của Git giữ cách phân loại ở hồ sơ trước; `git diff --check` có xét
+`cr-at-eol` để kiểm tra whitespace thật mà không normalize CRLF. Không đổi Git config.
+Reviewer đối chiếu source diff, literal bytes, EOL, class inventory và javap đầy đủ;
+không coi AST inspection hoặc format exit 0 là đủ bằng chứng tương đương.
+
+Evidence local ignored tại `backend/build/java-conventions/`: original Java backups,
+trial logs, compiler/literal audit, javap snapshots/mappings, fresh XML và command logs.
+Không commit helper source, class/output hoặc log. CI của source mới NOT VERIFIED.
+Python, Frontend, lockfiles, migrations và canonical OCR artifacts không bị sửa ở lượt này.
+
+## Hồ sơ lượt trước — kết thúc tại `2e019b4`
+
+Các số liệu, danh sách bỏ qua và nhận định “chưa áp dụng backend” trong phần lịch sử
+bên dưới chỉ mô tả lượt trước; trạng thái Java hiện hành là phần bổ sung ở trên.
+
 ## Kết quả và giới hạn
 
 **Đã áp dụng có giới hạn, chưa đạt full quality gate.** Frontend PASS. Backend và
@@ -125,7 +224,7 @@ Set ngay cả khi không bật `removeUnusedImports` và `reorderImports(false)`
 [Adapter chính thức](https://raw.githubusercontent.com/diffplug/spotless/main/lib/src/googleJavaFormat/java/com/diffplug/spotless/glue/java/GoogleJavaFormatFormatterFunc.java)
 gọi trực tiếp RemoveUnusedImports rồi ImportOrderer. Flag reorderImports(false)
 không phải disable sorting toàn bộ; không có flag disable removal trong cấu hình
-đã kiểm tra. Vì vậy không đưa một pipeline vi phạm yêu cầu vào build.gradle.
+đã kiểm tra. Ở lượt trước pipeline chưa được đưa vào build.gradle; quyết định Java mới đã gỡ ràng buộc này, kết quả hiện hành ở phần bổ sung đầu báo cáo.
 Chưa trial tất cả syntax/string/text block của source thật; không tuyên bố hỗ trợ
 hoàn chỉnh codebase từ một sample. Không chạy formatter trên Java source.
 
