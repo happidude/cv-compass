@@ -1,16 +1,27 @@
 package com.cvcompass.backend.ingestion.service;
 
 import com.cvcompass.backend.ingestion.config.OcrIntegrationProperties;
-import com.cvcompass.backend.ingestion.dto.*;
+import com.cvcompass.backend.ingestion.dto.OcrAttemptKey;
+import com.cvcompass.backend.ingestion.dto.OcrClaim;
+import com.cvcompass.backend.ingestion.dto.OcrClaimRequest;
+import com.cvcompass.backend.ingestion.dto.OcrHttpReply;
+import com.cvcompass.backend.ingestion.dto.OcrInput;
+import com.cvcompass.backend.ingestion.dto.OcrReceipt;
+import com.cvcompass.backend.ingestion.dto.OcrWorkerPrincipal;
 import com.cvcompass.backend.ingestion.entity.CvProcessingJob;
-import com.cvcompass.backend.ingestion.enums.*;
+import com.cvcompass.backend.ingestion.enums.OcrFailureCode;
+import com.cvcompass.backend.ingestion.enums.OcrProtocol;
 import com.cvcompass.backend.ingestion.exception.OcrHttpException;
-import com.cvcompass.backend.ingestion.repository.*;
-import java.util.*;
+import com.cvcompass.backend.ingestion.repository.CvProcessingJobRepository;
+import com.cvcompass.backend.ingestion.repository.OcrStateRepository;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.*;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Authenticated HTTP facade. State machine remains the only writer of attempt outcomes. */
 @Service

@@ -2,7 +2,10 @@ package com.cvcompass.backend.ingestion.service;
 
 import com.cvcompass.backend.ingestion.config.OcrJobProperties;
 import com.cvcompass.backend.ingestion.dto.OcrResultPayload;
-import com.cvcompass.backend.ingestion.enums.*;
+import com.cvcompass.backend.ingestion.enums.ExtractionMethod;
+import com.cvcompass.backend.ingestion.enums.OcrEndReason;
+import com.cvcompass.backend.ingestion.enums.OcrProtocol;
+import com.cvcompass.backend.ingestion.enums.OcrStateError;
 import com.cvcompass.backend.ingestion.exception.OcrStateException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,7 +19,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.StreamReadFeature;
-import tools.jackson.databind.*;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Persistence admission, not HTTP authentication or deployment-provenance attestation. */
 @Service

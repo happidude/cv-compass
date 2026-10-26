@@ -3,8 +3,10 @@ package com.cvcompass.backend.ingestion.config;
 import com.cvcompass.backend.ingestion.dto.OcrWorkerPrincipal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import org.springframework.security.authentication.*;
-import org.springframework.security.core.*;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.AuthorityUtils;
 
 /** Per-worker credential verification; registration also prevents a generated default login user. */

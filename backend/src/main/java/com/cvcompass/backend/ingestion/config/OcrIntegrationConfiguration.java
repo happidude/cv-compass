@@ -2,7 +2,7 @@ package com.cvcompass.backend.ingestion.config;
 
 import java.nio.file.Path;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableScheduling;
 

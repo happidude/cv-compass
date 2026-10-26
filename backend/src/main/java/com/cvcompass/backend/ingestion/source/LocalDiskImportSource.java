@@ -2,12 +2,24 @@ package com.cvcompass.backend.ingestion.source;
 
 import com.cvcompass.backend.ingestion.dto.SourceFile;
 import com.cvcompass.backend.ingestion.exception.SourceChangedException;
-import java.io.*;
-import java.nio.channels.*;
-import java.nio.file.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.security.*;
-import java.util.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayDeque;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /** Local filesystem only; OS lock excludes a second runner using the same inbox. */

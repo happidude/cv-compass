@@ -1,6 +1,11 @@
 package com.cvcompass.backend.storage.local;
 
-import static com.cvcompass.backend.storage.StorageException.Reason.*;
+import static com.cvcompass.backend.storage.StorageException.Reason.DELETE_FAILED;
+import static com.cvcompass.backend.storage.StorageException.Reason.INVALID_KEY;
+import static com.cvcompass.backend.storage.StorageException.Reason.NOT_FOUND;
+import static com.cvcompass.backend.storage.StorageException.Reason.READ_FAILED;
+import static com.cvcompass.backend.storage.StorageException.Reason.UNAVAILABLE;
+import static com.cvcompass.backend.storage.StorageException.Reason.WRITE_FAILED;
 
 import com.cvcompass.backend.storage.FileStorageService;
 import com.cvcompass.backend.storage.StorageException;

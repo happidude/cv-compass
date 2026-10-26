@@ -1,7 +1,12 @@
 package com.cvcompass.backend.ingestion.repository;
 
-import com.cvcompass.backend.ingestion.dto.*;
-import com.cvcompass.backend.ingestion.enums.*;
+import com.cvcompass.backend.ingestion.dto.OcrAttemptState;
+import com.cvcompass.backend.ingestion.dto.OcrClaimRequest;
+import com.cvcompass.backend.ingestion.dto.OcrJobState;
+import com.cvcompass.backend.ingestion.dto.OcrResultPayload;
+import com.cvcompass.backend.ingestion.enums.JobStatus;
+import com.cvcompass.backend.ingestion.enums.OcrAttemptStatus;
+import com.cvcompass.backend.ingestion.enums.OcrEndReason;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;

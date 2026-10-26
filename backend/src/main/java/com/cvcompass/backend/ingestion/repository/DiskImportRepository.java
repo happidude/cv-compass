@@ -1,9 +1,15 @@
 package com.cvcompass.backend.ingestion.repository;
 
-import com.cvcompass.backend.ingestion.dto.*;
-import java.sql.*;
+import com.cvcompass.backend.ingestion.dto.BatchItem;
+import com.cvcompass.backend.ingestion.dto.DiskImportEntry;
+import com.cvcompass.backend.ingestion.dto.SourceFile;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.*;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 

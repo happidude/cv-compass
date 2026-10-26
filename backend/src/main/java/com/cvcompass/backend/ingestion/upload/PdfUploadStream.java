@@ -1,6 +1,8 @@
 package com.cvcompass.backend.ingestion.upload;
 
-import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.*;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.EMPTY_FILE;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.FILE_TOO_LARGE;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.INVALID_PDF;
 
 import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import java.io.FilterInputStream;

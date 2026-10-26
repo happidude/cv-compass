@@ -1,7 +1,10 @@
 package com.cvcompass.backend.ingestion.config;
 
 import com.cvcompass.backend.ingestion.enums.OcrProtocol;
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
 import java.util.List;
 import lombok.Getter;

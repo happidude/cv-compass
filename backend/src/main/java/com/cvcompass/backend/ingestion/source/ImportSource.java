@@ -1,7 +1,8 @@
 package com.cvcompass.backend.ingestion.source;
 
 import com.cvcompass.backend.ingestion.dto.SourceFile;
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.function.Consumer;
 
 public interface ImportSource extends AutoCloseable {

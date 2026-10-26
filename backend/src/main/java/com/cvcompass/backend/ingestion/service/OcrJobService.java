@@ -1,11 +1,33 @@
 package com.cvcompass.backend.ingestion.service;
 
-import static com.cvcompass.backend.web.OperationalLog.Event.*;
-import static org.slf4j.event.Level.*;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_CLAIMED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_EXTRACTION_STORED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_HEARTBEAT;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_LEASE_EXPIRED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_POLL_EMPTY;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_RESULT_RECEIVED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_RETRY_SCHEDULED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_STATE_CHANGED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_TERMINAL_FAILURE;
+import static org.slf4j.event.Level.DEBUG;
+import static org.slf4j.event.Level.ERROR;
+import static org.slf4j.event.Level.INFO;
+import static org.slf4j.event.Level.WARN;
 
 import com.cvcompass.backend.ingestion.config.OcrJobProperties;
-import com.cvcompass.backend.ingestion.dto.*;
-import com.cvcompass.backend.ingestion.enums.*;
+import com.cvcompass.backend.ingestion.dto.OcrAttemptKey;
+import com.cvcompass.backend.ingestion.dto.OcrAttemptState;
+import com.cvcompass.backend.ingestion.dto.OcrClaim;
+import com.cvcompass.backend.ingestion.dto.OcrClaimRequest;
+import com.cvcompass.backend.ingestion.dto.OcrJobState;
+import com.cvcompass.backend.ingestion.dto.OcrReceipt;
+import com.cvcompass.backend.ingestion.dto.OcrResultPayload;
+import com.cvcompass.backend.ingestion.enums.JobStatus;
+import com.cvcompass.backend.ingestion.enums.OcrAttemptStatus;
+import com.cvcompass.backend.ingestion.enums.OcrEndReason;
+import com.cvcompass.backend.ingestion.enums.OcrFailureCode;
+import com.cvcompass.backend.ingestion.enums.OcrProtocol;
+import com.cvcompass.backend.ingestion.enums.OcrStateError;
 import com.cvcompass.backend.ingestion.exception.OcrStateException;
 import com.cvcompass.backend.ingestion.repository.OcrStateRepository;
 import com.cvcompass.backend.web.OperationalLog;

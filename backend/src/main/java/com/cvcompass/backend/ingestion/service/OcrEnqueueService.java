@@ -1,10 +1,14 @@
 package com.cvcompass.backend.ingestion.service;
 
-import static com.cvcompass.backend.web.OperationalLog.Event.*;
+import static com.cvcompass.backend.web.OperationalLog.Event.DOCUMENT_STORED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_ENQUEUED;
+import static com.cvcompass.backend.web.OperationalLog.Event.OCR_NOT_ENQUEUED;
 import static org.slf4j.event.Level.INFO;
 
-import com.cvcompass.backend.ingestion.config.*;
-import com.cvcompass.backend.ingestion.entity.*;
+import com.cvcompass.backend.ingestion.config.OcrIntegrationProperties;
+import com.cvcompass.backend.ingestion.config.OcrJobProperties;
+import com.cvcompass.backend.ingestion.entity.CvDocument;
+import com.cvcompass.backend.ingestion.entity.CvProcessingJob;
 import com.cvcompass.backend.ingestion.enums.JobStatus;
 import com.cvcompass.backend.ingestion.repository.CvProcessingJobRepository;
 import com.cvcompass.backend.ingestion.repository.OcrStateRepository;
@@ -13,7 +17,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.*;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
