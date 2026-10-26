@@ -42,5 +42,4 @@ public class CvDocument extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "\"STATUS\"", nullable = false, length = 20)
     private DocumentStatus status;
-
 }

@@ -10,7 +10,10 @@ class BatchMultipartConfiguration {
     @Bean
     MultipartConfigElement multipartConfigElement(BatchProperties batch, UploadProperties upload) {
         long batchBytes = Math.multiplyExact(batch.getMaxFiles(), batch.getMaxFileBytes());
-        long request = Math.addExact(Math.max(upload.getMaxFileBytes(), batchBytes), batch.getMultipartOverheadBytes());
+        long request =
+                Math.addExact(
+                        Math.max(upload.getMaxFileBytes(), batchBytes),
+                        batch.getMultipartOverheadBytes());
         return new MultipartConfigElement("", request, request, 0);
     }
 }

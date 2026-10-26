@@ -1,12 +1,23 @@
 package com.cvcompass.backend;
 
-import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
+import static org.assertj.core.api.Assertions.*;
 
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import com.cvcompass.backend.ingestion.repository.CvDocumentRepository;
 import com.cvcompass.backend.ingestion.service.CvDocumentService;
 import com.cvcompass.backend.ingestion.upload.PdfUploadStreamTests;
 import com.cvcompass.backend.storage.FileStorageService;
 import com.cvcompass.backend.storage.StorageKey;
+import java.io.*;
+import java.net.URI;
+import java.net.http.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -19,24 +30,12 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.*;
-import java.net.URI;
-import java.net.http.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.security.MessageDigest;
-import java.time.Duration;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.function.Supplier;
-
-import static org.assertj.core.api.Assertions.*;
-
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CvUploadIntegrationTests {
     private static final IsolatedPostgresSchema DATABASE = new IsolatedPostgresSchema();
-    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private static final HttpClient CLIENT =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private static final String BOUNDARY = "cv-compass-synthetic-multipart-boundary";
     @LocalServerPort int port;
     @Autowired CvDocumentRepository documents;
@@ -52,7 +51,8 @@ class CvUploadIntegrationTests {
 
     @BeforeEach
     void assertIsolation() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class)).isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
+                .isEqualTo(DATABASE.schemaName());
         assertThat(DATABASE.storageRoot().getFileName().toString()).startsWith("cv-storage-test-");
     }
 
@@ -66,8 +66,11 @@ class CvUploadIntegrationTests {
 
     @AfterAll
     static void removeIsolatedResources() throws Exception {
-        new org.springframework.test.context.TestContextManager(CvUploadIntegrationTests.class).getTestContext()
-                .markApplicationContextDirty(org.springframework.test.annotation.DirtiesContext.HierarchyMode.EXHAUSTIVE);
+        new org.springframework.test.context.TestContextManager(CvUploadIntegrationTests.class)
+                .getTestContext()
+                .markApplicationContextDirty(
+                        org.springframework.test.annotation.DirtiesContext.HierarchyMode
+                                .EXHAUSTIVE);
         CLIENT.close();
         DATABASE.close();
     }
@@ -76,21 +79,28 @@ class CvUploadIntegrationTests {
     void uploadPersistsActualMetadataAndCanBeQueriedWithoutPhysicalPaths() throws Exception {
         byte[] pdf = fixturePdf();
         // False client MIME and path-like display name do not control format or physical location.
-        var response = upload("C:/client/fixture.pdf", "application/octet-stream", () -> new ByteArrayInputStream(pdf));
+        var response =
+                upload(
+                        "C:/client/fixture.pdf",
+                        "application/octet-stream",
+                        () -> new ByteArrayInputStream(pdf));
         assertThat(response.statusCode()).isEqualTo(201);
         var metadata = json.readTree(response.body());
         long id = metadata.get("id").asLong();
         assertThat(metadata.get("originalFilename").asString()).isEqualTo("fixture.pdf");
         assertThat(metadata.get("sizeBytes").asLong()).isEqualTo(pdf.length);
-        assertThat(metadata.get("sha256").asString()).isEqualTo(
-                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(pdf)));
+        assertThat(metadata.get("sha256").asString())
+                .isEqualTo(
+                        HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(pdf)));
         assertThat(metadata.get("mimeType").asString()).isEqualTo("application/pdf");
         assertThat(metadata.get("status").asString()).isEqualTo("PENDING");
         assertThat(metadata.get("createdAt").asString()).isNotBlank();
         assertThat(response.headers().firstValue("Location")).contains("/api/documents/" + id);
         assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
-        assertThat(response.headers().firstValue("X-Correlation-ID")).contains("upload-integration");
-        assertThat(response.body()).doesNotContain("storagePath", "storageKey", DATABASE.storageRoot().toString());
+        assertThat(response.headers().firstValue("X-Correlation-ID"))
+                .contains("upload-integration");
+        assertThat(response.body())
+                .doesNotContain("storagePath", "storageKey", DATABASE.storageRoot().toString());
 
         var entity = documents.findById(id).orElseThrow();
         assertThat(entity.getBatch()).isNull();
@@ -107,8 +117,11 @@ class CvUploadIntegrationTests {
         assertThat(queried.statusCode()).isEqualTo(200);
         assertThat(queried.headers().firstValue("Cache-Control")).contains("no-store");
         var detail = json.readTree(queried.body());
-        for (String field : List.of("id", "originalFilename", "sizeBytes", "mimeType", "sha256", "createdAt")) {
-            assertThat(detail.get(field)).as("shared metadata: %s", field).isEqualTo(metadata.get(field));
+        for (String field :
+                List.of("id", "originalFilename", "sizeBytes", "mimeType", "sha256", "createdAt")) {
+            assertThat(detail.get(field))
+                    .as("shared metadata: %s", field)
+                    .isEqualTo(metadata.get(field));
         }
         // OCR is disabled in this fixture; status is independently read at each request.
         assertThat(detail.get("status").asString()).isEqualTo("PENDING");
@@ -124,25 +137,37 @@ class CvUploadIntegrationTests {
 
     @Test
     void acceptsAnActualTenMiBFile() throws Exception {
-        var response = upload("limit.pdf", "application/pdf", () -> PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024));
+        var response =
+                upload(
+                        "limit.pdf",
+                        "application/pdf",
+                        () -> PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024));
         assertThat(response.statusCode()).as(response.body()).isEqualTo(201);
-        assertThat(json.readTree(response.body()).get("sizeBytes").asLong()).isEqualTo(10L * 1024 * 1024);
+        assertThat(json.readTree(response.body()).get("sizeBytes").asLong())
+                .isEqualTo(10L * 1024 * 1024);
         assertThat(documents.count()).isEqualTo(1);
     }
 
     @Test
     void rejectsOneByteAboveLimitAtTheServletBoundary() throws Exception {
-        var response = upload("oversize.pdf", "application/pdf",
-                () -> PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024 + 1));
+        var response =
+                upload(
+                        "oversize.pdf",
+                        "application/pdf",
+                        () -> PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024 + 1));
         assertThat(response.statusCode()).as(response.body()).isEqualTo(413);
-        assertThat(json.readTree(response.body()).get("code").asString()).isEqualTo("PAYLOAD_TOO_LARGE");
+        assertThat(json.readTree(response.body()).get("code").asString())
+                .isEqualTo("PAYLOAD_TOO_LARGE");
         assertNoFilesOrMetadata();
     }
 
     @Test
     void serviceSizeGuardAlsoCleansPartialStorageIndependentlyOfServlet() {
-        assertThatThrownBy(() -> service.upload("oversize.pdf",
-                PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024 + 1)))
+        assertThatThrownBy(
+                        () ->
+                                service.upload(
+                                        "oversize.pdf",
+                                        PdfUploadStreamTests.pdfOfSize(10L * 1024 * 1024 + 1)))
                 .isInstanceOf(UploadRejectedException.class);
         assertNoFilesOrMetadata();
     }
@@ -156,10 +181,16 @@ class CvUploadIntegrationTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"fake PDF content", "%PDF-1.7\nno eof", "%PDF-1.7\n%%EOF\nuntrusted suffix"})
+    @ValueSource(
+            strings = {"fake PDF content", "%PDF-1.7\nno eof", "%PDF-1.7\n%%EOF\nuntrusted suffix"})
     void rejectsInvalidContentEvenWhenFilenameAndMimeClaimPdf(String content) throws Exception {
-        var response = upload("claimed.pdf", "application/pdf",
-                () -> new ByteArrayInputStream(content.getBytes(StandardCharsets.US_ASCII)));
+        var response =
+                upload(
+                        "claimed.pdf",
+                        "application/pdf",
+                        () ->
+                                new ByteArrayInputStream(
+                                        content.getBytes(StandardCharsets.US_ASCII)));
         assertThat(response.statusCode()).isEqualTo(415);
         assertThat(json.readTree(response.body()).get("code").asString()).isEqualTo("INVALID_PDF");
         assertNoFilesOrMetadata();
@@ -167,28 +198,56 @@ class CvUploadIntegrationTests {
 
     @Test
     void duplicateFilePartsAreRejected() throws Exception {
-        var body = HttpRequest.BodyPublishers.concat(part("file", "one.pdf", "application/pdf", () -> new ByteArrayInputStream(fixturePdf())),
-                part("file", "two.pdf", "application/pdf", () -> new ByteArrayInputStream(fixturePdf())), ending());
+        var body =
+                HttpRequest.BodyPublishers.concat(
+                        part(
+                                "file",
+                                "one.pdf",
+                                "application/pdf",
+                                () -> new ByteArrayInputStream(fixturePdf())),
+                        part(
+                                "file",
+                                "two.pdf",
+                                "application/pdf",
+                                () -> new ByteArrayInputStream(fixturePdf())),
+                        ending());
         var response = send(body);
         assertThat(response.statusCode()).isEqualTo(400);
-        assertThat(json.readTree(response.body()).get("code").asString()).isEqualTo("INVALID_MULTIPART");
+        assertThat(json.readTree(response.body()).get("code").asString())
+                .isEqualTo("INVALID_MULTIPART");
         assertNoFilesOrMetadata();
     }
 
     @Test
     void unexpectedFilePartIsRejected() throws Exception {
-        var response = send(HttpRequest.BodyPublishers.concat(part("other", "fixture.pdf", "application/pdf",
-                () -> new ByteArrayInputStream(fixturePdf())), ending()));
+        var response =
+                send(
+                        HttpRequest.BodyPublishers.concat(
+                                part(
+                                        "other",
+                                        "fixture.pdf",
+                                        "application/pdf",
+                                        () -> new ByteArrayInputStream(fixturePdf())),
+                                ending()));
         assertThat(response.statusCode()).isEqualTo(400);
         assertNoFilesOrMetadata();
     }
 
     @Test
     void extraTextPartIsRejected() throws Exception {
-        var response = send(HttpRequest.BodyPublishers.concat(part("file", "fixture.pdf", "application/pdf",
-                        () -> new ByteArrayInputStream(fixturePdf())),
-                HttpRequest.BodyPublishers.ofString("--" + BOUNDARY
-                        + "\r\nContent-Disposition: form-data; name=\"checksum\"\r\n\r\nfake\r\n"), ending()));
+        var response =
+                send(
+                        HttpRequest.BodyPublishers.concat(
+                                part(
+                                        "file",
+                                        "fixture.pdf",
+                                        "application/pdf",
+                                        () -> new ByteArrayInputStream(fixturePdf())),
+                                HttpRequest.BodyPublishers.ofString(
+                                        "--"
+                                                + BOUNDARY
+                                                + "\r\nContent-Disposition: form-data; name=\"checksum\"\r\n\r\nfake\r\n"),
+                                ending()));
         assertThat(response.statusCode()).isEqualTo(400);
         assertNoFilesOrMetadata();
     }
@@ -210,14 +269,22 @@ class CvUploadIntegrationTests {
 
     @Test
     void genuineDeferredDatabaseCommitFailureCompensatesPublishedFile() throws Exception {
-        jdbc.execute("CREATE FUNCTION reject_upload_commit() RETURNS trigger LANGUAGE plpgsql AS "
-                + "'BEGIN RAISE EXCEPTION ''synthetic deferred commit failure''; END'");
-        jdbc.execute("CREATE CONSTRAINT TRIGGER reject_upload_commit AFTER INSERT ON \"CV_DOCUMENTS\" "
-                + "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_upload_commit()");
+        jdbc.execute(
+                "CREATE FUNCTION reject_upload_commit() RETURNS trigger LANGUAGE plpgsql AS "
+                        + "'BEGIN RAISE EXCEPTION ''synthetic deferred commit failure''; END'");
+        jdbc.execute(
+                "CREATE CONSTRAINT TRIGGER reject_upload_commit AFTER INSERT ON \"CV_DOCUMENTS\" "
+                        + "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_upload_commit()");
         try {
-            var response = upload("fixture.pdf", "application/pdf", () -> new ByteArrayInputStream(fixturePdf()));
+            var response =
+                    upload(
+                            "fixture.pdf",
+                            "application/pdf",
+                            () -> new ByteArrayInputStream(fixturePdf()));
             assertThat(response.statusCode()).as(response.body()).isEqualTo(500);
-            assertThat(response.body()).doesNotContain("synthetic deferred commit failure", DATABASE.storageRoot().toString());
+            assertThat(response.body())
+                    .doesNotContain(
+                            "synthetic deferred commit failure", DATABASE.storageRoot().toString());
             assertNoFilesOrMetadata();
         } finally {
             jdbc.execute("DROP TRIGGER reject_upload_commit ON \"CV_DOCUMENTS\"");
@@ -227,29 +294,45 @@ class CvUploadIntegrationTests {
 
     @Test
     void migrationV3AllowsNullBatchAndKeepsForeignKey() {
-        assertThat(jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns "
-                + "WHERE table_schema = current_schema() AND table_name = 'CV_DOCUMENTS' AND column_name = 'BATCH_ID'",
-                String.class)).isEqualTo("YES");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.table_constraints "
-                + "WHERE table_schema = current_schema() AND constraint_name = 'FK_DOCUMENT_BATCH'", Long.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT is_nullable FROM information_schema.columns "
+                                        + "WHERE table_schema = current_schema() AND table_name = 'CV_DOCUMENTS' AND column_name = 'BATCH_ID'",
+                                String.class))
+                .isEqualTo("YES");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM information_schema.table_constraints "
+                                        + "WHERE table_schema = current_schema() AND constraint_name = 'FK_DOCUMENT_BATCH'",
+                                Long.class))
                 .isEqualTo(1);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"multipart/form-data", "multipart/form-data; boundary=missing"})
-    void malformedMultipartIsAClientErrorWithoutEchoingParserDetails(String contentType) throws Exception {
-        var response = CLIENT.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/documents"))
-                .timeout(Duration.ofSeconds(10)).header("Content-Type", contentType)
-                .header("X-Correlation-ID", "malformed-multipart")
-                .POST(HttpRequest.BodyPublishers.ofString("synthetic-untrusted-multipart-body")).build(),
-                HttpResponse.BodyHandlers.ofString());
+    void malformedMultipartIsAClientErrorWithoutEchoingParserDetails(String contentType)
+            throws Exception {
+        var response =
+                CLIENT.send(
+                        HttpRequest.newBuilder(
+                                        URI.create("http://localhost:" + port + "/api/documents"))
+                                .timeout(Duration.ofSeconds(10))
+                                .header("Content-Type", contentType)
+                                .header("X-Correlation-ID", "malformed-multipart")
+                                .POST(
+                                        HttpRequest.BodyPublishers.ofString(
+                                                "synthetic-untrusted-multipart-body"))
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
         var error = json.readTree(response.body());
         assertThat(error.get("code").asString()).isEqualTo("INVALID_MULTIPART");
         assertThat(error.get("correlationId").asString()).isEqualTo("malformed-multipart");
-        assertThat(response.body()).doesNotContain("synthetic-untrusted-multipart-body", "Exception", "boundary");
+        assertThat(response.body())
+                .doesNotContain("synthetic-untrusted-multipart-body", "Exception", "boundary");
         assertNoFilesOrMetadata();
     }
+
     private void assertNoFilesOrMetadata() {
         assertThat(documents.count()).isZero();
         try (var files = Files.list(DATABASE.storageRoot())) {
@@ -263,49 +346,80 @@ class CvUploadIntegrationTests {
         return jdbc.queryForObject("SELECT count(*) FROM \"" + table + "\"", Long.class);
     }
 
-    private HttpResponse<String> upload(String filename, String mime, Supplier<InputStream> content) throws Exception {
-        return send(HttpRequest.BodyPublishers.concat(part("file", filename, mime, content), ending()));
+    private HttpResponse<String> upload(String filename, String mime, Supplier<InputStream> content)
+            throws Exception {
+        return send(
+                HttpRequest.BodyPublishers.concat(part("file", filename, mime, content), ending()));
     }
 
     private HttpResponse<String> send(HttpRequest.BodyPublisher body) throws Exception {
-        return CLIENT.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/documents"))
-                .timeout(Duration.ofSeconds(30)).header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
-                .header("X-Correlation-ID", "upload-integration").POST(body).build(), HttpResponse.BodyHandlers.ofString());
-    }
-
-    private HttpResponse<String> get(String path) throws Exception {
-        return CLIENT.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-                .timeout(Duration.ofSeconds(10)).header("X-Correlation-ID", "query-integration").GET().build(),
+        return CLIENT.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/documents"))
+                        .timeout(Duration.ofSeconds(30))
+                        .header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
+                        .header("X-Correlation-ID", "upload-integration")
+                        .POST(body)
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
-    private static HttpRequest.BodyPublisher part(String field, String filename, String mime, Supplier<InputStream> content) {
-        return HttpRequest.BodyPublishers.concat(HttpRequest.BodyPublishers.ofString("--" + BOUNDARY
-                        + "\r\nContent-Disposition: form-data; name=\"" + field + "\"; filename=\"" + filename
-                        + "\"\r\nContent-Type: " + mime + "\r\n\r\n"),
-                HttpRequest.BodyPublishers.ofInputStream(content), HttpRequest.BodyPublishers.ofString("\r\n"));
+    private HttpResponse<String> get(String path) throws Exception {
+        return CLIENT.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                        .timeout(Duration.ofSeconds(10))
+                        .header("X-Correlation-ID", "query-integration")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpRequest.BodyPublisher part(
+            String field, String filename, String mime, Supplier<InputStream> content) {
+        return HttpRequest.BodyPublishers.concat(
+                HttpRequest.BodyPublishers.ofString(
+                        "--"
+                                + BOUNDARY
+                                + "\r\nContent-Disposition: form-data; name=\""
+                                + field
+                                + "\"; filename=\""
+                                + filename
+                                + "\"\r\nContent-Type: "
+                                + mime
+                                + "\r\n\r\n"),
+                HttpRequest.BodyPublishers.ofInputStream(content),
+                HttpRequest.BodyPublishers.ofString("\r\n"));
     }
 
     private static HttpRequest.BodyPublisher ending() {
         return HttpRequest.BodyPublishers.ofString("--" + BOUNDARY + "--\r\n");
     }
+
     private static byte[] fixturePdf() {
         var output = new ByteArrayOutputStream();
         try {
             output.write("%PDF-1.4\n".getBytes(StandardCharsets.US_ASCII));
             var offsets = new java.util.ArrayList<Integer>();
-            var objects = List.of("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> >>");
+            var objects =
+                    List.of(
+                            "<< /Type /Catalog /Pages 2 0 R >>",
+                            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> >>");
             for (int index = 0; index < objects.size(); index++) {
                 offsets.add(output.size());
-                output.write(((index + 1) + " 0 obj\n" + objects.get(index) + "\nendobj\n").getBytes(StandardCharsets.US_ASCII));
+                output.write(
+                        ((index + 1) + " 0 obj\n" + objects.get(index) + "\nendobj\n")
+                                .getBytes(StandardCharsets.US_ASCII));
             }
             int xref = output.size();
             output.write("xref\n0 4\n0000000000 65535 f \n".getBytes(StandardCharsets.US_ASCII));
             for (int offset : offsets) {
-                output.write(String.format(java.util.Locale.ROOT, "%010d 00000 n \n", offset).getBytes(StandardCharsets.US_ASCII));
+                output.write(
+                        String.format(java.util.Locale.ROOT, "%010d 00000 n \n", offset)
+                                .getBytes(StandardCharsets.US_ASCII));
             }
-            output.write(("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n").getBytes(StandardCharsets.US_ASCII));
+            output.write(
+                    ("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n")
+                            .getBytes(StandardCharsets.US_ASCII));
             return output.toByteArray();
         } catch (IOException impossible) {
             throw new AssertionError(impossible);

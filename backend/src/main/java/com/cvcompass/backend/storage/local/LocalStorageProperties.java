@@ -6,5 +6,4 @@ import org.springframework.validation.annotation.Validated;
 
 @ConfigurationProperties("cv.storage.local")
 @Validated
-public record LocalStorageProperties(@NotBlank String rootDirectory) {
-}
+public record LocalStorageProperties(@NotBlank String rootDirectory) {}

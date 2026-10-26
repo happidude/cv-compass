@@ -1,10 +1,11 @@
 package com.cvcompass.backend.storage.local;
 
+import static com.cvcompass.backend.storage.StorageException.Reason.*;
+
 import com.cvcompass.backend.storage.FileStorageService;
 import com.cvcompass.backend.storage.StorageException;
 import com.cvcompass.backend.storage.StorageKey;
 import com.cvcompass.backend.storage.StoredFile;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -27,8 +28,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
-
-import static com.cvcompass.backend.storage.StorageException.Reason.*;
 
 /**
  * Local, flat-key adapter. Root and ancestors must be controlled by the service/operator,
@@ -53,24 +52,33 @@ public class LocalFileStorageService implements FileStorageService {
                 throw new IOException("A local root directory is required");
             }
             Path configured = Path.of(rootDirectory);
-            if (!configured.isAbsolute() || configured.getParent() == null
+            if (!configured.isAbsolute()
+                    || configured.getParent() == null
                     || !configured.equals(configured.normalize())) {
-                throw new IOException("An absolute, normalized, non-filesystem-root directory is required");
+                throw new IOException(
+                        "An absolute, normalized, non-filesystem-root directory is required");
             }
             root = configured;
             verifyAncestors(true);
             if (Files.getFileStore(existingAncestor(root)).supportsFileAttributeView("posix")) {
-                Files.createDirectories(root, PosixFilePermissions.asFileAttribute(
-                        PosixFilePermissions.fromString("rwx------")));
+                Files.createDirectories(
+                        root,
+                        PosixFilePermissions.asFileAttribute(
+                                PosixFilePermissions.fromString("rwx------")));
             } else {
                 Files.createDirectories(root);
             }
             verifyRoot();
             verifyPublicationSupport();
-        } catch (IOException | InvalidPathException | UnsupportedOperationException | SecurityException exception) {
-            throw new StorageException(UNAVAILABLE,
+        } catch (IOException
+                | InvalidPathException
+                | UnsupportedOperationException
+                | SecurityException exception) {
+            throw new StorageException(
+                    UNAVAILABLE,
                     "Local storage unavailable: configure cv.storage.local.root-directory as a private, writable "
-                            + "absolute directory outside a Git checkout on a filesystem supporting hard links", exception);
+                            + "absolute directory outside a Git checkout on a filesystem supporting hard links",
+                    exception);
         }
     }
 
@@ -83,6 +91,7 @@ public class LocalFileStorageService implements FileStorageService {
             throw new StorageException(UNAVAILABLE, "File storage is unavailable", failure);
         }
     }
+
     @Override
     public void verifyAvailable(long requiredBytes) {
         verifyAvailable();
@@ -94,6 +103,7 @@ public class LocalFileStorageService implements FileStorageService {
             throw new StorageException(UNAVAILABLE, "File storage is unavailable", failure);
         }
     }
+
     @Override
     public StoredFile store(InputStream content) {
         Objects.requireNonNull(content, "content");
@@ -145,7 +155,8 @@ public class LocalFileStorageService implements FileStorageService {
             if (!regularObject(target)) {
                 throw new StorageException(NOT_FOUND, "Stored file was not found");
             }
-            return Channels.newInputStream(Files.newByteChannel(target, Set.of(StandardOpenOption.READ, NOFOLLOW)));
+            return Channels.newInputStream(
+                    Files.newByteChannel(target, Set.of(StandardOpenOption.READ, NOFOLLOW)));
         } catch (NoSuchFileException exception) {
             throw new StorageException(NOT_FOUND, "Stored file was not found", exception);
         } catch (IOException | UnsupportedOperationException | SecurityException exception) {
@@ -188,7 +199,9 @@ public class LocalFileStorageService implements FileStorageService {
     private boolean regularObject(Path target) throws IOException {
         try {
             var attributes = Files.readAttributes(target, BasicFileAttributes.class, NOFOLLOW);
-            if (!attributes.isRegularFile() || attributes.isSymbolicLink() || attributes.isOther()) {
+            if (!attributes.isRegularFile()
+                    || attributes.isSymbolicLink()
+                    || attributes.isOther()) {
                 throw new IOException("Stored object is not a regular file");
             }
             return true;
@@ -204,10 +217,16 @@ public class LocalFileStorageService implements FileStorageService {
         }
         if (Files.getFileStore(root).supportsFileAttributeView("posix")) {
             var permissions = Files.getPosixFilePermissions(root, NOFOLLOW);
-            if (permissions.stream().anyMatch(permission ->
-                    permission.name().startsWith("GROUP_") || permission.name().startsWith("OTHERS_"))
-                    || !permissions.containsAll(Set.of(PosixFilePermission.OWNER_READ,
-                            PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE))) {
+            if (permissions.stream()
+                            .anyMatch(
+                                    permission ->
+                                            permission.name().startsWith("GROUP_")
+                                                    || permission.name().startsWith("OTHERS_"))
+                    || !permissions.containsAll(
+                            Set.of(
+                                    PosixFilePermission.OWNER_READ,
+                                    PosixFilePermission.OWNER_WRITE,
+                                    PosixFilePermission.OWNER_EXECUTE))) {
                 throw new IOException("Storage root must have owner-only rwx permissions");
             }
         }
@@ -219,9 +238,12 @@ public class LocalFileStorageService implements FileStorageService {
             current = current.resolve(segment);
             try {
                 var attributes = Files.readAttributes(current, BasicFileAttributes.class, NOFOLLOW);
-                if (!attributes.isDirectory() || attributes.isSymbolicLink() || attributes.isOther()
+                if (!attributes.isDirectory()
+                        || attributes.isSymbolicLink()
+                        || attributes.isOther()
                         || !current.toRealPath().equals(current.toRealPath(NOFOLLOW))) {
-                    throw new IOException("Storage ancestors must be real directories without links");
+                    throw new IOException(
+                            "Storage ancestors must be real directories without links");
                 }
                 // Covers repositories and linked worktrees (.git directory or file).
                 if (Files.exists(current.resolve(".git"), NOFOLLOW)) {

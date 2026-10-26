@@ -1,5 +1,12 @@
 package com.cvcompass.backend.ingestion.exception;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.cvcompass.backend.ingestion.config.BatchProperties;
 import com.cvcompass.backend.ingestion.config.PaginationProperties;
 import com.cvcompass.backend.ingestion.controller.CvBatchController;
@@ -9,13 +16,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class CvBatchConfiguredHttpTests {
     private final CvBatchService service = mock(CvBatchService.class);
@@ -27,7 +27,8 @@ class CvBatchConfiguredHttpTests {
         pagination.setDefaultPageSize(2);
         pagination.setMaxPageSize(3);
         return MockMvcBuilders.standaloneSetup(new CvBatchController(service, batch, pagination))
-                .setControllerAdvice(new IngestionExceptionHandler(), new GlobalExceptionHandler()).build();
+                .setControllerAdvice(new IngestionExceptionHandler(), new GlobalExceptionHandler())
+                .build();
     }
 
     @Test
@@ -50,9 +51,20 @@ class CvBatchConfiguredHttpTests {
 
     @Test
     void configuredBatchCountIsEnforcedBeforeIngestion() throws Exception {
-        mvc().perform(multipart("/api/batches")
-                        .file(new MockMultipartFile("files", "synthetic-a.pdf", "application/pdf", new byte[]{1}))
-                        .file(new MockMultipartFile("files", "synthetic-b.pdf", "application/pdf", new byte[]{2})))
+        mvc().perform(
+                        multipart("/api/batches")
+                                .file(
+                                        new MockMultipartFile(
+                                                "files",
+                                                "synthetic-a.pdf",
+                                                "application/pdf",
+                                                new byte[] {1}))
+                                .file(
+                                        new MockMultipartFile(
+                                                "files",
+                                                "synthetic-b.pdf",
+                                                "application/pdf",
+                                                new byte[] {2})))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(service);
     }

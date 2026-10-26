@@ -2,10 +2,10 @@ package com.cvcompass.backend.ingestion.entity;
 
 import com.cvcompass.backend.ingestion.enums.ExtractionMethod;
 import jakarta.persistence.*;
+import java.util.Map;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.util.Map;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -36,12 +36,20 @@ public class CvExtraction extends BaseEntity {
     private ExtractionMethod extractionMethod;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "\"ATTEMPT_ID\"") private CvOcrAttempt attempt;
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "\"OCR_RESULT\"", columnDefinition = "jsonb") private Map<String, Object> ocrResult;
-    @Column(name = "\"OCR_STATUS\"", length = 20) private String ocrStatus;
-    @Column(name = "\"PROFILE_REVISION\"", length = 128) private String profileRevision;
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "\"PROVENANCE\"", columnDefinition = "jsonb") private Map<String, Object> provenance;
+    @JoinColumn(name = "\"ATTEMPT_ID\"")
+    private CvOcrAttempt attempt;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "\"OCR_RESULT\"", columnDefinition = "jsonb")
+    private Map<String, Object> ocrResult;
+
+    @Column(name = "\"OCR_STATUS\"", length = 20)
+    private String ocrStatus;
+
+    @Column(name = "\"PROFILE_REVISION\"", length = 128)
+    private String profileRevision;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "\"PROVENANCE\"", columnDefinition = "jsonb")
+    private Map<String, Object> provenance;
 }

@@ -9,7 +9,8 @@ import org.springframework.validation.annotation.Validated;
 public record StorageProperties(@NotBlank String provider) {
     public StorageProperties {
         if (!"local".equals(provider)) {
-            throw new IllegalArgumentException("cv.storage.provider must explicitly select a supported provider: local");
+            throw new IllegalArgumentException(
+                    "cv.storage.provider must explicitly select a supported provider: local");
         }
     }
 }

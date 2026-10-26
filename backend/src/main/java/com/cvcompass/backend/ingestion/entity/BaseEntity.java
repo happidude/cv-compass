@@ -5,11 +5,10 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
+import java.time.Instant;
 import lombok.Getter;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
-
-import java.time.Instant;
 
 /** Shared mapping for tables with an identity ID and database-generated creation time. */
 @Getter
@@ -24,6 +23,5 @@ public abstract class BaseEntity {
     @Column(name = "\"CREATED_AT\"", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
-    protected BaseEntity() {
-    }
+    protected BaseEntity() {}
 }

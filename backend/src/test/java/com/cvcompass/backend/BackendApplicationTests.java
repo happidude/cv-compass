@@ -1,6 +1,9 @@
 package com.cvcompass.backend;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import jakarta.persistence.EntityManager;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,9 +13,6 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import org.flywaydb.core.Flyway;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Transactional
@@ -28,8 +28,11 @@ class BackendApplicationTests {
 
     @AfterAll
     static void removeIsolatedSchema() throws Exception {
-        new org.springframework.test.context.TestContextManager(BackendApplicationTests.class).getTestContext()
-                .markApplicationContextDirty(org.springframework.test.annotation.DirtiesContext.HierarchyMode.EXHAUSTIVE);
+        new org.springframework.test.context.TestContextManager(BackendApplicationTests.class)
+                .getTestContext()
+                .markApplicationContextDirty(
+                        org.springframework.test.annotation.DirtiesContext.HierarchyMode
+                                .EXHAUSTIVE);
         DATABASE.close();
     }
 
@@ -39,13 +42,23 @@ class BackendApplicationTests {
 
     @Test
     void contextStartsWithV1ThroughV6AndValidatedMappings() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class)).isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
+                .isEqualTo(DATABASE.schemaName());
         flyway.validate();
         assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("6");
-        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank", String.class))
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank",
+                                String.class))
                 .containsExactly("1", "2", "3", "4", "5", "6");
-        assertThat(entityManager.getMetamodel().getEntities()).extracting(e -> e.getName())
-                .contains("CvImportBatch", "Candidate", "CvDocument", "CvProcessingJob", "CvExtraction", "CvImportItem");
+        assertThat(entityManager.getMetamodel().getEntities())
+                .extracting(e -> e.getName())
+                .contains(
+                        "CvImportBatch",
+                        "Candidate",
+                        "CvDocument",
+                        "CvProcessingJob",
+                        "CvExtraction",
+                        "CvImportItem");
     }
-
 }

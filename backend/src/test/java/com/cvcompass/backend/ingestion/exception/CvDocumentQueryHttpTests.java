@@ -1,29 +1,5 @@
 package com.cvcompass.backend.ingestion.exception;
 
-import com.cvcompass.backend.ingestion.controller.CvDocumentController;
-import com.cvcompass.backend.ingestion.config.UploadProperties;
-import com.cvcompass.backend.ingestion.dto.DocumentCursorPage;
-import com.cvcompass.backend.ingestion.dto.DocumentDetails;
-import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
-import com.cvcompass.backend.ingestion.dto.DocumentOcrResult;
-import com.cvcompass.backend.ingestion.dto.DocumentProcessing;
-import com.cvcompass.backend.ingestion.enums.DocumentStatus;
-import com.cvcompass.backend.ingestion.service.CvDocumentService;
-import com.cvcompass.backend.ingestion.service.DocumentQueryService;
-import com.cvcompass.backend.web.error.GlobalExceptionHandler;
-import com.cvcompass.backend.web.logging.CorrelationIdFilter;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.mock.web.MockPart;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.server.ResponseStatusException;
-
-import java.io.InputStream;
-import java.time.Instant;
-import java.util.List;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -36,27 +12,68 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.cvcompass.backend.ingestion.config.UploadProperties;
+import com.cvcompass.backend.ingestion.controller.CvDocumentController;
+import com.cvcompass.backend.ingestion.dto.DocumentCursorPage;
+import com.cvcompass.backend.ingestion.dto.DocumentDetails;
+import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
+import com.cvcompass.backend.ingestion.dto.DocumentOcrResult;
+import com.cvcompass.backend.ingestion.dto.DocumentProcessing;
+import com.cvcompass.backend.ingestion.enums.DocumentStatus;
+import com.cvcompass.backend.ingestion.service.CvDocumentService;
+import com.cvcompass.backend.ingestion.service.DocumentQueryService;
+import com.cvcompass.backend.web.error.GlobalExceptionHandler;
+import com.cvcompass.backend.web.logging.CorrelationIdFilter;
+import java.io.InputStream;
+import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.mock.web.MockPart;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.server.ResponseStatusException;
+
 /** MVC boundary only; uses the real application error advice and correlation filter. */
 class CvDocumentQueryHttpTests {
     private final CvDocumentService uploads = mock(CvDocumentService.class);
     private final DocumentQueryService queries = mock(DocumentQueryService.class);
-    private final MockMvc mvc = MockMvcBuilders.standaloneSetup(new CvDocumentController(
-                    uploads, queries, new UploadProperties()))
-            .setControllerAdvice(new IngestionExceptionHandler(), new GlobalExceptionHandler())
-            .addFilters(new CorrelationIdFilter()).build();
+    private final MockMvc mvc =
+            MockMvcBuilders.standaloneSetup(
+                            new CvDocumentController(uploads, queries, new UploadProperties()))
+                    .setControllerAdvice(
+                            new IngestionExceptionHandler(), new GlobalExceptionHandler())
+                    .addFilters(new CorrelationIdFilter())
+                    .build();
 
     @Test
     void uploadReturnsServiceMetadataWithoutQueryingCommittedDocument() throws Exception {
-        var metadata = new DocumentMetadata(7L, "synthetic.pdf", 3, "application/pdf",
-                "a".repeat(64), DocumentStatus.PENDING, Instant.EPOCH);
+        var metadata =
+                new DocumentMetadata(
+                        7L,
+                        "synthetic.pdf",
+                        3,
+                        "application/pdf",
+                        "a".repeat(64),
+                        DocumentStatus.PENDING,
+                        Instant.EPOCH);
         when(uploads.upload(eq("synthetic.pdf"), any(InputStream.class))).thenReturn(metadata);
         byte[] content = {1, 2, 3};
-        mvc.perform(multipart("/api/documents")
-                        .file(new MockMultipartFile("file", "synthetic.pdf", "application/pdf", content))
-                        .with(request -> {
-                            request.addPart(new MockPart("file", "synthetic.pdf", content));
-                            return request;
-                        }))
+        mvc.perform(
+                        multipart("/api/documents")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "synthetic.pdf",
+                                                "application/pdf",
+                                                content))
+                                .with(
+                                        request -> {
+                                            request.addPart(
+                                                    new MockPart("file", "synthetic.pdf", content));
+                                            return request;
+                                        }))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", "/api/documents/7"))
                 .andExpect(header().string("Cache-Control", "no-store"))
@@ -86,7 +103,8 @@ class CvDocumentQueryHttpTests {
 
     @Test
     void malformedAndOutOfRangeParametersUseApiError() throws Exception {
-        for (String query : List.of("size=nope", "beforeId=nope", "size=0", "beforeId=-1", "size=2147483648")) {
+        for (String query :
+                List.of("size=nope", "beforeId=nope", "size=0", "beforeId=-1", "size=2147483648")) {
             mvc.perform(get("/api/documents?" + query).header("X-Correlation-ID", "m8-query"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").exists())
@@ -105,13 +123,29 @@ class CvDocumentQueryHttpTests {
 
     @Test
     void detailDelegatesAndRejectsNonPositiveId() throws Exception {
-        var processing = new DocumentProcessing(null, "NOT_SCHEDULED", null, null, null, null, null,
-                null, null, "NONE");
-        var result = new DocumentOcrResult("NONE", null, null, null, List.of(), List.of(), List.of(), null);
-        when(queries.find(7)).thenReturn(new DocumentDetails(7L, "synthetic.pdf", 100, "application/pdf",
-                "a".repeat(64), DocumentStatus.PENDING, Instant.EPOCH, null, "STORED", processing, result));
+        var processing =
+                new DocumentProcessing(
+                        null, "NOT_SCHEDULED", null, null, null, null, null, null, null, "NONE");
+        var result =
+                new DocumentOcrResult(
+                        "NONE", null, null, null, List.of(), List.of(), List.of(), null);
+        when(queries.find(7))
+                .thenReturn(
+                        new DocumentDetails(
+                                7L,
+                                "synthetic.pdf",
+                                100,
+                                "application/pdf",
+                                "a".repeat(64),
+                                DocumentStatus.PENDING,
+                                Instant.EPOCH,
+                                null,
+                                "STORED",
+                                processing,
+                                result));
         mvc.perform(get("/api/documents/0")).andExpect(status().isBadRequest());
-        mvc.perform(get("/api/documents/7")).andExpect(status().isOk())
+        mvc.perform(get("/api/documents/7"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(7))
                 .andExpect(jsonPath("$.originalFilename").value("synthetic.pdf"))
                 .andExpect(jsonPath("$.status").value("PENDING"))

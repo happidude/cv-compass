@@ -2,6 +2,7 @@ package com.cvcompass.backend.ingestion.exception;
 
 import com.cvcompass.backend.web.ApiError;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.List;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -9,40 +10,65 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.List;
-
 @RestControllerAdvice(basePackages = "com.cvcompass.backend.ingestion.controller")
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class IngestionExceptionHandler {
     @ExceptionHandler(OcrHttpException.class)
-    public ResponseEntity<ApiError> ocr(OcrHttpException exception,HttpServletResponse response) {
-        return ResponseEntity.status(exception.status()).body(new ApiError(exception.getMessage(),
-                "OCR request rejected",response.getHeader("X-Correlation-ID"),List.of()));
+    public ResponseEntity<ApiError> ocr(OcrHttpException exception, HttpServletResponse response) {
+        return ResponseEntity.status(exception.status())
+                .body(
+                        new ApiError(
+                                exception.getMessage(),
+                                "OCR request rejected",
+                                response.getHeader("X-Correlation-ID"),
+                                List.of()));
     }
+
     @ExceptionHandler(OcrStateException.class)
-    public ResponseEntity<ApiError> ocrState(OcrStateException exception,HttpServletResponse response) {
-        int status=switch(exception.reason()) {
-            case NOT_FOUND -> 404;
-            case INVALID_REQUEST,INVALID_RESULT -> 422;
-            default -> 409;
-        };
-        return ResponseEntity.status(status).body(new ApiError(exception.reason().name(),
-                "OCR request rejected",response.getHeader("X-Correlation-ID"),List.of()));
+    public ResponseEntity<ApiError> ocrState(
+            OcrStateException exception, HttpServletResponse response) {
+        int status =
+                switch (exception.reason()) {
+                    case NOT_FOUND -> 404;
+                    case INVALID_REQUEST, INVALID_RESULT -> 422;
+                    default -> 409;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ApiError(
+                                exception.reason().name(),
+                                "OCR request rejected",
+                                response.getHeader("X-Correlation-ID"),
+                                List.of()));
     }
+
     @ExceptionHandler(UploadRejectedException.class)
-    public ResponseEntity<ApiError> rejected(UploadRejectedException exception, HttpServletResponse response) {
-        HttpStatus status = switch (exception.reason()) {
-            case FILE_TOO_LARGE -> HttpStatus.CONTENT_TOO_LARGE;
-            case INVALID_PDF -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
-            default -> HttpStatus.BAD_REQUEST;
-        };
-        return ResponseEntity.status(status).body(new ApiError(exception.reason().name(),
-                exception.getMessage(), response.getHeader("X-Correlation-ID"), List.of()));
+    public ResponseEntity<ApiError> rejected(
+            UploadRejectedException exception, HttpServletResponse response) {
+        HttpStatus status =
+                switch (exception.reason()) {
+                    case FILE_TOO_LARGE -> HttpStatus.CONTENT_TOO_LARGE;
+                    case INVALID_PDF -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ApiError(
+                                exception.reason().name(),
+                                exception.getMessage(),
+                                response.getHeader("X-Correlation-ID"),
+                                List.of()));
     }
 
     @ExceptionHandler({DocumentNotFoundException.class, BatchNotFoundException.class})
-    public ResponseEntity<ApiError> notFound(RuntimeException exception, HttpServletResponse response) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError("NOT_FOUND",
-                exception.getMessage(), response.getHeader("X-Correlation-ID"), List.of()));
+    public ResponseEntity<ApiError> notFound(
+            RuntimeException exception, HttpServletResponse response) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(
+                        new ApiError(
+                                "NOT_FOUND",
+                                exception.getMessage(),
+                                response.getHeader("X-Correlation-ID"),
+                                List.of()));
     }
 }
