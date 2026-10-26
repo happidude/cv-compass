@@ -1,4 +1,5 @@
 """Local v1 request/result validation and non-truncating publication budget."""
+
 import copy
 import json
 import re
@@ -13,10 +14,12 @@ def validate_request(request):
     VALIDATOR.validate(request)
     if request['type'] != 'request':
         raise ValueError('INVALID_REQUEST')
-    for key, pattern in (('request_id', r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}'),
-                         ('document_id', r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}'),
-                         ('input_ref', r'[0-9a-f]{32}\.pdf'),
-                         ('expected_sha256', r'[0-9a-f]{64}')):
+    for key, pattern in (
+        ('request_id', r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}'),
+        ('document_id', r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}'),
+        ('input_ref', r'[0-9a-f]{32}\.pdf'),
+        ('expected_sha256', r'[0-9a-f]{64}'),
+    ):
         # JSON Schema's regex $ can match before a final newline. Exact local
         # semantic validation keeps opaque identifiers/ref truly path-free.
         if re.fullmatch(pattern, request[key]) is None:
@@ -26,26 +29,41 @@ def validate_request(request):
 def classify(pages, errors):
     if not any(p['status'] == 'ok' for p in pages):
         return 'failed'
-    return 'partial' if errors or any(p['status'] in ('failed', 'not_processed') for p in pages) else 'success'
-
+    return (
+        'partial'
+        if errors or any(p['status'] in ('failed', 'not_processed') for p in pages)
+        else 'success'
+    )
 
 
 def page(number, status='not_processed', code=None, stage='supervisor'):
-    return dict(page_number=number, status=status, method='none', raw_text='',
-                warnings=['BLANK_PAGE'] if status == 'blank' else [],
-                error={'code': code, 'stage': stage} if code else None,
-                timings_ms={k: (0 if k == 'total' else None) for k in ('native', 'render', 'preprocess', 'ocr', 'total')},
-                confidence=None)
+    return dict(
+        page_number=number,
+        status=status,
+        method='none',
+        raw_text='',
+        warnings=['BLANK_PAGE'] if status == 'blank' else [],
+        error={'code': code, 'stage': stage} if code else None,
+        timings_ms={
+            k: (0 if k == 'total' else None)
+            for k in ('native', 'render', 'preprocess', 'ocr', 'total')
+        },
+        confidence=None,
+    )
 
 
 def encoded(result):
-    return json.dumps(result, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')
+    return json.dumps(result, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode(
+        'utf-8'
+    )
 
 
 def validate_result(result, config):
     VALIDATOR.validate(result)
     pages, count = result['pages'], result['page_count']
-    if (count is None and pages) or (count is not None and (len(pages) != count or count > config.max_pages)):
+    if (count is None and pages) or (
+        count is not None and (len(pages) != count or count > config.max_pages)
+    ):
         raise ValueError('PAGE_COUNT_LIMIT')
     if sum(len(p['raw_text']) for p in pages) > config.max_document_text:
         raise ValueError('OUTPUT_LIMIT')
@@ -80,10 +98,12 @@ def fit_result(result, config):
         else:
             result['pages'].append(item)
             used += chars
+
     def add_limit():
         error = {'code': 'OUTPUT_LIMIT', 'stage': 'output'}
         if error not in result['errors']:
             result['errors'].append(error)
+
     if limited:
         add_limit()
     for keep in range(len(original), -1, -1):
@@ -93,6 +113,6 @@ def fit_result(result, config):
             validate_result(result, config)
             return data
         if keep:
-            result['pages'][keep-1] = page(keep, code='OUTPUT_LIMIT', stage='output')
+            result['pages'][keep - 1] = page(keep, code='OUTPUT_LIMIT', stage='output')
             add_limit()
     raise ValueError('OUTPUT_LIMIT')  # Caller: exit 3, no delivery.

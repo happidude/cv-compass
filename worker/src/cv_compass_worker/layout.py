@@ -8,5 +8,9 @@ def usable(text):
     alnum = sum(c.isalnum() for c in visible)
     broken = sum(c == '\ufffd' or '\ue000' <= c <= '\uf8ff' for c in visible)
     printable = sum(c.isprintable() for c in visible)
-    return (alnum >= 40 and len(text.split()) >= 5 and broken/len(visible) <= .01
-            and printable/len(visible) >= .98)
+    return (
+        alnum >= 40
+        and len(text.split()) >= 5
+        and broken / len(visible) <= 0.01
+        and printable / len(visible) >= 0.98
+    )

@@ -1,4 +1,5 @@
 """Real PDF engines; ordinary synthetic AES PDFs, no hostile fixtures."""
+
 import hashlib
 from pathlib import Path
 import tempfile
@@ -13,7 +14,9 @@ class EncryptionTests(unittest.TestCase):
             path = Path(tmp) / 'synthetic.pdf'
             writer = PdfWriter()
             writer.add_blank_page(width=100, height=100)
-            writer.encrypt(user_password=password, owner_password='synthetic-owner', algorithm='AES-256')
+            writer.encrypt(
+                user_password=password, owner_password='synthetic-owner', algorithm='AES-256'
+            )
             writer.write(path)
             before = hashlib.sha256(path.read_bytes()).hexdigest()
             self.assertTrue(PdfReader(path).is_encrypted)
