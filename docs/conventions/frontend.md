@@ -1,9 +1,11 @@
 # Convention Frontend React — quy ước chính thức
 
-Trạng thái: **Đã duyệt ngày 26/10/2026**; phạm vi tại [README](README.md), chưa sửa frontend. Dùng pattern thực tế của
+Trạng thái: **Đã duyệt ngày 26/10/2026**; phạm vi tại [README](README.md), đã áp dụng config và một type import. Dùng pattern thực tế của
 `frontend/src`, không tạo generic template React mới.
 
 ## Khảo sát và điểm chưa thống nhất
+
+Bảng dưới ghi nhận trước khi áp dụng; trạng thái cuối tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 
 React function components + hooks, TypeScript strict, React Router, TanStack Query,
 Zod; Tailwind v4 kết hợp CSS semantic trong `app/styles.css`, local shadcn/Radix Button.
@@ -62,8 +64,10 @@ Prettier riêng. Không có nhu cầu thêm framework, store, PropTypes hay form
 | Giữ các directive và dynamic imports | Font/style import và MSW startup trước router ở `main.tsx` | Chuyển dynamic import thành static import cho gọn | Module evaluation và mock startup có hành vi thực |
 | Không auto-sort className hoặc sửa JSX whitespace có thể thấy trên UI | Giữ literal và text boundaries; preview rendered output nếu formatter động tới JSX text | Sắp class theo alphabet hay trim chuỗi UI | Cần bảo toàn appearance, accessibility và thông báo hiện tại |
 
-Giai đoạn 2 có thể thêm config Prettier explicit với các option trên **bằng package
-đã có**, giữ version/lockfile, không thêm prettier plugin. Import cleanup là đợt khác
+Đã thêm `.prettierrc.json` và `.prettierignore` bằng **Prettier 3.6.2 đã có**, giữ
+version/lockfile, không thêm prettier plugin. Từ frontend/, chạy
+`npm exec prettier -- --write src tests` và `npm run format:check`; không có script
+`npm run format` trong package.json, không tự thêm script. Import cleanup là đợt khác
 format, không dùng eslint --fix diện rộng cho logic/React hooks. Không format
 `dev-public/mockServiceWorker.js`, dist, node_modules, reports, lockfile.
 
@@ -78,8 +82,9 @@ format, không dùng eslint --fix diện rộng cho logic/React hooks. Không fo
 Giữ nguyên quyết định không tách `UploadPage`, không mass rename handler hoặc di chuyển page: hook order,
 component identity, focus/dialog lifecycle, callbacks, abort và query invalidation đều
 có thể bị ảnh hưởng. Không coi file dài là bug và không thêm component mới trong đợt
-form khi chưa chứng minh tương đương. Chưa chạy baseline, không khẳng định format/lint
-hiện đã PASS. Không phát hiện bug runtime mới có đủ bằng chứng trong khảo sát tĩnh này.
+form khi chưa chứng minh tương đương. Baseline và sau áp dụng: `npm run check` PASS
+với 22 unit tests, `npm run test:browser` PASS với 30 browser tests; emitted JS của
+type-import diff giống hệt. Chi tiết/bỏ qua tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 
 Căn cứ chính thức: [React Rules of Hooks](https://react.dev/reference/eslint-plugin-react-hooks/lints/rules-of-hooks),
 [Prettier options](https://prettier.io/docs/options),

@@ -1,6 +1,7 @@
 # Convention CV Compass — quy ước chính thức
 
-Trạng thái: **Đã duyệt ngày 26/10/2026**. Chưa áp dụng vào source/config.
+Trạng thái: **Đã duyệt ngày 26/10/2026**. Đã áp dụng có giới hạn; kết quả tại
+[REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 
 ## Phạm vi và căn cứ khảo sát
 
@@ -16,7 +17,7 @@ supervisor, hooks, pages, schema và các nhóm test tiêu biểu. Không đọc
 credentials hoặc `.env.local`. Trong lượt khảo sát ban đầu không chạy formatter, cài công cụ, sửa source,
 commit/push hay chạy baseline Giai đoạn 2.
 
-| Phần | Hiện trạng từ repository | Công cụ hiện có |
+| Phần | Hiện trạng khi khảo sát | Công cụ hiện có |
 | --- | --- | --- |
 | Backend | Java 25, Spring Boot 4.1.1, Spring Modulith 2.1.1, Gradle wrapper 9.7.1; feature `ingestion`, infrastructure `storage`, HTTP foundation `web` | JUnit Platform, AssertJ, Mockito, kiểm tra Modulith; compiler `-Xlint:deprecation`; chưa có Spotless/Checkstyle |
 | Worker | `src/cv_compass_worker`, CLI offline và pull supervisor riêng; runtime mục tiêu CPython 3.14.8 theo README/CI; lockfile có hash | `unittest`, custom JUnit runner, compileall/pip check và Docker verification; chưa có Ruff/Black/mypy/pyright |
@@ -71,7 +72,7 @@ Không dùng quy tắc “sửa mọi Medium finding” để vượt ràng bu�
 finding đòi thay hành vi phải ghi báo cáo, không sửa. Nếu cản kiểm chứng, báo BLOCKED /
 NOT VERIFIED và xin quyết định; không tuyên bố refactor hoàn tất.
 
-## Quy ước `.editorconfig` (chưa tạo)
+## Quy ước `.editorconfig` (đã tạo)
 
 | Rule | Đúng | Sai / cần tránh | Lý do |
 | --- | --- | --- | --- |
@@ -79,21 +80,21 @@ NOT VERIFIED và xin quyết định; không tuyên bố refactor hoàn tất.
 | LF là đích cho code thông thường; ngoại lệ theo `.gitattributes` | Giữ `.bat` CRLF; canonical JSON giữ nguyên byte; Markdown giữ hard-break spaces | Chuyển CRLF → LF trong `ocr-v1.schema.json` hoặc xóa trailing spaces mọi Markdown | Root `.gitattributes` đã nêu byte identity; backend `.gitattributes` có `.bat` CRLF |
 | Không áp dụng cleanup whitespace toàn repo | Exclude generated, lockfile, migration, contract, output; preview diff theo đợt | `git add --renormalize .` (minh họa) | Không phát sinh diff ngoài phạm vi hoặc thay hash |
 
-Mẫu định hướng: `root=true`, `charset=utf-8`, `indent_style=space`, mặc định
+Cấu hình đã tạo ở repository root: `root=true`, `charset=utf-8`, `indent_style=space`, mặc định
 `indent_size=4`, `end_of_line=lf`, `insert_final_newline=true`; override frontend và
 JSON/YAML/CSS thành 2, `.bat` thành CRLF. Không bật trim cho Markdown; loại canonical
-artifacts khỏi mọi formatter/cleanup. Chưa normalize EOL checkout hiện tại.
+artifacts khỏi mọi formatter/cleanup. Không normalize EOL checkout hiện tại.
 
 ## Quyết định đã chốt
 
 1. Bộ README, Backend, Worker và Frontend là Code Conventions chính thức, đã duyệt
-   ngày 26/10/2026. Java dùng **Spotless + google-java-format, style AOSP**: **Đã duyệt, chờ chốt
-   version và chạy thử ở Giai đoạn 2**. Spotless tích hợp formatter vào Gradle và
+   ngày 26/10/2026. Java dùng **Spotless + google-java-format, style AOSP**. Spotless tích hợp formatter vào Gradle và
    kiểm tra format; google-java-format là formatter chuẩn cho Java: indent 4 spaces, continuation 8 spaces, line width 100 cố định. Import theo output formatter, static trước non-static; không chia nhóm thủ công. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự import; rule viết tay không được mâu thuẫn output formatter. Ruff
-   formatter/linter cho Python đã duyệt về nguyên tắc, chờ chốt version và kiểm
-   chứng ở Giai đoạn 2. Chưa cài đặt hoặc cấu hình các công cụ này; không cài Black
-   song song Ruff. Kiểm chứng tương thích Java 25 / Gradle 9.7.1 / Python 3.14.8
-   trước khi triển khai.
+   formatter/linter 0.17.2 đã cài trong tool venv riêng ngoài repo, có `worker/ruff.toml`;
+   đã format và sắp xếp imports trong phạm vi kiểm chứng được. Không cài Black.
+   Trial Spotless 8.10.4 + google-java-format 1.36.1 chạy được trên JDK 25/Gradle 9.7.1,
+   nhưng adapter tự xóa unused imports: chưa đưa vào build backend để giữ ràng buộc.
+   Frontend giữ Prettier 3.6.2 đã có và thêm config explicit, không đổi dependency/lockfile.
 2. Python type hints chỉ áp dụng cho code mới. Giai đoạn 2 không bổ sung type hints
    vào code Python cũ; annotation có thể được inspect/runtime evaluate.
 3. Không di chuyển package/file, không tách `UploadPage` hoặc `pull.py`; giữ các
@@ -107,8 +108,9 @@ artifacts khỏi mọi formatter/cleanup. Chưa normalize EOL checkout hiện t�
 
 ## Kế hoạch kiểm chứng Giai đoạn 2
 
-Baseline hiện tại: **CHƯA CHẠY / NOT VERIFIED** cho cả ba phần (đúng phạm vi Giai đoạn 1).
-Không có số test/failure/error/skipped hoặc kết luận lint PASS mới.
+Baseline và kiểm chứng sau đã chạy. Frontend PASS; backend/worker full gate
+**NOT VERIFIED** do thiếu prerequisite, kèm failure counts và bằng chứng tương đương
+tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md). Không tuyên bố toàn bộ refactor READY.
 
 - Backend: kiểm tra JDK 25, PostgreSQL 17, schema/storage test cô lập theo README;
   build bằng wrapper và full `./gradlew.bat check --rerun-tasks`. Đọc JUnit XML mới,
@@ -124,7 +126,6 @@ Không có số test/failure/error/skipped hoặc kết luận lint PASS mới.
 - Ghi source/command/environment, counts, warnings và local/CI riêng. Bug đã có
   không sửa; check thiếu prerequisite phải ghi NOT VERIFIED. Không thay test để pass.
 
-Giai đoạn 3 mới tạo `REFACTOR_REPORT.md` với số file, baseline/sau, bỏ qua có chủ đích,
-bug/rủi ro kèm dòng và ưu tiên tiếp theo. Bốn tài liệu này là quy ước chính thức,
-không phải báo cáo đã refactor. Việc ban hành không khởi động Giai đoạn 2; chỉ bắt
-đầu áp dụng khi developer ra lệnh tiếp theo.
+Báo cáo áp dụng: [REFACTOR_REPORT.md](REFACTOR_REPORT.md), gồm số file, baseline/sau,
+bỏ qua có chủ đích, rủi ro kèm dòng và ưu tiên tiếp theo. Dừng sau lượt này để developer
+review; không merge hoặc tự mở rộng phần chưa áp dụng.

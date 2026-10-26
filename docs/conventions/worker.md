@@ -1,9 +1,11 @@
 # Convention Worker Python — quy ước chính thức
 
-Trạng thái: **Đã duyệt ngày 26/10/2026**; phạm vi tại [README](README.md), chưa áp dụng. Worker hiện tại xử lý PDF/page text,
+Trạng thái: **Đã duyệt ngày 26/10/2026**; phạm vi tại [README](README.md), đã áp dụng có giới hạn. Worker hiện tại xử lý PDF/page text,
 chưa phải candidate extraction service đầy đủ. Không mở scope M6/M7 hoặc thêm LLM.
 
 ## Khảo sát và điểm chưa thống nhất
+
+Bảng dưới ghi nhận trước khi áp dụng; trạng thái cuối tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 
 Runtime mục tiêu theo README/CI là CPython 3.14.8, Ubuntu/WSL + Docker cho full gate.
 Package `src/cv_compass_worker`; dependency runtime/test được hash-lock riêng.
@@ -49,8 +51,10 @@ rewrite `UP/SIM/B` hoặc unsafe fixes. Một chẩn đoán lint không cấp ph
 Đợt format phải dùng formatter riêng; import cleanup đợt sau phải review thủ công,
 không blanket `ruff check --fix`. `F401` cũng không chứng minh import không có side-effect.
 
-Ruff đã duyệt về nguyên tắc, chưa cài đặt hoặc cấu hình; chờ chốt version và kiểm
-chứng Python 3.14.8 ở Giai đoạn 2. Không sửa requirements lock hiện có.
+Ruff 0.17.2 đã cài trong tool venv riêng ngoài repo, đã chạy với Python 3.14.8; cấu hình
+ở `worker/ruff.toml`. 47 file format có AST giống hệt; sáu file chỉ hoán vị imports
+stdlib đã kiểm chứng. Không sửa requirements lock hiện có. Full test gate còn
+NOT VERIFIED do prerequisite; chi tiết tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 mypy/pyright **không bật bắt buộc trong phạm vi đã duyệt**:
 repo chưa có checker và annotations chưa đầy đủ; không cài để rồi thêm ignores/casts
 che vấn đề. File generated/output/lock, design JSON và migration ngoài target.
@@ -91,3 +95,5 @@ không sửa hoặc tuyên bố đã xác minh lại trong khảo sát này.
 Căn cứ chính thức: [PEP 8](https://peps.python.org/pep-0008/),
 [Ruff formatter](https://docs.astral.sh/ruff/formatter/),
 [Ruff linter và fix safety](https://docs.astral.sh/ruff/linter/).
+
+Lệnh từ worker/: `ruff format src tests spikes run_worker.py run_pull_worker.py` và `ruff check src tests spikes run_worker.py run_pull_worker.py` (tool venv riêng, Ruff 0.17.2; không cài qua requirements lock).

@@ -6,6 +6,8 @@ ghi là đoạn code hiện tại.
 
 ## Khảo sát và điểm chưa thống nhất
 
+Bảng dưới ghi nhận trước khi áp dụng; trạng thái cuối tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
+
 Base package `com.cvcompass.backend`; module nghiệp vụ `ingestion` chia controller,
 service, repository, entity, dto, config, enums, exception, upload, source. `storage`
 là infrastructure với adapter `local`; `web` chứa response/error/logging. Không có
@@ -66,14 +68,18 @@ Các path viết `.../` trong bảng đều có tiền tố
 | Import theo output google-java-format: static trước non-static; không chia nhóm non-JDK/JDK thủ công | Static imports trước, non-static sau theo formatter | Wildcard production và thứ tự ngẫu nhiên (B02) | Giữ explicit imports production; không đổi resolution mơ hồ hoặc wildcard static test |
 | Line width 100 cố định theo google-java-format (AOSP) | Wrap constructor/record dài, không sửa nội dung string/text block | Cắt string SQL hoặc chỉnh whitespace bên trong text block | Formatter là nguồn chuẩn cho whitespace và wrap, không đặt width riêng |
 
-Java dùng **Spotless + google-java-format, style AOSP**. **Đã duyệt, chờ chốt version và chạy thử ở Giai đoạn 2**.
-Spotless chịu trách nhiệm tích hợp formatter vào Gradle và kiểm tra format;
-google-java-format là formatter chuẩn cho Java. Chưa cài đặt hoặc cấu hình,
-chưa chọn version, chưa kiểm chứng parser Java 25/Gradle 9.7.1. Giữ nguyên các rule
-format đã duyệt ở bảng trên. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự
-import; rule viết tay không được mâu thuẫn output formatter.
-Chạy formatter preview trên sample trước; nếu đổi text block/string bytes hoặc
-không hỗ trợ syntax thì bỏ qua/báo cáo.
+Java giữ **Spotless + google-java-format, style AOSP**. Trial đã chạy với
+Spotless 8.10.4 và google-java-format 1.36.1 trên JDK 25.0.4.1/Gradle 9.7.1.
+Spotless tích hợp formatter vào Gradle và kiểm tra format; google-java-format là
+formatter chuẩn. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự import.
+Chưa thêm cấu hình vào `backend/build.gradle`: adapter tự xóa unused imports và
+sắp xếp imports ngay cả khi `reorderImports(false)`; chưa đáp ứng ràng buộc tách
+whitespace/import và không xóa import thừa. Giữ nguyên toàn bộ Java source.
+Trial 1.37.0 gặp API mismatch (`NoSuchMethodError`); 1.36.1 là default được changelog
+Spotless công bố và chạy được, nhưng vẫn có giới hạn trên. Không đổi công cụ.
+`./gradlew.bat spotlessApply` / `spotlessCheck` là lệnh dự kiến sau khi giải quyết
+adapter; hiện chưa có các task này trong backend, chưa gắn `spotlessCheck` vào `check`.
+Chi tiết trial và phần chưa áp dụng tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 Không cài thêm Checkstyle cùng lúc. Tách format khỏi import cleanup; không bật
 remove-unused-imports trong đợt format. Exclude migration, contracts, generated.
 
