@@ -72,16 +72,18 @@ Java giữ **Spotless + google-java-format, style AOSP**. Trial đã chạy vớ
 Spotless 8.10.4 và google-java-format 1.36.1 trên JDK 25.0.4.1/Gradle 9.7.1.
 Spotless tích hợp formatter vào Gradle và kiểm tra format; google-java-format là
 formatter chuẩn. Formatter là nguồn chuẩn cho whitespace, wrap và thứ tự import.
-Chưa thêm cấu hình vào `backend/build.gradle`: adapter tự xóa unused imports và
-sắp xếp imports ngay cả khi `reorderImports(false)`; chưa đáp ứng ràng buộc tách
-whitespace/import và không xóa import thừa. Giữ nguyên toàn bộ Java source.
+Quyết định mới ngày 26/10/2026: cho phép riêng Java xóa unused imports và sắp xếp
+imports trong bước formatter, với compile thành công và output `javap -c -p -constants`
+giống hệt trước/sau cho toàn bộ main/test classes. Không dùng `-l`.
+Python và Frontend vẫn cấm xóa unused imports; ngoại lệ này không áp dụng cho hai phần đó.
 Trial 1.37.0 gặp API mismatch (`NoSuchMethodError`); 1.36.1 là default được changelog
-Spotless công bố và chạy được, nhưng vẫn có giới hạn trên. Không đổi công cụ.
+Spotless công bố và chạy được. Không đổi công cụ.
 `./gradlew.bat spotlessApply` / `spotlessCheck` là lệnh dự kiến sau khi giải quyết
 adapter; hiện chưa có các task này trong backend, chưa gắn `spotlessCheck` vào `check`.
 Chi tiết trial và phần chưa áp dụng tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
-Không cài thêm Checkstyle cùng lúc. Tách format khỏi import cleanup; không bật
-remove-unused-imports trong đợt format. Exclude migration, contracts, generated.
+Không cài thêm Checkstyle. Cho phép import cleanup do formatter Java thực hiện;
+`reflowLongStrings(false)`, không đổi giá trị/bytes string hoặc text block.
+Exclude migration, contracts, generated; mở wildcard production bằng đợt riêng có compile/javap.
 
 ## Test
 

@@ -93,7 +93,9 @@ artifacts khỏi mọi formatter/cleanup. Không normalize EOL checkout hiện t
    formatter/linter 0.17.2 đã cài trong tool venv riêng ngoài repo, có `worker/ruff.toml`;
    đã format và sắp xếp imports trong phạm vi kiểm chứng được. Không cài Black.
    Trial Spotless 8.10.4 + google-java-format 1.36.1 chạy được trên JDK 25/Gradle 9.7.1,
-   nhưng adapter tự xóa unused imports: chưa đưa vào build backend để giữ ràng buộc.
+   quyết định mới cho phép riêng Java xóa unused imports khi compile thành công và
+   toàn bộ output `javap -c -p -constants` giống hệt trước/sau. Python/Frontend vẫn
+   cấm xóa unused imports; không đổi giá trị string/text block hoặc dependency hiện có.
    Frontend giữ Prettier 3.6.2 đã có và thêm config explicit, không đổi dependency/lockfile.
 2. Python type hints chỉ áp dụng cho code mới. Giai đoạn 2 không bổ sung type hints
    vào code Python cũ; annotation có thể được inspect/runtime evaluate.

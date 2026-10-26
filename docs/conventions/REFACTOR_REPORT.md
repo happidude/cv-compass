@@ -9,13 +9,16 @@ Working tree sạch tại preflight; không tạo branch/worktree khác.
 **Đã áp dụng có giới hạn, chưa đạt full quality gate.** Frontend PASS. Backend và
 worker full gate NOT VERIFIED do thiếu prerequisite, với các lỗi thực thi được ghi
 nguyên trạng dưới đây. Không diễn giải test failure thành PASS vì AST giống nhau.
-Backend chưa áp dụng formatter/import vì adapter Spotless không giữ được yêu cầu
-không xóa unused imports. Không thay công cụ developer đã chọn, không thêm custom
-formatter để lách ràng buộc. Phần backend còn lại cần developer quyết định sau review.
+Các số liệu lượt đầu bên dưới ghi trạng thái tại `2e019b4`. Quyết định mới ngày
+26/10/2026 cho phép riêng Java xóa unused imports và sắp xếp imports bằng formatter,
+khi compile thành công và output `javap -c -p -constants` của toàn bộ main/test classes
+giống hệt trước/sau (không `-l`). Không đổi string/text block; tắt reflowLongStrings.
+Python và Frontend vẫn cấm xóa unused imports. Kết quả lượt Java tiếp theo được ghi bổ sung riêng.
 
 Không đổi logic, API/JSON/DB/env/event contract, dependency hiện có hoặc lockfile.
 Không rename, di chuyển package/file, tách hàm/class/component, thêm type hints,
-sửa bug, xóa import hay làm yếu assertions/tests. Test code chỉ được format.
+sửa bug hay làm yếu assertions/tests. Java được phép xóa unused imports kèm javap;
+Python/Frontend không được xóa import. Test code chỉ thay hình thức.
 
 | Phần | Số file thay đổi so với điểm quay lại | Loại thay đổi |
 | --- | ---: | --- |
@@ -284,9 +287,8 @@ trong đợt chuẩn hóa này. Thất bại baseline không được sửa ti�
 1. **P1:** Cung cấp PostgreSQL 17 test credentials trong shell và Docker/native
    prerequisites đúng README, chạy lại full local gates trên source cuối; không
    dùng CI thay bằng chứng local hoặc đổi tests để bỏ prerequisite.
-2. **P1:** Developer review giới hạn Spotless adapter; quyết định cách bảo toàn
-   imports trước khi tích hợp AOSP và thực hiện javap gates. Giữ công cụ đã chọn,
-   không tự đổi adapter/custom formatter trong lượt hiện tại.
+2. **P1:** Tích hợp AOSP theo quyết định mới cho phép Java import cleanup, giữ
+   compile/javap gates và công cụ đã chọn; không mở ngoại lệ sang Python/Frontend.
 3. **P2:** Review riêng E402/E731/F401 và import side-effects. Chỉ xóa/di chuyển khi
    chứng minh an toàn hoặc có scope riêng; không bật unsafe fixes.
 4. **P2:** Đồng bộ roadmap và các tham chiếu hợp đồng bằng nhiệm vụ docs riêng.
