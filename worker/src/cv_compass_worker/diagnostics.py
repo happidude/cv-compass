@@ -1,10 +1,10 @@
 """Typed, safe failure metadata. Never inspect exception/cause messages to classify a halt."""
 
-from dataclasses import dataclass
-from contextlib import contextmanager
-from enum import StrEnum
 import http.client
 import ssl
+from contextlib import contextmanager
+from dataclasses import dataclass
+from enum import StrEnum
 
 
 class Reason(StrEnum):

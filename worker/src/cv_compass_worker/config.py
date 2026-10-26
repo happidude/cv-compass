@@ -1,11 +1,11 @@
 """Strict local configuration. Contract ceilings come from one manifest."""
 
-from dataclasses import asdict, dataclass, fields
 import hashlib
 import json
 import re
-from pathlib import Path
 import tomllib
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 
 DESIGN = Path(__file__).resolve().parents[2] / 'design'
 LIMITS = json.loads((DESIGN / 'ocr-v2.limits.json').read_text(encoding='utf-8'))

@@ -1,7 +1,7 @@
 """Fresh allowlisted context: runtime imports design/, probes live in tests/spikes."""
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 
 def prepare(root, context):
