@@ -1,0 +1,14 @@
+line-length = 100
+target-version = "py314"
+force-exclude = true
+extend-exclude = [
+    "design", "build", "dist", ".venv", "venv", "env", "__pycache__",
+    ".ruff_cache", "generated", "reports", "node_modules", "*.lock",
+]
+
+[format]
+quote-style = "single"
+line-ending = "auto"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I"]
