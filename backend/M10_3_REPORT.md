@@ -25,8 +25,9 @@ mapping riêng. Concurrency mặc định 1, độc lập batch/page size. Lease
 attempt budget và backoff đi qua service/SQL/constraint V8. Restart cùng active
 config giữ cursor/upper bound; chỉ đổi config mới bắt đầu sweep lại.
 
-M10.3 nằm trong commit tiếp theo của PR; SHA chính xác được ghi trong PR và bàn
-giao sau commit để tránh tự tham chiếu SHA trong chính file này.
+M10.3 nằm trong commit riêng `ecfe635f95a3fe01a26d3194e87880fba4cd1e6a`.
+Commit tài liệu tiếp theo chỉ ghi nhận kết quả CI và chuẩn hóa newline cuối báo cáo;
+runtime/test source không đổi.
 
 ## Kết quả triển khai
 
@@ -101,8 +102,10 @@ SHA-256 manifest source:
 `d4c7a03cb9e63c2662487ea6e7409a1bb666a6723c644c6399db9881285b95e0`.
 Docs hoàn thiện sau gate, runtime/test source giữ nguyên theo manifest.
 Không compiler/deprecation warning mới; gợi ý Gradle cache và advisory Git
-LF/CRLF không phải warning bị suppress. CI M10.3 tại thời điểm tạo báo cáo còn
-**NOT VERIFIED**, sẽ chạy trên SHA đã push và được ghi rõ trong PR/bàn giao.
+LF/CRLF không phải warning bị suppress. CI M10.3 **PASS** trên commit
+`ecfe635f95a3fe01a26d3194e87880fba4cd1e6a`:
+[Persistence CI 40528878796](https://github.com/hoangnguyen229/cv-compass/actions/runs/40528878796).
+Kết quả CI của head tài liệu sau đó được ghi riêng trong PR/bàn giao.
 
 ## Review: đúng ba vòng
 
@@ -137,4 +140,3 @@ Không mở vòng review thứ tư. Không nới assertion, xóa test hoặc sup
 - Tên field camelCase theo DTO nội bộ hiện hữu; semantics/evidence theo thiết kế,
   chưa công bố thêm HTTP contract. Không AI/NER/embedding, UI/export, thay OCR
   contract/status/production gate hoặc triển khai milestone kế tiếp.
-
