@@ -12,4 +12,4 @@ public record MappingClaim(
         int attempt,
         UUID token,
         Instant leaseExpiresAt,
-        MappingDefinition definition) {}
+        MappingConfig definition) {}

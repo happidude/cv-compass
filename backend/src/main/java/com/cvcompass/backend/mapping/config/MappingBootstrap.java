@@ -1,7 +1,8 @@
 package com.cvcompass.backend.mapping.config;
 
-import com.cvcompass.backend.mapping.dto.MappingDefinition;
+import com.cvcompass.backend.mapping.dto.MappingVersions;
 import com.cvcompass.backend.mapping.service.MappingService;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,7 +41,8 @@ public class MappingBootstrap implements ApplicationRunner {
             }
             if (bytes.length > 65536)
                 throw new IllegalArgumentException("Mapping config too large");
-            var definition = json.readValue(bytes, MappingDefinition.class);
+            var definition =
+                    MappingVersions.config(new String(bytes, StandardCharsets.UTF_8), json);
             mapping.activate(mapping.register(revision, definition));
         } catch (Exception invalid) {
             // JSON/SQL errors may contain source text; expose only a fixed startup failure.

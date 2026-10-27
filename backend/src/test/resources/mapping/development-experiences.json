@@ -1,0 +1,169 @@
+[
+  {
+    "id": "dev-labeled",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Northstar Devices\nPosition: Engineering Manager\nDates: 2019 - 2021\nManaged a synthetic program.\nClient: Cedar Retail"
+      }
+    ],
+    "expected": [
+      {
+        "company": "northstar devices",
+        "title": "Engineering Manager",
+        "start": "2019:YEAR",
+        "end": "2021:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "dev-summary-conflict",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "CAREER SUMMARY\nCompany: Meadow Labs\nTitle: HR Manager\nDates: 05/2019 - 09/2020\nWORK EXPERIENCE\nEmployer: Meadow Labs\nPosition: HR Manager\nDates: 05/2019 - 0/2020\nSynthetic detail."
+      }
+    ],
+    "expected": [
+      {
+        "company": "meadow labs",
+        "title": "HR Manager",
+        "start": null,
+        "end": null,
+        "state": "AMBIGUOUS",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "dev-returns",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nCompany: Meadow Labs\nTitle: Program Manager\nDates: 2010 - 2016\nCompany: Meadow Labs\nTitle: Program Manager\nDates: 2022 - 2023"
+      }
+    ],
+    "expected": [
+      {
+        "company": "meadow labs",
+        "title": "Program Manager",
+        "start": "2010:YEAR",
+        "end": "2016:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      },
+      {
+        "company": "meadow labs",
+        "title": "Program Manager",
+        "start": "2022:YEAR",
+        "end": "2023:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "dev-continuation",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Northstar\nTitle: Engineering Manager\nDates: 2020 - present\nSynthetic work on first page."
+      },
+      {
+        "number": 2,
+        "status": "ok",
+        "text": "Employer: Northstar (continued)\n  Synthetic work on second page."
+      }
+    ],
+    "expected": [
+      {
+        "company": "northstar devices",
+        "title": "Engineering Manager",
+        "start": "2020:YEAR",
+        "end": null,
+        "state": "PROPOSED",
+        "ongoing": true
+      }
+    ]
+  },
+  {
+    "id": "dev-unicode",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "KINH NGHIỆM LÀM VIỆC\nCông ty: Café 😀 Factory\nChức danh: Trưởng phòng kỹ thuật\nThời gian: 03/2018 – 06/2021\n  Mô tả  tổng hợp."
+      }
+    ],
+    "expected": [
+      {
+        "company": "café 😀 factory",
+        "title": "Trưởng phòng kỹ thuật",
+        "start": "2018-03:MONTH",
+        "end": "2021-06:MONTH",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "dev-multiple-roles",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Northstar Devices\nPosition: Assistant HR Manager\nDates: 2007 - 2008\nPosition: HR Manager\nDates: 2008 - 2014\nEmployer: Meadow Labs\nPosition: HR Director\nDates: 2014 - now"
+      }
+    ],
+    "expected": [
+      {
+        "company": "northstar devices",
+        "title": "Assistant HR Manager",
+        "start": "2007:YEAR",
+        "end": "2008:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      },
+      {
+        "company": "northstar devices",
+        "title": "HR Manager",
+        "start": "2008:YEAR",
+        "end": "2014:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      },
+      {
+        "company": "meadow labs",
+        "title": "HR Director",
+        "start": "2014:YEAR",
+        "end": null,
+        "state": "PROPOSED",
+        "ongoing": true
+      }
+    ]
+  },
+  {
+    "id": "dev-target-heading",
+    "split": "development",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "Position: HR DIRECTOR - Synthetic Target\nSKILLS\nSynthetic knowledge."
+      }
+    ],
+    "expected": []
+  }
+]

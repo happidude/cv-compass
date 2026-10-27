@@ -1,7 +1,7 @@
 package com.cvcompass.backend.mapping.repository;
 
 import com.cvcompass.backend.mapping.dto.MappingClaim;
-import com.cvcompass.backend.mapping.dto.MappingDefinition;
+import com.cvcompass.backend.mapping.dto.MappingVersions;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -49,15 +49,13 @@ public class MappingRepository {
                 digest);
     }
 
-    public MappingDefinition definition(long id) {
-        return json.readValue(
-                jdbc.queryForObject(
-                        """
+    public String definitionJson(long id) {
+        return jdbc.queryForObject(
+                """
                 SELECT "DEFINITION"::text FROM "CV_MAPPING_CONFIGS" WHERE "ID"=?
                 """,
-                        String.class,
-                        id),
-                MappingDefinition.class);
+                String.class,
+                id);
     }
 
     public long[] lockSettings() {
@@ -105,16 +103,18 @@ public class MappingRepository {
                 maxAttempts);
     }
 
-    public Optional<MappingClaim> claim(String engine, Duration lease, Duration deadline) {
+    public Optional<MappingClaim> claim(
+            String engine, String otherEngine, Duration lease, Duration deadline) {
         var ids =
                 jdbc.query(
                         """
                 SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "STATUS"='PENDING'
-                AND "ENGINE_VERSION"=? AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
+                AND "ENGINE_VERSION" IN (?,?) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
-                        engine);
+                        engine,
+                        otherEngine);
         if (ids.isEmpty()) return Optional.empty();
         long id = ids.getFirst();
         UUID token = UUID.randomUUID();
@@ -155,7 +155,7 @@ public class MappingRepository {
                 rs.getTimestamp("LEASE_EXPIRES_AT") == null
                         ? null
                         : rs.getTimestamp("LEASE_EXPIRES_AT").toInstant(),
-                json.readValue(rs.getString("definition"), MappingDefinition.class));
+                MappingVersions.config(rs.getString("definition"), json));
     }
 
     public Job lockJob(long id) {
@@ -196,13 +196,14 @@ public class MappingRepository {
                 .findFirst();
     }
 
-    public void finish(long id, String digest, String quality, String result) {
+    public void finish(long id, int schemaVersion, String digest, String quality, String result) {
         jdbc.update(
                 """
                 INSERT INTO "CV_MAPPING_RESULTS" ("JOB_ID","SCHEMA_VERSION","QUALITY","DIGEST","RESULT")
-                VALUES (?,1,?,?,?::jsonb)
+                VALUES (?,?,?,?,?::jsonb)
                 """,
                 id,
+                schemaVersion,
                 quality,
                 digest,
                 result);

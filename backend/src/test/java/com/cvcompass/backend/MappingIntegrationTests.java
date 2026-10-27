@@ -105,6 +105,10 @@ class MappingIntegrationTests {
     }
 
     private long seed(String ocrStatus, Long existingDocument) {
+        return seed(ocrStatus, existingDocument, "😀 Synthetic e\u0301\nJava");
+    }
+
+    private long seed(String ocrStatus, Long existingDocument, String rawText) {
         var doc =
                 existingDocument == null
                         ? new CvDocument()
@@ -137,7 +141,7 @@ class MappingIntegrationTests {
         result.put("schema_version", "cv-compass.ocr/2.0");
         var page = (ObjectNode) result.get("pages").get(0);
         page.remove("text");
-        page.put("raw_text", "😀 Synthetic e\u0301\nJava");
+        page.put("raw_text", rawText);
         if (!"success".equals(ocrStatus)) {
             ObjectNode failedPage = page.deepCopy();
             failedPage.put("status", "failed").put("method", "none").put("raw_text", "");
@@ -301,7 +305,9 @@ class MappingIntegrationTests {
                         new com.cvcompass.backend.mapping.service.MappingEngine(),
                         json,
                         transactions,
-                        new com.cvcompass.backend.mapping.config.MappingProperties());
+                        new com.cvcompass.backend.mapping.config.MappingProperties(),
+                        new com.cvcompass.backend.mapping.service.ExperienceEngine(
+                                new com.cvcompass.backend.mapping.service.MappingEngine()));
         while (restarted.scan(2) == 2) {}
         assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_MAPPING_JOBS\"", Integer.class))
                 .isEqualTo(count);
@@ -828,5 +834,110 @@ class MappingIntegrationTests {
                                 String.class,
                                 claim.jobId()))
                 .isEqualTo("FAILED");
+    }
+
+    @Test
+    void experienceV2PersistsThroughWorkerWhileV1PayloadDigestAndReplayRemainUnchanged()
+            throws Exception {
+        var legacyClaim = queued(seed(), activate());
+        var legacyResult = mapping.process(legacyClaim);
+        mapping.complete(legacyClaim, legacyResult);
+        var legacyRow =
+                jdbc.queryForMap(
+                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        legacyClaim.jobId());
+        com.cvcompass.backend.mapping.dto.ExperienceDefinition config;
+        try (var stream = getClass().getResourceAsStream("/mapping/experience-config-v2.json")) {
+            config =
+                    json.readValue(
+                            stream, com.cvcompass.backend.mapping.dto.ExperienceDefinition.class);
+        }
+        long configId = mapping.register("experience-" + UUID.randomUUID(), config);
+        mapping.activate(configId);
+        long extraction =
+                seed(
+                        "success",
+                        null,
+                        """
+                WORK EXPERIENCE
+                Employer: Northstar Devices
+                Position: Engineering Manager
+                Dates: 2018 - 2021
+                Partner: Synthetic Client
+                """);
+        var ocrBefore =
+                jdbc.queryForMap("SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"ID\"=?", extraction);
+        mapping.scan();
+        while (worker.runOne()) {}
+        long job =
+                jdbc.queryForObject(
+                        """
+                SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "EXTRACTION_ID"=? AND "CONFIG_ID"=?
+                """,
+                        Long.class,
+                        extraction,
+                        configId);
+        var outcome = mapping.result(job).orElseThrow();
+        assertThat(outcome)
+                .isInstanceOf(com.cvcompass.backend.mapping.dto.ExperienceMappingResult.class);
+        var result = (com.cvcompass.backend.mapping.dto.ExperienceMappingResult) outcome;
+        assertThat(result.schemaVersion()).isEqualTo(2);
+        assertThat(result.experiences()).hasSize(1);
+        assertThat(result.experiences().getFirst().company().normalized())
+                .isEqualTo("northstar devices");
+        assertThat(result.experiences().getFirst().title().functionCodes())
+                .containsExactly("ENGINEERING");
+        assertThat(result.experiences().getFirst().company().industryCodes())
+                .containsExactly("MANUFACTURING");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"SCHEMA_VERSION\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                Integer.class,
+                                job))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"ID\"=?", extraction))
+                .isEqualTo(ocrBefore);
+        mapping.complete(legacyClaim, legacyResult);
+        assertThat(mapping.result(legacyClaim.jobId())).contains(legacyResult);
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                legacyClaim.jobId()))
+                .isEqualTo(legacyRow);
+        var v2Claim =
+                new com.cvcompass.backend.mapping.repository.MappingRepository(jdbc, json)
+                        .readClaim(job);
+        mapping.complete(v2Claim, result);
+        ObjectNode changed =
+                (ObjectNode)
+                        json.readTree(
+                                com.cvcompass.backend.mapping.service.MappingDigests.canonical(
+                                        result));
+        ((ObjectNode) changed.get("experiences").get(0).get("company"))
+                .put("normalized", "fabricated synthetic");
+        var conflict =
+                json.readValue(
+                        changed.toString(),
+                        com.cvcompass.backend.mapping.dto.ExperienceMappingResult.class);
+        assertThatThrownBy(() -> mapping.complete(v2Claim, conflict))
+                .hasMessage("MAPPING_RESULT_CONFLICT");
+        long retryInput =
+                seed(
+                        "success",
+                        null,
+                        "Employer: Meadow Labs\nTitle: HR Manager\nDates: 2010 - 2012");
+        jdbc.update(
+                """
+                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION")
+                VALUES (?,?,'experience-mapping/2.0')
+                """,
+                retryInput,
+                configId);
+        var stale = mapping.claim().orElseThrow();
+        var staleResult = mapping.process(stale);
+        expire(stale);
+        assertThatThrownBy(() -> mapping.complete(stale, staleResult))
+                .hasMessage("MAPPING_STALE_ATTEMPT");
+        assertThat(mapping.result(stale.jobId())).isEmpty();
     }
 }

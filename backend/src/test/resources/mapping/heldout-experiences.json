@@ -1,0 +1,389 @@
+[
+  {
+    "id": "eval-en-month",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "PROFESSIONAL EXPERIENCE\nCompany: Northstar Devices\nTitle: HR Manager\nPeriod: 01/2017 – 05/2019\nBuilt synthetic recruitment procedures."
+      }
+    ],
+    "expected": [
+      {
+        "company": "northstar devices",
+        "title": "HR Manager",
+        "start": "2017-01:MONTH",
+        "end": "2019-05:MONTH",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-vi",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "KINH NGHIỆM CÔNG TÁC\nCông ty: Xưởng Sao Đỏ\nChức danh: Trưởng phòng kỹ thuật\nThời gian: 2016 - 2018\nPhát triển quy trình tổng hợp."
+      }
+    ],
+    "expected": [
+      {
+        "company": "xưởng sao đỏ",
+        "title": "Trưởng phòng kỹ thuật",
+        "start": "2016:YEAR",
+        "end": "2018:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-summary-exact",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "EXPERIENCE SUMMARY\nCompany: Northstar\nTitle: QA Engineer\nPeriod: 2015 - 2017\nEMPLOYMENT HISTORY\nCompany: Northstar Devices\nTitle: QA Engineer\nPeriod: 2015 - 2017\nSynthetic inspection procedures."
+      }
+    ],
+    "expected": [
+      {
+        "company": "northstar devices",
+        "title": "QA Engineer",
+        "start": "2015:YEAR",
+        "end": "2017:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-summary-date-conflict",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "TÓM TẮT KINH NGHIỆM\nCông ty: Meadow Labs\nVị trí: HR Manager\nThời gian: 05/2019 - 09/2020\nWORK EXPERIENCE\nEmployer: Meadow Labs\nPosition: HR Manager\nDates: 05/2019 - 0/2020"
+      }
+    ],
+    "expected": [
+      {
+        "company": "meadow labs",
+        "title": "HR Manager",
+        "start": null,
+        "end": null,
+        "state": "AMBIGUOUS",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-return-employer",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Meadow Labs\nTitle: Program Manager\nPeriod: 2009 - 2013\nEmployer: Meadow Labs\nTitle: Program Manager\nPeriod: 2021 - 2024"
+      }
+    ],
+    "expected": [
+      {
+        "company": "meadow labs",
+        "title": "Program Manager",
+        "start": "2009:YEAR",
+        "end": "2013:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      },
+      {
+        "company": "meadow labs",
+        "title": "Program Manager",
+        "start": "2021:YEAR",
+        "end": "2024:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-career-levels",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nCompany: Northstar Devices\nPosition: Assistant HR Manager\nDates: 2006 - 2008\nPosition: HR Manager\nDates: 2009 - 2013"
+      }
+    ],
+    "expected": [
+      {
+        "company": "northstar devices",
+        "title": "Assistant HR Manager",
+        "start": "2006:YEAR",
+        "end": "2008:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      },
+      {
+        "company": "northstar devices",
+        "title": "HR Manager",
+        "start": "2009:YEAR",
+        "end": "2013:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-partners-and-headcount",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Alpine Assembly\nTitle: Engineering Manager\nDates: 2020 - 2022\nCompany scale: 6,500 employees.\nManaged 40 staff.\nClient: Retail Partner\nSupplier: Component Partner\nTraining with Machine Partner."
+      }
+    ],
+    "expected": [
+      {
+        "company": "alpine assembly",
+        "title": "Engineering Manager",
+        "start": "2020:YEAR",
+        "end": "2022:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-application-heading",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "Position: HR DIRECTOR - Opportunity Foods\nOBJECTIVE\nSeeking a synthetic role.\nEDUCATION\nCompany: University Sponsor"
+      }
+    ],
+    "expected": []
+  },
+  {
+    "id": "eval-explicit-continuation",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "EMPLOYMENT HISTORY\nEmployer: Blue Harbor Works\nTitle: QA Engineer\nDates: October 2023 until now\nFirst synthetic assignment."
+      },
+      {
+        "number": 2,
+        "status": "ok",
+        "text": "Employer: Blue Harbor Works (continued)\nSecond synthetic assignment."
+      }
+    ],
+    "expected": [
+      {
+        "company": "blue harbor works",
+        "title": "QA Engineer",
+        "start": "2023-10:MONTH",
+        "end": null,
+        "state": "PROPOSED",
+        "ongoing": true
+      }
+    ]
+  },
+  {
+    "id": "eval-failed-middle-page",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Meadow Labs\nTitle: HR Manager\nDates: 2012 - 2014\nSynthetic first section."
+      },
+      {
+        "number": 2,
+        "status": "failed",
+        "text": ""
+      },
+      {
+        "number": 3,
+        "status": "ok",
+        "text": "Employer: Meadow Labs (continued)\nUnverified continuation."
+      }
+    ],
+    "expected": [
+      {
+        "company": "meadow labs",
+        "title": "HR Manager",
+        "start": "2012:YEAR",
+        "end": "2014:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-calendar-invalid",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nCompany: Orchard Tools\nTitle: QA Engineer\nDates: 31/02/2022 - 28/02/2023"
+      }
+    ],
+    "expected": [
+      {
+        "company": "orchard tools",
+        "title": "QA Engineer",
+        "start": null,
+        "end": "2023-02-28:DAY",
+        "state": "INVALID",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-pipe",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\n2018 - 2020 | Lumen Systems | QA Engineer\nSynthetic test procedures."
+      }
+    ],
+    "expected": [
+      {
+        "company": "lumen systems",
+        "title": "QA Engineer",
+        "start": "2018:YEAR",
+        "end": "2020:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-overlap",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Cedar Manufacturing\nTitle: Program Manager\nDates: Jan 2007 - Dec 2008\nEmployer: River Studio\nTitle: Engineering Manager\nDates: Jan 2008 - March 2014"
+      }
+    ],
+    "expected": [
+      {
+        "company": "cedar manufacturing",
+        "title": "Program Manager",
+        "start": "2007-01:MONTH",
+        "end": "2008-12:MONTH",
+        "state": "PROPOSED",
+        "ongoing": false
+      },
+      {
+        "company": "river studio",
+        "title": "Engineering Manager",
+        "start": "2008-01:MONTH",
+        "end": "2014-03:MONTH",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-unknown-taxonomy",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Amber Observatory\nPosition: Experimental Instrument Coordinator\nDates: 2011 - 2016"
+      }
+    ],
+    "expected": [
+      {
+        "company": "amber observatory",
+        "title": "Experimental Instrument Coordinator",
+        "start": "2011:YEAR",
+        "end": "2016:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-title-conflict",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nEmployer: Meadow Labs\nTitle: QA Engineer\nTitle: HR Director\nDates: 2016 - 2018"
+      }
+    ],
+    "expected": [
+      {
+        "company": "meadow labs",
+        "title": null,
+        "start": "2016:YEAR",
+        "end": "2018:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-unlabeled-layout",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "PROFESSIONAL EXPERIENCE\nSilver Orchard Technologies\nSenior Platform Specialist\n2019 - 2022\nSynthetic unlabeled block."
+      }
+    ],
+    "expected": [
+      {
+        "company": "silver orchard technologies",
+        "title": "Senior Platform Specialist",
+        "start": "2019:YEAR",
+        "end": "2022:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  },
+  {
+    "id": "eval-freeform-layout",
+    "split": "heldout",
+    "pages": [
+      {
+        "number": 1,
+        "status": "ok",
+        "text": "WORK EXPERIENCE\nBetween 2010 and 2015, I was an analyst employed by Maple Observatory."
+      }
+    ],
+    "expected": [
+      {
+        "company": "maple observatory",
+        "title": "Analyst",
+        "start": "2010:YEAR",
+        "end": "2015:YEAR",
+        "state": "PROPOSED",
+        "ongoing": false
+      }
+    ]
+  }
+]

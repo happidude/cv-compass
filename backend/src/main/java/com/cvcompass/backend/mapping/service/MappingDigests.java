@@ -7,7 +7,7 @@ import java.util.HexFormat;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Record properties sorted by name; ordered arrays retained; no source normalization. */
+/** Published mapper settings retain record creator order and arrays; preserve v1 digest bytes. */
 public final class MappingDigests {
     private static final JsonMapper JSON =
             JsonMapper.builder().enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY).build();

@@ -62,7 +62,7 @@ class MappingBootstrapTests {
         Files.writeString(
                 file,
                 """
-                {"schemaVersion":1,"fields":[{"key":"sample","type":"STRING","scope":"PAGE","extractor":"FIRST_LINE","argument":null}]}
+                {"schemaVersion":1,"engineCompatibility":"literal-mapping/1.0","fields":[{"key":"sample","type":"STRING","scope":"PAGE","extractor":"FIRST_LINE","argument":null}]}
                 """);
         when(mapping.register(eq("synthetic-v1"), any()))
                 .thenThrow(new IllegalStateException("SYNTHETIC_PRIVATE_DIAGNOSTIC"));
@@ -75,6 +75,7 @@ class MappingBootstrapTests {
                     .hasMessage("Mapping configuration could not be activated")
                     .hasNoCause();
             assertThat(failure.toString()).doesNotContain("SYNTHETIC_PRIVATE_DIAGNOSTIC");
+            verify(mapping).register(eq("synthetic-v1"), any());
         }
     }
 }

@@ -4,7 +4,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public record MappingDefinition(int schemaVersion, String engineCompatibility, List<Field> fields) {
+public record MappingDefinition(int schemaVersion, String engineCompatibility, List<Field> fields)
+        implements MappingConfig {
     public static final String ENGINE_VERSION = "literal-mapping/1.0";
 
     public MappingDefinition(int schemaVersion, List<Field> fields) {

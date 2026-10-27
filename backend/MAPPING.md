@@ -1,5 +1,7 @@
 # M10.2 — Mapping foundation
 
+Experience engine/schema v2 and backward compatibility: [MAPPING_EXPERIENCE_V2.md](MAPPING_EXPERIENCE_V2.md).
+
 Operational corrections and current property limits: [MAPPING_OPERATIONS.md](MAPPING_OPERATIONS.md).
 The fixed values below describe original M10.2 defaults; the operations document
 defines configurable values and restart behavior after the foundation correction.

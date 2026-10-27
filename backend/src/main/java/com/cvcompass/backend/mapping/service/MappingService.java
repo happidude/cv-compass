@@ -3,8 +3,9 @@ package com.cvcompass.backend.mapping.service;
 import com.cvcompass.backend.ingestion.api.OcrExtractionReader;
 import com.cvcompass.backend.mapping.config.MappingProperties;
 import com.cvcompass.backend.mapping.dto.MappingClaim;
-import com.cvcompass.backend.mapping.dto.MappingDefinition;
-import com.cvcompass.backend.mapping.dto.MappingResult;
+import com.cvcompass.backend.mapping.dto.MappingConfig;
+import com.cvcompass.backend.mapping.dto.MappingOutcome;
+import com.cvcompass.backend.mapping.dto.MappingVersions;
 import com.cvcompass.backend.mapping.repository.MappingRepository;
 import com.cvcompass.backend.web.OperationalLog;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,7 @@ public class MappingService {
     private final ObjectMapper json;
     private final TransactionTemplate tx;
     private final MappingProperties properties;
+    private final ExperienceEngine experienceEngine;
 
     public MappingService(
             MappingRepository repository,
@@ -31,20 +33,24 @@ public class MappingService {
             MappingEngine engine,
             ObjectMapper json,
             PlatformTransactionManager transactions,
-            MappingProperties properties) {
+            MappingProperties properties,
+            ExperienceEngine experienceEngine) {
         this.repository = repository;
         this.inputs = inputs;
         this.engine = engine;
         this.json = json;
         this.tx = new TransactionTemplate(transactions);
         this.properties = properties;
+        this.experienceEngine = experienceEngine;
     }
 
-    public long register(String revision, MappingDefinition definition) {
+    public long register(String revision, MappingConfig definition) {
         if (revision == null || !revision.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")) {
             throw new IllegalArgumentException("Invalid mapping revision");
         }
         definition.validate();
+        if (MappingDigests.canonical(definition).getBytes(StandardCharsets.UTF_8).length > 65536)
+            throw new IllegalArgumentException("Mapping definition exceeds limit");
         return tx.execute(
                 status ->
                         repository.register(
@@ -57,7 +63,7 @@ public class MappingService {
         tx.executeWithoutResult(
                 status -> {
                     repository.lockSettings();
-                    var definition = repository.definition(id);
+                    var definition = MappingVersions.config(repository.definitionJson(id), json);
                     definition.validate();
                     repository.activate(
                             id, MappingDigests.sha256(MappingDigests.canonical(definition)));
@@ -74,12 +80,12 @@ public class MappingService {
                     if (settings[0] == 0) return 0;
                     long upperId = settings[2] == 0 ? inputs.upperId() : settings[2];
                     var ids = inputs.scanAfter(settings[1], upperId, limit);
+                    String selectedEngine =
+                            MappingVersions.config(repository.definitionJson(settings[0]), json)
+                                    .engineCompatibility();
                     for (long id : ids)
                         repository.enqueue(
-                                id,
-                                settings[0],
-                                MappingEngine.VERSION,
-                                properties.getMaxAttempts());
+                                id, settings[0], selectedEngine, properties.getMaxAttempts());
                     repository.cursor(
                             ids.size() < limit ? 0 : ids.getLast(),
                             ids.size() < limit ? null : upperId);
@@ -93,6 +99,7 @@ public class MappingService {
                     var claim =
                             repository.claim(
                                     MappingEngine.VERSION,
+                                    ExperienceEngine.VERSION,
                                     properties.getLeaseDuration(),
                                     properties.getHardDeadline());
                     claim.ifPresent(
@@ -111,7 +118,7 @@ public class MappingService {
     }
 
     /** Extraction and CPU processing occur outside the claim/complete transactions. */
-    public MappingResult process(MappingClaim claim) {
+    public MappingOutcome process(MappingClaim claim) {
         MappingClaim current = repository.readClaim(claim.jobId());
         if (!claim.token().equals(current.token())) throw stale();
         var input =
@@ -129,10 +136,14 @@ public class MappingService {
                         throw new IllegalArgumentException("MAPPING_INPUT_CHANGED");
                     }
                 });
-        return engine.map(current, input);
+        return switch (current.engineVersion()) {
+            case MappingEngine.VERSION -> engine.map(current, input);
+            case ExperienceEngine.VERSION -> experienceEngine.map(current, input);
+            default -> throw new IllegalArgumentException("Unsupported mapping engine");
+        };
     }
 
-    public void complete(MappingClaim claim, MappingResult result) {
+    public void complete(MappingClaim claim, MappingOutcome result) {
         // Reconstruct authoritative ownership/config, never trust a caller-modified claim.
         MappingClaim authoritative = repository.readClaim(claim.jobId());
         if (!claim.token().equals(authoritative.token())) throw stale();
@@ -155,7 +166,8 @@ public class MappingService {
                         return;
                     }
                     if (!"PROCESSING".equals(job.status()) || !live(job)) throw stale();
-                    repository.finish(claim.jobId(), digest, result.quality(), body);
+                    repository.finish(
+                            claim.jobId(), result.schemaVersion(), digest, result.quality(), body);
                     // A blocked insert/update must not admit completion after lease expiry.
                     var finished = repository.lockJob(claim.jobId());
                     if (!live(finished)) throw stale();
@@ -171,8 +183,8 @@ public class MappingService {
                 });
     }
 
-    public Optional<MappingResult> result(long jobId) {
-        return repository.result(jobId).map(body -> json.readValue(body, MappingResult.class));
+    public Optional<MappingOutcome> result(long jobId) {
+        return repository.result(jobId).map(body -> MappingVersions.result(body, json));
     }
 
     public void fail(MappingClaim claim) {

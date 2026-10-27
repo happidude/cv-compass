@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 2,
+  "engineCompatibility": "experience-mapping/2.0",
+  "rulesRevision": "section-block-v1",
+  "taxonomyRevision": "synthetic-taxonomy-v1",
+  "rules": {
+    "experienceHeadings": [
+      "WORK EXPERIENCE",
+      "PROFESSIONAL EXPERIENCE",
+      "EMPLOYMENT HISTORY",
+      "KINH NGHIỆM LÀM VIỆC",
+      "KINH NGHIỆM CÔNG TÁC"
+    ],
+    "summaryHeadings": [
+      "CAREER SUMMARY",
+      "EXPERIENCE SUMMARY",
+      "TÓM TẮT KINH NGHIỆM"
+    ],
+    "stopHeadings": [
+      "EDUCATION",
+      "SKILLS",
+      "HỌC VẤN",
+      "KỸ NĂNG",
+      "OBJECTIVE",
+      "VỊ TRÍ ỨNG TUYỂN"
+    ],
+    "employerLabels": [
+      "Employer",
+      "Company",
+      "Công ty",
+      "Nhà tuyển dụng"
+    ],
+    "titleLabels": [
+      "Position",
+      "Title",
+      "Chức danh",
+      "Vị trí"
+    ],
+    "periodLabels": [
+      "Dates",
+      "Period",
+      "Thời gian"
+    ],
+    "continuationMarkers": [
+      "continued",
+      "tiếp theo",
+      "tiếp tục"
+    ]
+  },
+  "titles": [
+    {
+      "aliases": [
+        "HR Manager",
+        "Trưởng phòng nhân sự"
+      ],
+      "canonical": "HR Manager",
+      "functionCodes": [
+        "HR"
+      ],
+      "seniorityCode": "MANAGER"
+    },
+    {
+      "aliases": [
+        "Assistant HR Manager"
+      ],
+      "canonical": "Assistant HR Manager",
+      "functionCodes": [
+        "HR"
+      ],
+      "seniorityCode": "ASSISTANT"
+    },
+    {
+      "aliases": [
+        "HR Director"
+      ],
+      "canonical": "HR Director",
+      "functionCodes": [
+        "HR"
+      ],
+      "seniorityCode": "DIRECTOR"
+    },
+    {
+      "aliases": [
+        "Engineering Manager",
+        "Trưởng phòng kỹ thuật"
+      ],
+      "canonical": "Engineering Manager",
+      "functionCodes": [
+        "ENGINEERING"
+      ],
+      "seniorityCode": "MANAGER"
+    },
+    {
+      "aliases": [
+        "Program Manager"
+      ],
+      "canonical": "Program Manager",
+      "functionCodes": [
+        "PROGRAM_MANAGEMENT"
+      ],
+      "seniorityCode": "MANAGER"
+    },
+    {
+      "aliases": [
+        "QA Engineer"
+      ],
+      "canonical": "QA Engineer",
+      "functionCodes": [
+        "QUALITY"
+      ],
+      "seniorityCode": null
+    }
+  ],
+  "companies": [
+    {
+      "aliases": [
+        "Northstar Devices",
+        "Northstar"
+      ],
+      "canonical": "Northstar Devices",
+      "industryCodes": [
+        "MANUFACTURING"
+      ],
+      "basis": "Synthetic verified alias fixture; no real employer data"
+    },
+    {
+      "aliases": [
+        "Xưởng Sao Đỏ"
+      ],
+      "canonical": "Xưởng Sao Đỏ",
+      "industryCodes": [
+        "MANUFACTURING"
+      ],
+      "basis": "Synthetic verified alias fixture"
+    },
+    {
+      "aliases": [
+        "Meadow Labs"
+      ],
+      "canonical": "Meadow Labs",
+      "industryCodes": [],
+      "basis": null
+    }
+  ]
+}

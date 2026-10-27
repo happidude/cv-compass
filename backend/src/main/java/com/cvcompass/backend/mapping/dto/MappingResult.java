@@ -15,7 +15,8 @@ public record MappingResult(
         List<Value> values,
         String inputSha256,
         long documentId,
-        String profileRevision) {
+        String profileRevision)
+        implements MappingOutcome {
     public MappingResult {
         values = List.copyOf(values);
     }

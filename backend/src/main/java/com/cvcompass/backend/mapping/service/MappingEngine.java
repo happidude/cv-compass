@@ -15,7 +15,10 @@ public class MappingEngine {
             com.cvcompass.backend.mapping.dto.MappingDefinition.ENGINE_VERSION;
 
     public MappingResult map(MappingClaim claim, Extraction input) {
-        if (claim.extractionId() != input.id() || !VERSION.equals(claim.engineVersion())) {
+        if (claim.extractionId() != input.id()
+                || !VERSION.equals(claim.engineVersion())
+                || claim.definition() == null
+                || !VERSION.equals(claim.definition().engineCompatibility())) {
             throw new IllegalArgumentException("Mapping input identity mismatch");
         }
         claim.definition().validate();
