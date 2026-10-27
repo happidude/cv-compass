@@ -67,16 +67,12 @@ class DiskImportConfigurationTests {
     }
 
     @Test
-    void importSizeMayExceedTheValidatedBatchMaximum() throws Exception {
+    void retiredImportSizeFailsInsteadOfCreatingTwoBatchControls() throws Exception {
         enabled()
                 .withPropertyValues("cv.import.batch-size=10", "cv.batch.max-files=5")
                 .run(
                         context -> {
-                            assertThat(context).hasNotFailed().hasSingleBean(ImportSource.class);
-                            assertThat(context.getBean(DiskImportProperties.class).getBatchSize())
-                                    .isEqualTo(10);
-                            assertThat(context.getBean(BatchProperties.class).getMaxFiles())
-                                    .isEqualTo(5);
+                            assertThat(context).hasFailed();
                         });
     }
 

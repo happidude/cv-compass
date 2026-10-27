@@ -30,7 +30,11 @@ public final class OperationalLog {
         STORAGE_CLEANUP_FAILED,
         HTTP_REQUEST_FAILED,
         OCR_TRANSPORT_FAILED,
-        LOG_TRANSACTION_UNAVAILABLE
+        LOG_TRANSACTION_UNAVAILABLE,
+        MAPPING_CLAIMED,
+        MAPPING_COMPLETED,
+        MAPPING_ATTEMPT_FAILED,
+        MAPPING_SCHEDULER_FAILED
     }
 
     private static final Set<String> KEYS =

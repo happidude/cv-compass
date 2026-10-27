@@ -24,10 +24,6 @@ public class DiskImportProperties {
     private String failedDirectory;
 
     @Min(1)
-    @Max(10)
-    private int batchSize = 10;
-
-    @Min(1)
     @Max(100)
     private int maxAttempts = 3;
 

@@ -26,7 +26,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
             "cv.import.enabled=true",
-            "cv.import.batch-size=10",
             "cv.batch.max-files=5",
             "cv.import.scan-interval=1d",
             "cv.import.stability-interval=1s"

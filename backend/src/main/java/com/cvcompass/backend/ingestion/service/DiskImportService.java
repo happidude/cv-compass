@@ -62,7 +62,7 @@ public class DiskImportService {
         this.storage = storage;
         this.properties = properties;
         this.clock = clock;
-        this.importBatchSize = Math.min(properties.getBatchSize(), batchProperties.getMaxFiles());
+        this.importBatchSize = batchProperties.getMaxFiles();
         transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -191,8 +191,7 @@ public class DiskImportService {
     private void movePending() throws IOException {
         long after = 0;
         while (!stopping) {
-            var entries =
-                    history.moves(source.key(), clock.instant(), after, properties.getBatchSize());
+            var entries = history.moves(source.key(), clock.instant(), after, importBatchSize);
             if (entries.isEmpty()) return;
             after = entries.getLast().id();
             for (var entry : entries) {

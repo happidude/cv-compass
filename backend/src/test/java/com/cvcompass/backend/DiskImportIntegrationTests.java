@@ -21,7 +21,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.NONE,properties={
-    "cv.import.enabled=true","cv.import.batch-size=2","cv.import.scan-interval=1d",
+    "cv.import.enabled=true","cv.batch.max-files=2","cv.import.scan-interval=1d",
     "cv.import.stability-interval=1s","cv.import.retry-backoff=1s","cv.import.max-attempts=3"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class DiskImportIntegrationTests {

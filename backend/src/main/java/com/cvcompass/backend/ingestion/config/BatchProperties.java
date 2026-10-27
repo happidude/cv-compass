@@ -13,9 +13,10 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("cv.batch")
 public class BatchProperties {
-    // Existing POC database constraint, not a deployment tuning value.
+    public static final int MAX_FILES = 1000;
+
     @Min(1)
-    @Max(10)
+    @Max(MAX_FILES)
     private int maxFiles = 10;
 
     @Min(1)

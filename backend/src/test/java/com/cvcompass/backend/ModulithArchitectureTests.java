@@ -10,7 +10,7 @@ class ModulithArchitectureTests {
     void businessAndHttpInfrastructureObeyModuleBoundaries() {
         var modules = ApplicationModules.of(BackendApplication.class);
         assertThat(modules.stream().map(module -> module.getIdentifier().toString()))
-                .containsExactlyInAnyOrder("ingestion", "web", "storage");
+                .containsExactlyInAnyOrder("ingestion", "web", "storage", "mapping");
         modules.verify();
     }
 }
