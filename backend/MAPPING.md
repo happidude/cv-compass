@@ -1,5 +1,9 @@
 # M10.2 — Mapping foundation
 
+Operational corrections and current property limits: [MAPPING_OPERATIONS.md](MAPPING_OPERATIONS.md).
+The fixed values below describe original M10.2 defaults; the operations document
+defines configurable values and restart behavior after the foundation correction.
+
 Base: `origin/main d0b7f81d02e2f5910aeea356c2322f91cca7e5bb`.
 Design: `E:\cv-compass\docs\CV_Compass_M10_1_Design.md` (local ignored document,
 26 October 2026), read alongside the explicit M10.2 request. Initial discovery

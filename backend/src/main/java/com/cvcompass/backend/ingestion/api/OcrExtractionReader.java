@@ -5,6 +5,8 @@ import java.util.Optional;
 
 /** Read-only, fixed extraction identity. No latest-result lookup or ingestion writes. */
 public interface OcrExtractionReader {
+    int MAX_QUERY_PAGE_SIZE = 10000;
+
     Optional<Extraction> find(long extractionId);
 
     List<Long> scanAfter(long afterId, long upperId, int limit);

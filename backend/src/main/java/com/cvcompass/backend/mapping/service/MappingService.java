@@ -1,6 +1,7 @@
 package com.cvcompass.backend.mapping.service;
 
 import com.cvcompass.backend.ingestion.api.OcrExtractionReader;
+import com.cvcompass.backend.mapping.config.MappingProperties;
 import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingDefinition;
 import com.cvcompass.backend.mapping.dto.MappingResult;
@@ -22,18 +23,21 @@ public class MappingService {
     private final MappingEngine engine;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private final MappingProperties properties;
 
     public MappingService(
             MappingRepository repository,
             OcrExtractionReader inputs,
             MappingEngine engine,
             ObjectMapper json,
-            PlatformTransactionManager transactions) {
+            PlatformTransactionManager transactions,
+            MappingProperties properties) {
         this.repository = repository;
         this.inputs = inputs;
         this.engine = engine;
         this.json = json;
         this.tx = new TransactionTemplate(transactions);
+        this.properties = properties;
     }
 
     public long register(String revision, MappingDefinition definition) {
@@ -62,14 +66,20 @@ public class MappingService {
 
     /** Each bounded page and its durable cursor commit together; end-of-sweep resets to zero. */
     public int scan(int limit) {
-        if (limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid scan size");
+        if (limit < 1 || limit > OcrExtractionReader.MAX_QUERY_PAGE_SIZE)
+            throw new IllegalArgumentException("Invalid scan size");
         return tx.execute(
                 status -> {
                     long[] settings = repository.lockSettings();
                     if (settings[0] == 0) return 0;
                     long upperId = settings[2] == 0 ? inputs.upperId() : settings[2];
                     var ids = inputs.scanAfter(settings[1], upperId, limit);
-                    for (long id : ids) repository.enqueue(id, settings[0], MappingEngine.VERSION);
+                    for (long id : ids)
+                        repository.enqueue(
+                                id,
+                                settings[0],
+                                MappingEngine.VERSION,
+                                properties.getMaxAttempts());
                     repository.cursor(
                             ids.size() < limit ? 0 : ids.getLast(),
                             ids.size() < limit ? null : upperId);
@@ -80,7 +90,11 @@ public class MappingService {
     public Optional<MappingClaim> claim() {
         return tx.execute(
                 status -> {
-                    var claim = repository.claim(MappingEngine.VERSION);
+                    var claim =
+                            repository.claim(
+                                    MappingEngine.VERSION,
+                                    properties.getLeaseDuration(),
+                                    properties.getHardDeadline());
                     claim.ifPresent(
                             value ->
                                     OperationalLog.committed(
@@ -173,7 +187,13 @@ public class MappingService {
                             || !"PROCESSING".equals(job.status())
                             || !live(job)) throw stale();
                     String code = retryable ? "TEMPORARY_FAILURE" : "PERMANENT_FAILURE";
-                    repository.fail(claim.jobId(), job.attempts(), code, retryable);
+                    repository.fail(
+                            claim.jobId(),
+                            job.attempts(),
+                            job.maxAttempts(),
+                            code,
+                            retryable,
+                            properties.getRetryBackoff());
                     OperationalLog.committed(
                             Level.WARN,
                             OperationalLog.Event.MAPPING_ATTEMPT_FAILED,
@@ -183,7 +203,8 @@ public class MappingService {
     }
 
     public int reap(int limit) {
-        if (limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid reaper size");
+        if (limit < 1 || limit > OcrExtractionReader.MAX_QUERY_PAGE_SIZE)
+            throw new IllegalArgumentException("Invalid reaper size");
         return tx.execute(
                 status -> {
                     var ids = repository.expired(limit);
@@ -191,7 +212,13 @@ public class MappingService {
                         var job = repository.lockJob(id);
                         if ("PROCESSING".equals(job.status())
                                 && !repository.now().isBefore(job.lease())) {
-                            repository.fail(id, job.attempts(), "LEASE_EXPIRED", true);
+                            repository.fail(
+                                    id,
+                                    job.attempts(),
+                                    job.maxAttempts(),
+                                    "LEASE_EXPIRED",
+                                    true,
+                                    properties.getRetryBackoff());
                             OperationalLog.committed(
                                     Level.WARN,
                                     OperationalLog.Event.MAPPING_ATTEMPT_FAILED,
@@ -205,6 +232,14 @@ public class MappingService {
 
     private static IllegalStateException stale() {
         return new IllegalStateException("MAPPING_STALE_ATTEMPT");
+    }
+
+    public int scan() {
+        return scan(properties.getScanPageSize());
+    }
+
+    public int reap() {
+        return reap(properties.getReaperPageSize());
     }
 
     private boolean live(MappingRepository.Job job) {

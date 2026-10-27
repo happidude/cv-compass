@@ -24,7 +24,7 @@ public class StoredOcrExtractionReader implements OcrExtractionReader {
 
     @Override
     public List<Long> scanAfter(long afterId, long upperId, int limit) {
-        if (afterId < 0 || upperId < 0 || limit < 1 || limit > 100) {
+        if (afterId < 0 || upperId < 0 || limit < 1 || limit > MAX_QUERY_PAGE_SIZE) {
             throw new IllegalArgumentException("Invalid OCR scan bounds");
         }
         return jdbc.query(

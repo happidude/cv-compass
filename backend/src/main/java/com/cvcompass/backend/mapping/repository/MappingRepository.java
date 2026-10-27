@@ -4,6 +4,7 @@ import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingDefinition;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -78,8 +79,10 @@ public class MappingRepository {
                 id);
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_SETTINGS" SET "ACTIVE_CONFIG_ID"=?,"SCAN_AFTER_ID"=0,"SCAN_UPPER_ID"=NULL WHERE "ID"=1
+                UPDATE "CV_MAPPING_SETTINGS" SET "ACTIVE_CONFIG_ID"=?,"SCAN_AFTER_ID"=0,"SCAN_UPPER_ID"=NULL
+                WHERE "ID"=1 AND "ACTIVE_CONFIG_ID" IS DISTINCT FROM ?
                 """,
+                id,
                 id);
     }
 
@@ -90,23 +93,24 @@ public class MappingRepository {
                 upperId);
     }
 
-    public void enqueue(long extractionId, long configId, String engine) {
+    public void enqueue(long extractionId, long configId, String engine, int maxAttempts) {
         jdbc.update(
                 """
-                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION")
-                VALUES (?,?,?) ON CONFLICT ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") DO NOTHING
+                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
+                VALUES (?,?,?,?) ON CONFLICT ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") DO NOTHING
                 """,
                 extractionId,
                 configId,
-                engine);
+                engine,
+                maxAttempts);
     }
 
-    public Optional<MappingClaim> claim(String engine) {
+    public Optional<MappingClaim> claim(String engine, Duration lease, Duration deadline) {
         var ids =
                 jdbc.query(
                         """
                 SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "STATUS"='PENDING'
-                AND "ENGINE_VERSION"=? AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<3
+                AND "ENGINE_VERSION"=? AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
@@ -116,12 +120,14 @@ public class MappingRepository {
         UUID token = UUID.randomUUID();
         jdbc.update(
                 """
-                WITH timing AS MATERIALIZED (SELECT clock_timestamp()+interval '120 seconds' AS expiry)
+                WITH timing AS MATERIALIZED (SELECT clock_timestamp() AS now)
                 UPDATE "CV_MAPPING_JOBS" SET "STATUS"='PROCESSING',"ATTEMPTS"="ATTEMPTS"+1,
-                "TOKEN"=?,"LEASE_EXPIRES_AT"=timing.expiry,
-                "HARD_DEADLINE_AT"=timing.expiry,"ERROR_CODE"=NULL FROM timing WHERE "ID"=?
+                "TOKEN"=?,"LEASE_EXPIRES_AT"=timing.now+?*interval '1 millisecond',
+                "HARD_DEADLINE_AT"=timing.now+?*interval '1 millisecond',"ERROR_CODE"=NULL FROM timing WHERE "ID"=?
                 """,
                 token,
+                lease.toMillis(),
+                deadline.toMillis(),
                 id);
         return Optional.of(readClaim(id));
     }
@@ -155,7 +161,7 @@ public class MappingRepository {
     public Job lockJob(long id) {
         return jdbc.queryForObject(
                 """
-                SELECT "STATUS","TOKEN","LEASE_EXPIRES_AT","ATTEMPTS","HARD_DEADLINE_AT" FROM "CV_MAPPING_JOBS" WHERE "ID"=? FOR UPDATE
+                SELECT "STATUS","TOKEN","LEASE_EXPIRES_AT","ATTEMPTS","HARD_DEADLINE_AT","MAX_ATTEMPTS" FROM "CV_MAPPING_JOBS" WHERE "ID"=? FOR UPDATE
                 """,
                 (rs, n) ->
                         new Job(
@@ -163,7 +169,8 @@ public class MappingRepository {
                                 rs.getObject(2, UUID.class),
                                 rs.getTimestamp(3) == null ? null : rs.getTimestamp(3).toInstant(),
                                 rs.getInt(4),
-                                rs.getTimestamp(5) == null ? null : rs.getTimestamp(5).toInstant()),
+                                rs.getTimestamp(5) == null ? null : rs.getTimestamp(5).toInstant(),
+                                rs.getInt(6)),
                 id);
     }
 
@@ -229,19 +236,32 @@ public class MappingRepository {
                 == 1;
     }
 
-    public void fail(long id, int attempts, String code, boolean retryable) {
-        boolean terminal = !retryable || attempts >= 3;
+    public void fail(
+            long id,
+            int attempts,
+            int maxAttempts,
+            String code,
+            boolean retryable,
+            Duration backoff) {
+        boolean terminal = !retryable || attempts >= maxAttempts;
         jdbc.update(
                 """
                 UPDATE "CV_MAPPING_JOBS" SET "STATUS"=?,"TOKEN"=NULL,"LEASE_EXPIRES_AT"=NULL,
-                "NEXT_ATTEMPT_AT"=clock_timestamp()+interval '30 seconds',"ERROR_CODE"=?,
+                "NEXT_ATTEMPT_AT"=clock_timestamp()+?*interval '1 millisecond',"ERROR_CODE"=?,
                 "COMPLETED_AT"=CASE WHEN ? THEN clock_timestamp() ELSE NULL END WHERE "ID"=?
                 """,
                 terminal ? "FAILED" : "PENDING",
+                backoff.toMillis(),
                 code,
                 terminal,
                 id);
     }
 
-    public record Job(String status, UUID token, Instant lease, int attempts, Instant deadline) {}
+    public record Job(
+            String status,
+            UUID token,
+            Instant lease,
+            int attempts,
+            Instant deadline,
+            int maxAttempts) {}
 }

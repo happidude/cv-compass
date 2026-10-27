@@ -35,15 +35,21 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 class DiskImportBatchLimitTests {
     @Test
     void largerImportSizeDrainsFiveFiveAndTwoWithoutStrandingQueuedFiles() throws Exception {
-        drainsInGroups(10, 5, List.of(5, 5, 2));
+        drainsInGroups(5, List.of(5, 5, 2), 12);
     }
 
     @Test
     void smallerImportSizeStillControlsTheGroups() throws Exception {
-        drainsInGroups(3, 5, List.of(3, 3, 3, 3));
+        drainsInGroups(3, List.of(3, 3, 3, 3), 12);
     }
 
-    private void drainsInGroups(int importSize, int maximum, List<Integer> expectedGroups)
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 10, 100, 101})
+    void canonicalBatchSizeDrainsFullBatchesAndRemainder(int size) throws Exception {
+        drainsInGroups(size, List.of(size, size, 1), size * 2 + 1);
+    }
+
+    private void drainsInGroups(int maximum, List<Integer> expectedGroups, int fileCount)
             throws Exception {
         var source = mock(ImportSource.class);
         var history = mock(DiskImportRepository.class);
@@ -51,7 +57,6 @@ class DiskImportBatchLimitTests {
         var storage = mock(FileStorageService.class);
         var manager = mock(PlatformTransactionManager.class);
         var properties = new DiskImportProperties();
-        properties.setBatchSize(importSize);
         var batchProperties = new BatchProperties();
         batchProperties.setMaxFiles(maximum);
         var clock = Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC);
@@ -71,7 +76,7 @@ class DiskImportBatchLimitTests {
         List<Integer> queuedGroups = new ArrayList<>();
         List<Integer> uploadedGroups = new ArrayList<>();
         List<String> uploadedNames = new ArrayList<>();
-        for (int index = 1; index <= 12; index++) {
+        for (int index = 1; index <= fileCount; index++) {
             String name = "synthetic-%02d.pdf".formatted(index);
             var file = new SourceFile(name, 20, "stamp", "key");
             inventory.put(

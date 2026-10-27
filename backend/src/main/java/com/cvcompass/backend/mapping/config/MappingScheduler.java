@@ -3,7 +3,11 @@ package com.cvcompass.backend.mapping.config;
 import com.cvcompass.backend.mapping.service.MappingService;
 import com.cvcompass.backend.mapping.service.MappingWorker;
 import com.cvcompass.backend.web.OperationalLog;
+import jakarta.annotation.PreDestroy;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import org.slf4j.event.Level;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
@@ -16,25 +20,57 @@ import org.springframework.scheduling.annotation.Scheduled;
 public class MappingScheduler {
     private final MappingService mapping;
     private final MappingWorker worker;
+    private final ExecutorService executor;
+    private final Semaphore slots;
+    private final int concurrency;
+    private volatile boolean stopping;
 
-    public MappingScheduler(MappingService mapping, MappingWorker worker) {
+    public MappingScheduler(
+            MappingService mapping, MappingWorker worker, MappingProperties properties) {
         this.mapping = mapping;
         this.worker = worker;
+        this.concurrency = properties.getConcurrency();
+        this.slots = new Semaphore(concurrency);
+        this.executor = Executors.newFixedThreadPool(concurrency);
     }
 
     @Scheduled(fixedDelayString = "${cv.mapping.scan-delay:30s}")
     public void scan() {
-        safely(() -> mapping.scan(100));
+        if (!stopping) safely(mapping::scan);
     }
 
     @Scheduled(fixedDelayString = "${cv.mapping.worker-delay:1s}")
-    public void work() {
-        safely(() -> worker.runOne());
+    public synchronized void work() {
+        if (stopping) return;
+        for (int i = 0; i < concurrency && slots.tryAcquire(); i++) {
+            try {
+                executor.execute(
+                        () -> {
+                            try {
+                                if (!stopping) safely(worker::runOne);
+                            } finally {
+                                slots.release();
+                            }
+                        });
+            } catch (RuntimeException rejected) {
+                slots.release();
+                if (!stopping) throw rejected;
+            }
+        }
     }
 
     @Scheduled(fixedDelayString = "${cv.mapping.reaper-delay:15s}")
     public void recover() {
-        safely(() -> mapping.reap(100));
+        if (!stopping) safely(mapping::reap);
+    }
+
+    @PreDestroy
+    public void close() {
+        synchronized (this) {
+            stopping = true;
+            executor.shutdown();
+        }
+        executor.close();
     }
 
     private static void safely(Runnable action) {

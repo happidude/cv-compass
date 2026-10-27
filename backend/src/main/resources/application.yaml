@@ -33,6 +33,18 @@ logging:
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
+  mapping:
+    enabled: ${CV_MAPPING_ENABLED:false}
+    scan-page-size: ${CV_MAPPING_SCAN_PAGE_SIZE:100}
+    reaper-page-size: ${CV_MAPPING_REAPER_PAGE_SIZE:100}
+    concurrency: ${CV_MAPPING_CONCURRENCY:1}
+    max-attempts: ${CV_MAPPING_MAX_ATTEMPTS:3}
+    scan-delay: ${CV_MAPPING_SCAN_DELAY:30s}
+    worker-delay: ${CV_MAPPING_WORKER_DELAY:1s}
+    reaper-delay: ${CV_MAPPING_REAPER_DELAY:15s}
+    lease-duration: ${CV_MAPPING_LEASE_DURATION:120s}
+    hard-deadline: ${CV_MAPPING_HARD_DEADLINE:120s}
+    retry-backoff: ${CV_MAPPING_RETRY_BACKOFF:30s}
   pagination:
     default-page-size: ${CV_API_DEFAULT_PAGE_SIZE:20}
     max-page-size: ${CV_API_MAX_PAGE_SIZE:100}
@@ -70,7 +82,6 @@ cv:
     source-directory: ${CV_IMPORT_SOURCE_DIRECTORY:}
     processed-directory: ${CV_IMPORT_PROCESSED_DIRECTORY:}
     failed-directory: ${CV_IMPORT_FAILED_DIRECTORY:}
-    batch-size: ${CV_IMPORT_BATCH_SIZE:10}
     scan-interval: ${CV_IMPORT_SCAN_INTERVAL:30s}
     stability-interval: ${CV_IMPORT_STABILITY_INTERVAL:10s}
     retry-backoff: ${CV_IMPORT_RETRY_BACKOFF:30s}

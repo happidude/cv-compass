@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration(proxyBeanMethods = false)
@@ -16,6 +17,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({DiskImportProperties.class, BatchProperties.class})
 @EnableScheduling
 public class DiskImportConfiguration {
+    public DiskImportConfiguration(Environment environment) {
+        if (environment.containsProperty("cv.import.batch-size")) {
+            throw new IllegalStateException(
+                    "Use cv.batch.max-files; cv.import.batch-size is retired");
+        }
+    }
+
     @Bean
     public Clock diskImportClock() {
         return Clock.systemUTC();

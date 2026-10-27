@@ -1,0 +1,54 @@
+# Mapping operations — foundation correction
+
+Baseline PR #17: 2df987c3a9ea511ff9edb67fcadcf51d6154cb97. This document supersedes
+the fixed operational defaults described in the original M10.2 report.
+
+| Property | Before | Current default / supported range | Meaning |
+| --- | --- | --- | --- |
+| cv.batch.max-files | 10, cap 10 | 10 / 1–1000 | Sole maximum files in a business upload/import batch |
+| cv.import.batch-size | Separate 10, silently min with max-files | Retired; startup rejects it when importer enabled | Set cv.batch.max-files instead, including environment CV_BATCH_MAX_FILES |
+| cv.batch.max-file-bytes | 10 MiB | unchanged, 1–10 MiB | File validation limit |
+| cv.mapping.scan-page-size | fixed 100 | 100 / 1–10000 | Metadata extraction IDs in one short transaction |
+| cv.mapping.reaper-page-size | fixed 100 | 100 / 1–10000 | Expired jobs inspected per reaper turn |
+| cv.mapping.concurrency | fixed 1 per instance | 1 / 1–16 | Outstanding mapping tasks, independent of batch/page size |
+| cv.mapping.scan-delay | unvalidated 30s | 30s / 1ms–1d | Delay between scan pages |
+| cv.mapping.worker-delay | unvalidated 1s | 1s / 1ms–1d | Delay between bounded worker submissions |
+| cv.mapping.reaper-delay | unvalidated 15s | 15s / 1ms–1d | Recovery polling |
+| cv.mapping.lease-duration | SQL fixed 120s | 120s / 1ms–1d | Lease selected at each claim |
+| cv.mapping.hard-deadline | SQL fixed 120s | 120s / 1ms–1d, >= lease | Absolute attempt deadline, no heartbeat |
+| cv.mapping.max-attempts | SQL/check cap 3 | 3 / 1–1000 | Snapshotted on each new job; V8 preserves old jobs' budget 3 |
+| cv.mapping.retry-backoff | SQL fixed 30s | 30s / 1ms–1d | Backoff applied when scheduling retry |
+
+Environment names are the uppercase underscore form, e.g. CV_MAPPING_SCAN_PAGE_SIZE.
+Mapping properties validate even with automatic mapping disabled. Delays used by
+the scheduler and typed properties share the same property keys. API/file upload
+retains streaming and a disk-backed multipart parser; raising max-files also raises
+the finite request byte ceiling (max-files * per-file bytes + overhead).
+
+A business batch counts uploaded source files/documents. It does not count
+extractions: one document may have multiple stored OCR revisions. The scanner reads
+the complete extraction history with a fixed upper bound and durable keyset cursor,
+enqueues one job per extraction/config/engine and reconciles subsequent sweeps.
+It never creates, splits, resizes or renames an import batch, and never changes OCR
+status. If a batch's extractions span metadata pages, later ticks resume the cursor
+until the sweep covers them. Raising business batch size never raises concurrency.
+
+Repeated bootstrap/activation of the SAME active configuration preserves cursor
+and upper bound. Switching active configuration resets both and begins a full sweep.
+Pending jobs retain their immutable extraction/config identity and attempt budget.
+Lease/deadline are fixed timestamps selected at claim; later property changes do
+not extend an already granted lease. The reaper and worker failures honor each
+job's snapshotted budget. V8 is additive; V7 is unchanged.
+
+The bounded worker pool has no growing submission backlog: a semaphore limits
+outstanding tasks to configured concurrency. Shutdown stops submissions, waits for
+already started tasks, and leaves uncompleted attempts recoverable by lease expiry.
+Per-instance concurrency is not a global cluster limit.
+
+Invariants remain fixed: supported result/config schema and engine capabilities,
+Unicode evidence semantics, 50-page/500k-code-point OCR admission, 32 configured
+fields, per-value and total result limits. Upper safety ceilings on files/pages,
+concurrency and attempts are invariants; selected operating values are properties.
+No OCR protocol limit or production gate is changed.
+
+Foundation verification commands and evidence: [FOUNDATION_CONFIGURATION_REPORT.md](FOUNDATION_CONFIGURATION_REPORT.md).

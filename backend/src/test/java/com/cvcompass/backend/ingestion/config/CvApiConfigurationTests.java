@@ -41,7 +41,7 @@ class CvApiConfigurationTests {
                 new String[] {
                     "cv.upload.max-file-bytes=0",
                     "cv.upload.max-file-bytes=10485761",
-                    "cv.batch.max-files=11",
+                    "cv.batch.max-files=1001",
                     "cv.batch.max-file-bytes=-1",
                     "cv.batch.multipart-overhead-bytes=0",
                     "cv.pagination.default-page-size=101",
@@ -49,5 +49,23 @@ class CvApiConfigurationTests {
                 }) {
             context.withPropertyValues(value).run(app -> assertThat(app).hasFailed());
         }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 10, 100, 101, 1000})
+    void businessFileLimitAlsoControlsMultipartEnvelope(int size) {
+        context.withPropertyValues("cv.batch.max-files=" + size)
+                .run(
+                        app -> {
+                            assertThat(app).hasNotFailed();
+                            assertThat(app.getBean(BatchProperties.class).getMaxFiles())
+                                    .isEqualTo(size);
+                            assertThat(
+                                            app.getBean(
+                                                            jakarta.servlet.MultipartConfigElement
+                                                                    .class)
+                                                    .getMaxRequestSize())
+                                    .isEqualTo(size * 10485760L + 1048576L);
+                        });
     }
 }

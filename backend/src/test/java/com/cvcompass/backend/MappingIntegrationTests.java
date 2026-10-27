@@ -56,6 +56,7 @@ class MappingIntegrationTests {
     @Autowired CvDocumentRepository documents;
     @Autowired CvProcessingJobRepository jobs;
     @Autowired ObjectMapper json;
+    @Autowired com.cvcompass.backend.mapping.config.MappingProperties mappingProperties;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
 
     @DynamicPropertySource
@@ -73,6 +74,10 @@ class MappingIntegrationTests {
 
     @BeforeEach
     void resetMappingOnly() {
+        mappingProperties.setMaxAttempts(3);
+        mappingProperties.setLeaseDuration(java.time.Duration.ofSeconds(120));
+        mappingProperties.setHardDeadline(java.time.Duration.ofSeconds(120));
+        mappingProperties.setRetryBackoff(java.time.Duration.ofSeconds(30));
         assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
                 .isEqualTo(DATABASE.schemaName());
         jdbc.execute("TRUNCATE \"CV_MAPPING_RESULTS\",\"CV_MAPPING_JOBS\"");
@@ -96,14 +101,23 @@ class MappingIntegrationTests {
     }
 
     private long seed(String ocrStatus) {
-        var doc = new CvDocument();
-        doc.setOriginalFilename("synthetic.pdf");
-        doc.setStoragePath(UUID.randomUUID() + ".pdf");
-        doc.setFileSize(1024L);
-        doc.setMimeType("application/pdf");
-        doc.setSha256(HASH);
-        doc.setStatus(DocumentStatus.PENDING);
-        documents.saveAndFlush(doc);
+        return seed(ocrStatus, null);
+    }
+
+    private long seed(String ocrStatus, Long existingDocument) {
+        var doc =
+                existingDocument == null
+                        ? new CvDocument()
+                        : documents.findById(existingDocument).orElseThrow();
+        if (existingDocument == null) {
+            doc.setOriginalFilename("synthetic.pdf");
+            doc.setStoragePath(UUID.randomUUID() + ".pdf");
+            doc.setFileSize(1024L);
+            doc.setMimeType("application/pdf");
+            doc.setSha256(HASH);
+            doc.setStatus(DocumentStatus.PENDING);
+            documents.saveAndFlush(doc);
+        }
         var job = new CvProcessingJob();
         job.setDocument(doc);
         job.setStatus(JobStatus.PENDING);
@@ -286,7 +300,8 @@ class MappingIntegrationTests {
                         inputs,
                         new com.cvcompass.backend.mapping.service.MappingEngine(),
                         json,
-                        transactions);
+                        transactions,
+                        new com.cvcompass.backend.mapping.config.MappingProperties());
         while (restarted.scan(2) == 2) {}
         assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_MAPPING_JOBS\"", Integer.class))
                 .isEqualTo(count);
@@ -690,5 +705,128 @@ class MappingIntegrationTests {
         assertThat(legacyResult.values()).isEmpty();
         mapping.complete(legacyClaim, legacyResult);
         assertThat(inputs.find(extraction).orElseThrow().id()).isEqualTo(extraction);
+    }
+
+    @Test
+    void reactivatingSameConfigurationPreservesSweepAndChangingItResets() throws Exception {
+        seed();
+        long config = activate();
+        mapping.scan(1);
+        var before = jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\"");
+        assertThat(before.get("SCAN_AFTER_ID")).isNotEqualTo(0L);
+        mapping.activate(config);
+        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\"")).isEqualTo(before);
+        var file = java.nio.file.Files.createTempFile("synthetic-mapping-config-", ".json");
+        try {
+            String revision =
+                    jdbc.queryForObject(
+                            "SELECT \"REVISION\" FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                            String.class,
+                            config);
+            String definition =
+                    jdbc.queryForObject(
+                            "SELECT \"DEFINITION\"::text FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                            String.class,
+                            config);
+            java.nio.file.Files.writeString(file, definition);
+            new com.cvcompass.backend.mapping.config.MappingBootstrap(
+                            mapping, json, file.toString(), revision)
+                    .run(new org.springframework.boot.DefaultApplicationArguments());
+            assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\"")).isEqualTo(before);
+        } finally {
+            java.nio.file.Files.delete(file);
+        }
+        activate();
+        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\""))
+                .containsEntry("SCAN_AFTER_ID", 0L)
+                .containsEntry("SCAN_UPPER_ID", null);
+    }
+
+    @Test
+    void multipleOcrRevisionsDoNotBecomeMultipleBusinessFilesOrChangeBatch() {
+        long first = seed();
+        long document = inputs.find(first).orElseThrow().documentId();
+        long batch =
+                jdbc.queryForObject(
+                        """
+                INSERT INTO "CV_IMPORT_BATCHES" ("TOTAL_FILES","SUCCESS_COUNT","FAILED_COUNT","STATUS")
+                VALUES (1,1,0,'COMPLETED') RETURNING "ID"
+                """,
+                        Long.class);
+        jdbc.update("UPDATE \"CV_DOCUMENTS\" SET \"BATCH_ID\"=? WHERE \"ID\"=?", batch, document);
+        long second = seed("success", document);
+        assertThat(second).isNotEqualTo(first);
+        var before = jdbc.queryForMap("SELECT * FROM \"CV_IMPORT_BATCHES\" WHERE \"ID\"=?", batch);
+        activate();
+        while (mapping.scan(1) == 1) {}
+        while (mapping.scan(1) == 1) {}
+        assertThat(
+                        jdbc.queryForObject(
+                                """
+                SELECT count(*) FROM "CV_MAPPING_JOBS" j JOIN "CV_EXTRACTIONS" e ON e."ID"=j."EXTRACTION_ID"
+                WHERE e."CV_DOCUMENT_ID"=?
+                """,
+                                Integer.class,
+                                document))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_IMPORT_BATCHES\" WHERE \"ID\"=?", batch))
+                .isEqualTo(before);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CV_DOCUMENTS\" WHERE \"BATCH_ID\"=?",
+                                Integer.class,
+                                batch))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void configuredAttemptBudgetLeaseAndBackoffReachSqlWithoutOldCaps() {
+        long extraction = seed();
+        mappingProperties.setMaxAttempts(5);
+        mappingProperties.setLeaseDuration(java.time.Duration.ofSeconds(40));
+        mappingProperties.setHardDeadline(java.time.Duration.ofSeconds(60));
+        mappingProperties.setRetryBackoff(java.time.Duration.ofSeconds(5));
+        activate();
+        mapping.scan(101);
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT DISTINCT \"MAX_ATTEMPTS\" FROM \"CV_MAPPING_JOBS\"",
+                                Integer.class))
+                .containsExactly(5);
+        // Retain just this synthetic job, leaving OCR/document rows untouched.
+        jdbc.update("DELETE FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"<>?", extraction);
+        var claim = mapping.claim().orElseThrow();
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            assertThat(claim.attempt()).isEqualTo(attempt);
+            var gap =
+                    jdbc.queryForObject(
+                            """
+                    SELECT extract(epoch FROM ("HARD_DEADLINE_AT"-"LEASE_EXPIRES_AT"))::int
+                    FROM "CV_MAPPING_JOBS" WHERE "ID"=?
+                    """,
+                            Integer.class,
+                            claim.jobId());
+            assertThat(gap).isEqualTo(20);
+            mapping.fail(claim);
+            var backoff =
+                    jdbc.queryForObject(
+                            """
+                    SELECT extract(epoch FROM ("NEXT_ATTEMPT_AT"-clock_timestamp())) FROM "CV_MAPPING_JOBS" WHERE "ID"=?
+                    """,
+                            Double.class,
+                            claim.jobId());
+            assertThat(backoff).isBetween(3.0, 5.1);
+            if (attempt < 5) {
+                ready(claim);
+                claim = mapping.claim().orElseThrow();
+            }
+        }
+        assertThat(mapping.claim()).isEmpty();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                String.class,
+                                claim.jobId()))
+                .isEqualTo("FAILED");
     }
 }
