@@ -59,7 +59,7 @@ class OcrMigrationIntegrationTests {
                             .defaultSchema(database.schemaName())
                             .schemas(database.schemaName())
                             .load();
-            assertThat(finalFlyway.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(finalFlyway.migrate().migrationsExecuted).isEqualTo(2);
             finalFlyway.validate();
             assertThat(
                             jdbc.queryForMap(

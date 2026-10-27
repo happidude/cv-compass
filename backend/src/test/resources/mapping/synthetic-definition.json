@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "engineCompatibility": "literal-mapping/1.0",
+  "fields": [
+    {"key": "sample_heading", "type": "STRING", "scope": "PAGE", "extractor": "FIRST_LINE", "argument": null},
+    {"key": "sample_skill", "type": "STRING", "scope": "PAGE", "extractor": "LITERAL", "argument": "Java"}
+  ]
+}
