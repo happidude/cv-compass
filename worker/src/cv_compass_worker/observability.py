@@ -1,4 +1,5 @@
 """Allowlisted operational events; no payload/exception interpolation or root logger changes."""
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -47,7 +48,9 @@ def safe_id(value):
 @contextmanager
 def context(**values):
     current = dict(_context.get())
-    current.update({key: safe_id(value) for key, value in values.items() if key in _ids and safe_id(value)})
+    current.update(
+        {key: safe_id(value) for key, value in values.items() if key in _ids and safe_id(value)}
+    )
     token = _context.set(current)
     try:
         yield
@@ -59,13 +62,29 @@ def event(name: Event, *, level=logging.INFO, error_code='NONE', **details):
     if not isinstance(name, Event):
         raise ValueError('INVALID_LOG_EVENT')
     record = dict(_context.get())
-    record.update(event=name.value, message=name.value, errorCode=(error_code if isinstance(error_code, str)
-                  and re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', error_code) else 'INTERNAL_ERROR'))
+    record.update(
+        event=name.value,
+        message=name.value,
+        errorCode=(
+            error_code
+            if isinstance(error_code, str) and re.fullmatch(r'[A-Z][A-Z0-9_]{0,63}', error_code)
+            else 'INTERNAL_ERROR'
+        ),
+    )
     if safe_id(details.get('exceptionType')):
         record['exceptionType'] = safe_id(details['exceptionType'])
     for key in ('method', 'status'):
-        if key in details and details[key] in ('native', 'ocr', 'none', 'ok', 'blank', 'failed',
-                                              'not_processed', 'success', 'partial'):
+        if key in details and details[key] in (
+            'native',
+            'ocr',
+            'none',
+            'ok',
+            'blank',
+            'failed',
+            'not_processed',
+            'success',
+            'partial',
+        ):
             record[key] = details[key]
     for key in ('pageNumber', 'durationMs', 'httpStatus'):
         value = details.get(key)
@@ -81,13 +100,28 @@ class Formatter(logging.Formatter):
 
     def format(self, record):
         # Never format record.msg/args/exc_info, even if a caller accidentally supplies secrets.
-        level = 'WARN' if record.levelno == logging.WARNING else 'ERROR' if record.levelno >= logging.ERROR else record.levelname
-        data = dict(timestamp=datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec='milliseconds'),
-                    level=level, service='cv-compass-worker')
+        level = (
+            'WARN'
+            if record.levelno == logging.WARNING
+            else 'ERROR'
+            if record.levelno >= logging.ERROR
+            else record.levelname
+        )
+        data = dict(
+            timestamp=datetime.fromtimestamp(record.created, timezone.utc).isoformat(
+                timespec='milliseconds'
+            ),
+            level=level,
+            service='cv-compass-worker',
+        )
         supplied = getattr(record, 'operational', {})
         name = supplied.get('event') if isinstance(supplied, dict) else None
         if name not in {item.value for item in Event}:
-            data.update(event='LIBRARY_DIAGNOSTIC', message='LIBRARY_DIAGNOSTIC', errorCode='LIBRARY_DIAGNOSTIC')
+            data.update(
+                event='LIBRARY_DIAGNOSTIC',
+                message='LIBRARY_DIAGNOSTIC',
+                errorCode='LIBRARY_DIAGNOSTIC',
+            )
         else:
             data.update(event=name, message=name, errorCode='NONE')
             code = supplied.get('errorCode')
@@ -102,26 +136,57 @@ class Formatter(logging.Formatter):
                     data[key] = value
             for key in ('method', 'status'):
                 value = supplied.get(key)
-                if value in ('native', 'ocr', 'none', 'ok', 'blank', 'failed', 'not_processed', 'success', 'partial'):
+                if value in (
+                    'native',
+                    'ocr',
+                    'none',
+                    'ok',
+                    'blank',
+                    'failed',
+                    'not_processed',
+                    'success',
+                    'partial',
+                ):
                     data[key] = value
-        return json.dumps(data, ensure_ascii=False) if self.json_output else ' '.join(f'{k}={v}' for k, v in data.items())
+        return (
+            json.dumps(data, ensure_ascii=False)
+            if self.json_output
+            else ' '.join(f'{k}={v}' for k, v in data.items())
+        )
 
 
-def report_failure(error, fallback=Reason.UNEXPECTED_WORKER_FAILURE, *, name=Event.WORKER_HALTED,
-                   level=logging.ERROR, initialized=True):
+def report_failure(
+    error,
+    fallback=Reason.UNEXPECTED_WORKER_FAILURE,
+    *,
+    name=Event.WORKER_HALTED,
+    level=logging.ERROR,
+    initialized=True,
+):
     """Called by the error owner before its ID scope closes; never formats the exception."""
     if name == Event.WORKER_HALTED and getattr(error, '_operational_logged', False):
         return
     info = diagnostic(error, fallback)
     with context(correlationId=info.correlation_id):
         if initialized:
-            event(name, level=level, error_code=info.reason.value, exceptionType=safe_id(info.exception_type) or 'Exception',
-                  httpStatus=info.http_status)
+            event(
+                name,
+                level=level,
+                error_code=info.reason.value,
+                exceptionType=safe_id(info.exception_type) or 'Exception',
+                httpStatus=info.http_status,
+            )
         else:
             # No logger/handler exists yet. A fixed safe JSON diagnostic still reaches stderr.
-            record = dict(timestamp=datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
-                          level='ERROR', service='cv-compass-worker', event=name.value, message=name.value,
-                          errorCode=info.reason.value, exceptionType=safe_id(info.exception_type) or 'Exception')
+            record = dict(
+                timestamp=datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
+                level='ERROR',
+                service='cv-compass-worker',
+                event=name.value,
+                message=name.value,
+                errorCode=info.reason.value,
+                exceptionType=safe_id(info.exception_type) or 'Exception',
+            )
             record.update(_context.get())
             print(json.dumps(record), file=sys.stderr)
     if name == Event.WORKER_HALTED:
@@ -144,7 +209,11 @@ def configure(environ=None):
     env = os.environ if environ is None else environ
     level = env.get('CV_LOG_LEVEL', 'INFO').upper()
     output = env.get('CV_LOG_FORMAT', 'text')
-    if level not in ('DEBUG', 'INFO', 'WARNING', 'WARN', 'ERROR', 'CRITICAL') or output not in ('text', 'json', 'logstash'):
+    if level not in ('DEBUG', 'INFO', 'WARNING', 'WARN', 'ERROR', 'CRITICAL') or output not in (
+        'text',
+        'json',
+        'logstash',
+    ):
         raise ValueError('INVALID_LOG_CONFIGURATION')
     size = int(env.get('CV_LOG_MAX_BYTES', '10485760'))
     backups = int(env.get('CV_LOG_BACKUP_COUNT', '7'))
@@ -154,7 +223,11 @@ def configure(environ=None):
     handlers = [logging.StreamHandler(sys.stderr)]
     try:
         if env.get('CV_LOG_FILE'):
-            handlers.append(RotatingFileHandler(env['CV_LOG_FILE'], maxBytes=size, backupCount=backups, encoding='utf-8'))
+            handlers.append(
+                RotatingFileHandler(
+                    env['CV_LOG_FILE'], maxBytes=size, backupCount=backups, encoding='utf-8'
+                )
+            )
         for handler in handlers:
             handler.setFormatter(formatter)
     except Exception:

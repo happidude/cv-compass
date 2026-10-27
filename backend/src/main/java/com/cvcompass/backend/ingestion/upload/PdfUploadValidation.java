@@ -7,7 +7,7 @@ import java.io.InputStream;
 public final class PdfUploadValidation {
     public static final long MAX_BYTES = PdfUploadStream.MAX_BYTES;
 
-    private PdfUploadValidation() { }
+    private PdfUploadValidation() {}
 
     public static InputStream open(InputStream source, long maxBytes) throws IOException {
         return PdfUploadStream.open(source, maxBytes);

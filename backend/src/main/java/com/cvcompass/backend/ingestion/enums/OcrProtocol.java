@@ -11,5 +11,6 @@ public final class OcrProtocol {
     public static final int MAX_DOCUMENT_TEXT = 500_000;
     public static final int MAX_RESULT_BYTES = 8_388_608;
     public static final int MAX_ENVELOPE_BYTES = MAX_RESULT_BYTES + 65_536;
-    private OcrProtocol() { }
+
+    private OcrProtocol() {}
 }

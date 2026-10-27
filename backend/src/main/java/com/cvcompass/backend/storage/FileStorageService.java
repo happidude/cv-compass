@@ -9,8 +9,11 @@ import java.io.InputStream;
 public interface FileStorageService {
     /** Checks usable read/write/publication support without publishing a user object. */
     void verifyAvailable();
+
     /** Optional size hint; implementations may detect insufficient local capacity without reserving it. */
-    default void verifyAvailable(long requiredBytes) { verifyAvailable(); }
+    default void verifyAvailable(long requiredBytes) {
+        verifyAvailable();
+    }
 
     /**
      * Reads from the current stream position through EOF, leaving the caller's stream open

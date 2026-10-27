@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'com.diffplug.spotless' version '8.10.4'
     id 'org.springframework.boot' version '4.1.1'
     id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -77,4 +78,21 @@ tasks.named('test') {
 // Report the exact deprecated API and source location on each Java compilation.
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add('-Xlint:deprecation')
+}
+
+spotless {
+    enforceCheck = true
+    lineEndings = com.diffplug.spotless.LineEnding.PRESERVE
+    java {
+        target 'src/main/java/**/*.java', 'src/test/java/**/*.java'
+        // Keep original static-import resolution in files whose javap changed after formatting.
+        targetExclude '**/generated/**',
+                'src/test/java/com/cvcompass/backend/DiskImportIntegrationTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/controller/OcrWorkerControllerTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/CvDocumentServiceTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/OcrEnqueueTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/OcrJobHeartbeatTests.java',
+                'src/test/java/com/cvcompass/backend/ingestion/service/OcrWorkerServiceTests.java'
+        googleJavaFormat('1.36.1').aosp().reflowLongStrings(false).reorderImports(false).formatJavadoc(false)
+    }
 }

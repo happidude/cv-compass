@@ -12,11 +12,12 @@ class NativeQualityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             for name, (regions, _) in corpus().items():
                 with self.subTest(fixture=name):
-                    path = Path(directory)/(name+'.pdf')
+                    path = Path(directory) / (name + '.pdf')
                     generate(path, name, regions)
                     with pdfplumber.open(path) as pdf:
                         expected = pdf.pages[0].extract_text(layout=False)
-                    child = Path(directory)/(name+'-child'); child.mkdir()
+                    child = Path(directory) / (name + '-child')
+                    child.mkdir()
                     result = process_page(path, 1, config(), child)
                     self.assertNotIn('text', result)
                     if name == 'tight_word_gaps':
@@ -37,11 +38,12 @@ class NativeQualityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             for name in ('bullets_hyphens', 'unknown_font_icon'):
                 with self.subTest(fixture=name):
-                    path = Path(directory)/(name+'.pdf')
+                    path = Path(directory) / (name + '.pdf')
                     generate(path, name, corpus()[name][0])
                     with pdfplumber.open(path) as pdf:
                         raw = pdf.pages[0].extract_text(layout=False)
-                    child = Path(directory)/(name+'-child'); child.mkdir()
+                    child = Path(directory) / (name + '-child')
+                    child.mkdir()
                     result = process_page(path, 1, config(), child)
                     self.assertEqual(result['method'], 'native')
                     self.assertEqual(result['raw_text'], raw)
@@ -50,5 +52,8 @@ class NativeQualityTests(unittest.TestCase):
 
     def test_native_usability_stays_independent_of_layout_reconstruction(self):
         from cv_compass_worker.layout import usable
-        self.assertTrue(usable('Ordinary synthetic long text with enough visible characters for a native page.'))
+
+        self.assertTrue(
+            usable('Ordinary synthetic long text with enough visible characters for a native page.')
+        )
         self.assertFalse(usable('   '))

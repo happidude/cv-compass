@@ -1,13 +1,16 @@
 package com.cvcompass.backend;
 
-import org.springframework.test.context.DynamicPropertyRegistry;
 import java.sql.DriverManager;
 import java.util.UUID;
+import org.springframework.test.context.DynamicPropertyRegistry;
 
 /** One instance belongs to one integration test class; no shared mutable schema state. */
 final class IsolatedPostgresSchema implements AutoCloseable {
-    private final String schema = "cv_persistence_test_" + UUID.randomUUID().toString().replace("-", "");
-    private final String url = System.getenv().getOrDefault("TEST_DB_URL", "jdbc:postgresql://localhost:5432/cv_compass");
+    private final String schema =
+            "cv_persistence_test_" + UUID.randomUUID().toString().replace("-", "");
+    private final String url =
+            System.getenv()
+                    .getOrDefault("TEST_DB_URL", "jdbc:postgresql://localhost:5432/cv_compass");
     private final String username = System.getenv().getOrDefault("TEST_DB_USERNAME", "cvcompass");
     private final String password = System.getenv("TEST_DB_PASSWORD");
     private boolean created;
@@ -23,11 +26,12 @@ final class IsolatedPostgresSchema implements AutoCloseable {
 
     void configure(DynamicPropertyRegistry registry) throws Exception {
         if (password == null || password.isBlank()) {
-            throw new IllegalStateException("Set TEST_DB_PASSWORD for isolated PostgreSQL integration tests");
+            throw new IllegalStateException(
+                    "Set TEST_DB_PASSWORD for isolated PostgreSQL integration tests");
         }
         if (!created) {
             try (var connection = DriverManager.getConnection(url, username, password);
-                 var statement = connection.createStatement()) {
+                    var statement = connection.createStatement()) {
                 statement.execute("CREATE SCHEMA " + schema);
                 created = true;
             }
@@ -56,7 +60,7 @@ final class IsolatedPostgresSchema implements AutoCloseable {
         }
         if (created) {
             try (var connection = DriverManager.getConnection(url, username, password);
-                 var statement = connection.createStatement()) {
+                    var statement = connection.createStatement()) {
                 statement.execute("DROP SCHEMA " + schema + " CASCADE");
                 created = false;
             }

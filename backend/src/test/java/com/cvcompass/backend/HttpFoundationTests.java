@@ -1,5 +1,10 @@
 package com.cvcompass.backend;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.cvcompass.backend.web.ApiResponse;
 import com.cvcompass.backend.web.error.GlobalExceptionHandler;
 import com.cvcompass.backend.web.logging.CorrelationIdFilter;
@@ -8,6 +13,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,19 +40,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 /** MVC slice only: no datasource, Flyway, repositories, or real business endpoints. */
 @WebMvcTest(controllers = HttpFoundationTests.TestController.class)
-@Import({HttpFoundationTests.TestController.class, GlobalExceptionHandler.class, CorrelationIdFilter.class})
+@Import({
+    HttpFoundationTests.TestController.class,
+    GlobalExceptionHandler.class,
+    CorrelationIdFilter.class
+})
 @ExtendWith(OutputCaptureExtension.class)
 class HttpFoundationTests {
     private static final String HEADER = CorrelationIdFilter.HEADER_NAME;
@@ -57,8 +60,10 @@ class HttpFoundationTests {
 
     @Test
     void validDtoCanUseOptionalEnvelope() throws Exception {
-        mvc.perform(post("/_test/validation").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"label\":\"fixture\",\"tags\":[\"one\"]}"))
+        mvc.perform(
+                        post("/_test/validation")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"label\":\"fixture\",\"tags\":[\"one\"]}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.label").value("fixture"))
                 .andExpect(jsonPath("$.data.tags[0]").value("one"))
@@ -67,8 +72,11 @@ class HttpFoundationTests {
 
     @Test
     void validationProvidesFieldErrorsWithoutRejectedValues() throws Exception {
-        mvc.perform(post("/_test/validation").header(HEADER, "validation-123")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"label\":\" \",\"tags\":null}"))
+        mvc.perform(
+                        post("/_test/validation")
+                                .header(HEADER, "validation-123")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"label\":\" \",\"tags\":null}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.message").value("Invalid request"))
@@ -80,8 +88,13 @@ class HttpFoundationTests {
 
     @Test
     void sizeConstraintsAreValidated() throws Exception {
-        mvc.perform(post("/_test/validation").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"label\":\"" + "x".repeat(41) + "\",\"tags\":[\"a\",\"b\",\"c\",\"d\"]}"))
+        mvc.perform(
+                        post("/_test/validation")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"label\":\""
+                                                + "x".repeat(41)
+                                                + "\",\"tags\":[\"a\",\"b\",\"c\",\"d\"]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.details[*].field", containsInAnyOrder("label", "tags")));
@@ -90,11 +103,15 @@ class HttpFoundationTests {
     @ParameterizedTest
     @MethodSource("invalidBodies")
     void malformedMissingAndWrongTypeBodiesAreSafe(String body) throws Exception {
-        var result = mvc.perform(post("/_test/validation").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"))
-                .andExpect(jsonPath("$.details").isEmpty())
-                .andReturn();
+        var result =
+                mvc.perform(
+                                post("/_test/validation")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(body))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"))
+                        .andExpect(jsonPath("$.details").isEmpty())
+                        .andReturn();
         assertThat(result.getResponse().getContentAsString()).doesNotContain(SECRET);
         assertThat(result.getResponse().getContentAsString())
                 .contains(result.getResponse().getHeader(HEADER));
@@ -129,10 +146,12 @@ class HttpFoundationTests {
 
     @Test
     void invalidParameterTypeDoesNotExposeItsValue() throws Exception {
-        var response = mvc.perform(get("/_test/count").param("count", SECRET))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
-                .andReturn().getResponse();
+        var response =
+                mvc.perform(get("/_test/count").param("count", SECRET))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                        .andReturn()
+                        .getResponse();
         assertThat(response.getContentAsString()).doesNotContain(SECRET);
     }
 
@@ -145,37 +164,48 @@ class HttpFoundationTests {
 
     @Test
     void unexpectedFailureIsSafeAndHasDiagnosticLog(CapturedOutput output) throws Exception {
-        var response = mvc.perform(get("/_test/failure").header(HEADER, "failure-123"))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
-                .andExpect(jsonPath("$.correlationId").value("failure-123"))
-                .andExpect(jsonPath("$.details").isEmpty())
-                .andReturn().getResponse();
-        assertThat(response.getContentAsString()).doesNotContain(SECRET, "IllegalStateException", "stack");
-        assertThat(output.getOut()).contains("IllegalStateException", "failure-123").doesNotContain(SECRET);
-        assertThat(output.getOut()).contains("applicationStack=com.cvcompass.backend.", "HttpFoundationTests");
-        assertThat(response.getContentAsString()).doesNotContain("applicationStack", "HttpFoundationTests");
+        var response =
+                mvc.perform(get("/_test/failure").header(HEADER, "failure-123"))
+                        .andExpect(status().isInternalServerError())
+                        .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                        .andExpect(jsonPath("$.correlationId").value("failure-123"))
+                        .andExpect(jsonPath("$.details").isEmpty())
+                        .andReturn()
+                        .getResponse();
+        assertThat(response.getContentAsString())
+                .doesNotContain(SECRET, "IllegalStateException", "stack");
+        assertThat(output.getOut())
+                .contains("IllegalStateException", "failure-123")
+                .doesNotContain(SECRET);
+        assertThat(output.getOut())
+                .contains("applicationStack=com.cvcompass.backend.", "HttpFoundationTests");
+        assertThat(response.getContentAsString())
+                .doesNotContain("applicationStack", "HttpFoundationTests");
     }
 
     @Test
     void frameworkStatusIsPreservedWithoutExposingReason() throws Exception {
-        var response = mvc.perform(get("/_test/conflict"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("REQUEST_ERROR"))
-                .andReturn().getResponse();
+        var response =
+                mvc.perform(get("/_test/conflict"))
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.code").value("REQUEST_ERROR"))
+                        .andReturn()
+                        .getResponse();
         assertThat(response.getContentAsString()).doesNotContain(SECRET);
     }
 
     @Test
     void generatedIdIsVisibleInRequestMdcAndResponseAndChangesBetweenRequests() throws Exception {
-        var first = mvc.perform(get("/_test/mdc").header(HEADER, "first-request"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.correlationId").value("first-request"))
-                .andReturn().getResponse();
+        var first =
+                mvc.perform(get("/_test/mdc").header(HEADER, "first-request"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.correlationId").value("first-request"))
+                        .andReturn()
+                        .getResponse();
         assertThat(first.getHeader(HEADER)).isEqualTo("first-request");
         assertThat(MDC.get(CorrelationIdFilter.MDC_KEY)).isNull();
-        var second = mvc.perform(get("/_test/mdc"))
-                .andExpect(status().isOk()).andReturn().getResponse();
+        var second =
+                mvc.perform(get("/_test/mdc")).andExpect(status().isOk()).andReturn().getResponse();
         String id = second.getHeader(HEADER);
         assertThat(UUID.fromString(id).toString()).isEqualTo(id);
         assertThat(second.getContentAsString()).contains(id).doesNotContain("first-request");
@@ -193,39 +223,49 @@ class HttpFoundationTests {
     @ParameterizedTest
     @MethodSource("invalidIds")
     void unsafeCorrelationIdsAreReplaced(String supplied) throws Exception {
-        var response = mvc.perform(get("/_test/mdc").header(HEADER, supplied))
-                .andExpect(status().isOk()).andReturn().getResponse();
+        var response =
+                mvc.perform(get("/_test/mdc").header(HEADER, supplied))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse();
         String generated = response.getHeader(HEADER);
         assertThat(UUID.fromString(generated).toString()).isEqualTo(generated);
         assertThat(generated).isNotEqualTo(supplied);
     }
 
     static Stream<String> invalidIds() {
-        return Stream.of("", "x".repeat(65), "line\r\ninjection", " has-space", "<script>", "é", "one,two");
+        return Stream.of(
+                "", "x".repeat(65), "line\r\ninjection", " has-space", "<script>", "é", "one,two");
     }
 
     @Test
     void multipleCorrelationHeadersAreReplaced() throws Exception {
-        String id = mvc.perform(get("/_test/mdc").header(HEADER, "first", "second"))
-                .andExpect(status().isOk()).andReturn().getResponse().getHeader(HEADER);
+        String id =
+                mvc.perform(get("/_test/mdc").header(HEADER, "first", "second"))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader(HEADER);
         assertThat(UUID.fromString(id).toString()).isEqualTo(id);
     }
 
     @Test
     void noContentResponseIsNotWrapped() throws Exception {
         mvc.perform(delete("/_test/no-content"))
-                .andExpect(status().isNoContent()).andExpect(content().string(""))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""))
                 .andExpect(header().exists(HEADER));
     }
 
-    record ValidationExample(@NotBlank @Size(max = 40) String label,
-                             @NotNull @Size(min = 1, max = 3) List<@NotBlank String> tags) {
-    }
+    record ValidationExample(
+            @NotBlank @Size(max = 40) String label,
+            @NotNull @Size(min = 1, max = 3) List<@NotBlank String> tags) {}
 
     @RestController
     static class TestController {
         @PostMapping(value = "/_test/validation", consumes = MediaType.APPLICATION_JSON_VALUE)
-        ResponseEntity<ApiResponse<ValidationExample>> validation(@Valid @RequestBody ValidationExample example) {
+        ResponseEntity<ApiResponse<ValidationExample>> validation(
+                @Valid @RequestBody ValidationExample example) {
             return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(example));
         }
 

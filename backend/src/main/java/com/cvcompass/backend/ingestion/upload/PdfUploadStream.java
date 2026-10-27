@@ -1,14 +1,15 @@
 package com.cvcompass.backend.ingestion.upload;
 
-import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.EMPTY_FILE;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.FILE_TOO_LARGE;
+import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.INVALID_PDF;
 
+import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
-
-import static com.cvcompass.backend.ingestion.exception.UploadRejectedException.Reason.*;
 
 /**
  * Bounded, borrowed stream with signature/trailer validation, not a PDF parser or malware scanner.
@@ -33,7 +34,8 @@ final class PdfUploadStream extends FilterInputStream {
         }
         String signature = new String(header, StandardCharsets.ISO_8859_1);
         if (!signature.matches("%PDF-(1\\.[0-7]|2\\.0)")) {
-            throw new UploadRejectedException(INVALID_PDF, "File must have a supported PDF signature");
+            throw new UploadRejectedException(
+                    INVALID_PDF, "File must have a supported PDF signature");
         }
         input.unread(header);
         return new PdfUploadStream(input, maxBytes);
@@ -75,7 +77,8 @@ final class PdfUploadStream extends FilterInputStream {
 
     private void checkSize(int read) {
         if (read > maxBytes - count) {
-            throw new UploadRejectedException(FILE_TOO_LARGE, "File exceeds the configured size limit");
+            throw new UploadRejectedException(
+                    FILE_TOO_LARGE, "File exceeds the configured size limit");
         }
     }
 
@@ -107,8 +110,21 @@ final class PdfUploadStream extends FilterInputStream {
         return amount < 0 ? 0 : amount - remaining;
     }
 
-    @Override public boolean markSupported() { return false; }
-    @Override public void mark(int readLimit) { }
-    @Override public void reset() throws IOException { throw new IOException("Reset is not supported"); }
-    @Override public void close() { /* Caller retains ownership of the original stream. */ }
+    @Override
+    public boolean markSupported() {
+        return false;
+    }
+
+    @Override
+    public void mark(int readLimit) {}
+
+    @Override
+    public void reset() throws IOException {
+        throw new IOException("Reset is not supported");
+    }
+
+    @Override
+    public void close() {
+        /* Caller retains ownership of the original stream. */
+    }
 }

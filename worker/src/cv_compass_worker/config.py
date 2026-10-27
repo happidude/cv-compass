@@ -1,10 +1,11 @@
 """Strict local configuration. Contract ceilings come from one manifest."""
-from dataclasses import asdict, dataclass, fields
+
 import hashlib
 import json
 import re
-from pathlib import Path
 import tomllib
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 
 DESIGN = Path(__file__).resolve().parents[2] / 'design'
 LIMITS = json.loads((DESIGN / 'ocr-v2.limits.json').read_text(encoding='utf-8'))
@@ -52,24 +53,32 @@ class Config:
                     raise ValueError('INVALID_CONFIGURATION')
             elif type(value) is not int or value < 1:
                 raise ValueError('INVALID_CONFIGURATION')
-        if (config.mode not in ('production', 'diagnostic') or config.concurrency != 1
-                or config.max_pages > LIMITS['max_pages']
-                or config.max_text_code_points_per_field > LIMITS['max_text_code_points_per_field']
-                or config.max_file_bytes > 10485760
-                or not 150 <= config.render_dpi <= 400
-                or config.max_image_pixels > 16000000
-                or config.max_image_dimension > 6000
-                or config.max_temp_bytes > 268435456
-                or config.max_result_bytes > 8388608
-                or config.max_document_text > 500000
-                or config.max_engine_output_bytes > 8388608
-                or config.document_timeout <= 7):
+        if (
+            config.mode not in ('production', 'diagnostic')
+            or config.concurrency != 1
+            or config.max_pages > LIMITS['max_pages']
+            or config.max_text_code_points_per_field > LIMITS['max_text_code_points_per_field']
+            or config.max_file_bytes > 10485760
+            or not 150 <= config.render_dpi <= 400
+            or config.max_image_pixels > 16000000
+            or config.max_image_dimension > 6000
+            or config.max_temp_bytes > 268435456
+            or config.max_result_bytes > 8388608
+            or config.max_document_text > 500000
+            or config.max_engine_output_bytes > 8388608
+            or config.document_timeout <= 7
+        ):
             raise ValueError('INVALID_CONFIGURATION')
-        if (config.adapter not in ('native', 'docker')
-                or not 67108864 <= config.container_memory_bytes <= 805306368
-                or not 250 <= config.container_cpu_millicores <= 2000
-                or not 8 <= config.container_pids <= 64
-                or (config.adapter == 'docker' and re.fullmatch(r'sha256:[0-9a-f]{64}', config.docker_image) is None)):
+        if (
+            config.adapter not in ('native', 'docker')
+            or not 67108864 <= config.container_memory_bytes <= 805306368
+            or not 250 <= config.container_cpu_millicores <= 2000
+            or not 8 <= config.container_pids <= 64
+            or (
+                config.adapter == 'docker'
+                and re.fullmatch(r'sha256:[0-9a-f]{64}', config.docker_image) is None
+            )
+        ):
             raise ValueError('INVALID_CONFIGURATION')
         for value in (config.tesseract, config.models):
             if not value or not Path(value).is_absolute():

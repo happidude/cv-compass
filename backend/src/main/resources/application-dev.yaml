@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/cv_compass}
-    username: ${DB_USERNAME:cvcompass}
-    password: ${DB_PASSWORD:cvcompass_dev}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:

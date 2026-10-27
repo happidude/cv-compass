@@ -1,4 +1,5 @@
 """PDF preflight; imported only inside a supervised engine child."""
+
 from pathlib import Path
 
 
@@ -6,6 +7,7 @@ def preflight(path: Path, max_pages: int) -> int:
     from pdfminer.pdfparser import PDFParser, PDFSyntaxError
     from pdfminer.pdfdocument import PDFDocument, PDFPasswordIncorrect
     from pdfminer.pdfpage import PDFPage
+
     try:
         with path.open('rb') as stream:
             doc = PDFDocument(PDFParser(stream), password='')
@@ -23,5 +25,5 @@ def preflight(path: Path, max_pages: int) -> int:
             return count
     except PDFPasswordIncorrect:
         raise ValueError('FILE_ENCRYPTED') from None
-    except (PDFSyntaxError, EOFError):
+    except PDFSyntaxError, EOFError:
         raise ValueError('FILE_CORRUPT') from None

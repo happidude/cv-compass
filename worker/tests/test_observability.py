@@ -7,7 +7,15 @@ import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
-from cv_compass_worker.observability import Event, Formatter, context, event, _logger, configure, configure_child_diagnostics
+from cv_compass_worker.observability import (
+    Event,
+    Formatter,
+    context,
+    event,
+    _logger,
+    configure,
+    configure_child_diagnostics,
+)
 
 
 class ObservabilityTests(unittest.TestCase):
@@ -31,7 +39,8 @@ class ObservabilityTests(unittest.TestCase):
         with context(documentId='42', jobId='51'):
             inherited = contextvars.copy_context()
             thread = threading.Thread(target=lambda: inherited.run(event, Event.HEARTBEAT))
-            thread.start(); thread.join()
+            thread.start()
+            thread.join()
             try:
                 with context(attemptId='test-attempt'):
                     raise ValueError('SECRET')
@@ -45,7 +54,12 @@ class ObservabilityTests(unittest.TestCase):
 
     def test_payload_exception_and_newline_never_formatted(self):
         with context(documentId='42\nPRIVATE', token='PRIVATE'):
-            event(Event.WORKER_HALTED, error_code='secret@email.test', rawText='PRIVATE', payload='PRIVATE')
+            event(
+                Event.WORKER_HALTED,
+                error_code='secret@email.test',
+                rawText='PRIVATE',
+                payload='PRIVATE',
+            )
         try:
             raise RuntimeError('PRIVATE')
         except RuntimeError:
@@ -58,7 +72,7 @@ class ObservabilityTests(unittest.TestCase):
         _logger.setLevel(logging.INFO)
         event(Event.POLL_EMPTY, level=logging.DEBUG)
         event(Event.PAGE_FINISHED, pageNumber=1, durationMs=12, method='native', status='ok')
-        row, = self.rows()
+        (row,) = self.rows()
         self.assertEqual(row['event'], 'PAGE_FINISHED')
         self.assertTrue(row['timestamp'].endswith('+00:00'))
         self.assertEqual(row['service'], 'cv-compass-worker')
@@ -89,26 +103,39 @@ class ObservabilityTests(unittest.TestCase):
                 raise ValueError('PRIVATE CV')
             except ValueError:
                 isolated.warning('PRIVATE %s', 'token', exc_info=True)
-        row, = self.rows()
+        (row,) = self.rows()
         self.assertEqual(row['level'], 'WARN')
         self.assertEqual(row['event'], 'LIBRARY_DIAGNOSTIC')
         self.assertNotIn('PRIVATE', self.stream.getvalue())
         self.assertNotIn('token', self.stream.getvalue())
 
     def test_formatter_rejects_injected_payload_and_message_fields(self):
-        _logger.warning('PRIVATE', extra={'operational': {'event': 'PAGE_FINISHED',
-                        'message': 'PRIVATE', 'rawText': 'PRIVATE', 'payload': 'PRIVATE'}})
+        _logger.warning(
+            'PRIVATE',
+            extra={
+                'operational': {
+                    'event': 'PAGE_FINISHED',
+                    'message': 'PRIVATE',
+                    'rawText': 'PRIVATE',
+                    'payload': 'PRIVATE',
+                }
+            },
+        )
         self.assertNotIn('PRIVATE', self.stream.getvalue())
         self.assertEqual(self.rows()[0]['level'], 'WARN')
 
     def test_optional_file_rotation_is_bounded(self):
         with tempfile.TemporaryDirectory() as directory, patch('sys.stderr', self.stream):
-            path = Path(directory)/'worker.log'
-            configure({'CV_LOG_FILE': str(path), 'CV_LOG_MAX_BYTES': '1024', 'CV_LOG_BACKUP_COUNT': '1'})
+            path = Path(directory) / 'worker.log'
+            configure(
+                {'CV_LOG_FILE': str(path), 'CV_LOG_MAX_BYTES': '1024', 'CV_LOG_BACKUP_COUNT': '1'}
+            )
             try:
                 for _ in range(30):
                     event(Event.PIPELINE_STARTED)
-                self.assertEqual({p.name for p in Path(directory).iterdir()}, {'worker.log', 'worker.log.1'})
+                self.assertEqual(
+                    {p.name for p in Path(directory).iterdir()}, {'worker.log', 'worker.log.1'}
+                )
                 self.assertTrue(all(p.stat().st_size <= 1024 for p in Path(directory).iterdir()))
             finally:
                 for handler in _logger.handlers:
@@ -116,12 +143,15 @@ class ObservabilityTests(unittest.TestCase):
 
     def test_ack_event_only_after_validated_receipt_and_has_ids(self):
         from cv_compass_worker.pull import PullSupervisor
+
         claim = {'job_id': '51', 'attempt_id': 'attempt-1', 'ocr_request': {'document_id': '42'}}
         with self.assertRaises(ValueError):
             PullSupervisor._receipt({'accepted': False}, claim)
         self.assertEqual(self.rows(), [])
-        PullSupervisor._receipt({'accepted': True, 'job_id': '51', 'attempt_id': 'attempt-1'}, claim)
-        row, = self.rows()
+        PullSupervisor._receipt(
+            {'accepted': True, 'job_id': '51', 'attempt_id': 'attempt-1'}, claim
+        )
+        (row,) = self.rows()
         self.assertEqual(row['event'], 'RESULT_ACKNOWLEDGED')
         self.assertEqual(row['documentId'], '42')
         self.assertEqual(row['attemptId'], 'attempt-1')

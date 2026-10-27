@@ -2,7 +2,14 @@ package com.cvcompass.backend.storage;
 
 /** Safe summary for services; technical causes are retained for internal diagnostics only. */
 public class StorageException extends RuntimeException {
-    public enum Reason { INVALID_KEY, NOT_FOUND, UNAVAILABLE, WRITE_FAILED, READ_FAILED, DELETE_FAILED }
+    public enum Reason {
+        INVALID_KEY,
+        NOT_FOUND,
+        UNAVAILABLE,
+        WRITE_FAILED,
+        READ_FAILED,
+        DELETE_FAILED
+    }
 
     private final Reason reason;
 

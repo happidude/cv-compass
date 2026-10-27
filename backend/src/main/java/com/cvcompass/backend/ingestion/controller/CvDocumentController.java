@@ -1,14 +1,16 @@
 package com.cvcompass.backend.ingestion.controller;
 
-import com.cvcompass.backend.ingestion.service.CvDocumentService;
-import com.cvcompass.backend.ingestion.service.DocumentQueryService;
 import com.cvcompass.backend.ingestion.config.UploadProperties;
 import com.cvcompass.backend.ingestion.dto.DocumentCursorPage;
 import com.cvcompass.backend.ingestion.dto.DocumentDetails;
 import com.cvcompass.backend.ingestion.dto.DocumentMetadata;
 import com.cvcompass.backend.ingestion.exception.UploadRejectedException;
+import com.cvcompass.backend.ingestion.service.CvDocumentService;
+import com.cvcompass.backend.ingestion.service.DocumentQueryService;
 import jakarta.servlet.ServletException;
 import jakarta.validation.constraints.Positive;
+import java.io.IOException;
+import java.net.URI;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,9 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 
-import java.io.IOException;
-import java.net.URI;
-
 @RestController
 @RequestMapping("/api/documents")
 public class CvDocumentController {
@@ -31,7 +30,8 @@ public class CvDocumentController {
     private final DocumentQueryService queries;
     private final UploadProperties properties;
 
-    public CvDocumentController(CvDocumentService service, DocumentQueryService queries, UploadProperties properties) {
+    public CvDocumentController(
+            CvDocumentService service, DocumentQueryService queries, UploadProperties properties) {
         this.service = service;
         this.queries = queries;
         this.properties = properties;
@@ -41,9 +41,13 @@ public class CvDocumentController {
     public ResponseEntity<DocumentMetadata> upload(MultipartHttpServletRequest request)
             throws IOException, ServletException {
         var files = request.getMultiFileMap();
-        if (request.getParts().size() != 1 || files.size() != 1 || !files.containsKey("file")
-                || files.get("file").size() != 1 || !request.getParameterMap().isEmpty()) {
-            throw new UploadRejectedException(UploadRejectedException.Reason.INVALID_MULTIPART,
+        if (request.getParts().size() != 1
+                || files.size() != 1
+                || !files.containsKey("file")
+                || files.get("file").size() != 1
+                || !request.getParameterMap().isEmpty()) {
+            throw new UploadRejectedException(
+                    UploadRejectedException.Reason.INVALID_MULTIPART,
                     "Exactly one multipart file named file is required");
         }
         var file = files.get("file").getFirst();
@@ -54,7 +58,8 @@ public class CvDocumentController {
         try (var content = file.getInputStream()) {
             var metadata = service.upload(file.getOriginalFilename(), content);
             return ResponseEntity.created(URI.create("/api/documents/" + metadata.id()))
-                    .cacheControl(CacheControl.noStore()).body(metadata);
+                    .cacheControl(CacheControl.noStore())
+                    .body(metadata);
         }
     }
 
@@ -64,8 +69,11 @@ public class CvDocumentController {
     }
 
     @GetMapping
-    public ResponseEntity<DocumentCursorPage> list(@RequestParam(required = false) @Positive Long beforeId,
-                                    @RequestParam(required = false) @Positive Integer size) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(queries.list(beforeId, size));
+    public ResponseEntity<DocumentCursorPage> list(
+            @RequestParam(required = false) @Positive Long beforeId,
+            @RequestParam(required = false) @Positive Integer size) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(queries.list(beforeId, size));
     }
 }

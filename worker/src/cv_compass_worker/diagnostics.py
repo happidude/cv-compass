@@ -1,9 +1,10 @@
 """Typed, safe failure metadata. Never inspect exception/cause messages to classify a halt."""
-from dataclasses import dataclass
-from contextlib import contextmanager
-from enum import StrEnum
+
 import http.client
 import ssl
+from contextlib import contextmanager
+from dataclasses import dataclass
+from enum import StrEnum
 
 
 class Reason(StrEnum):
@@ -89,22 +90,43 @@ def annotate(error, reason, *, correlation_id=None, http_status=None):
         reason = error.reason
     if getattr(error, 'cleanup_failed', False):
         reason = Reason.HTTP_CLEANUP_FAILED
-    error._ocr_diagnostic = Diagnostic(reason, type(error).__name__,
-            correlation_id or (previous.correlation_id if isinstance(previous, Diagnostic) else None),
-            http_status if http_status is not None else (previous.http_status if isinstance(previous, Diagnostic) else None))
+    error._ocr_diagnostic = Diagnostic(
+        reason,
+        type(error).__name__,
+        correlation_id or (previous.correlation_id if isinstance(previous, Diagnostic) else None),
+        http_status
+        if http_status is not None
+        else (previous.http_status if isinstance(previous, Diagnostic) else None),
+    )
     return error
 
 
 def transport_failure(error, correlation_id, *, timed_out=False, http_status=None):
-    reason = (Reason.HTTP_TIMEOUT if timed_out or isinstance(error, TimeoutError) else
-              Reason.TLS_FAILED if isinstance(error, ssl.SSLError) else
-              Reason.CONNECTION_REFUSED if isinstance(error, ConnectionRefusedError) else
-              Reason.HTTP_PROTOCOL_ERROR if isinstance(error, http.client.HTTPException) else
-              Reason.NETWORK_FAILED if isinstance(error, OSError) else Reason.UNEXPECTED_WORKER_FAILURE)
+    reason = (
+        Reason.HTTP_TIMEOUT
+        if timed_out or isinstance(error, TimeoutError)
+        else Reason.TLS_FAILED
+        if isinstance(error, ssl.SSLError)
+        else Reason.CONNECTION_REFUSED
+        if isinstance(error, ConnectionRefusedError)
+        else Reason.HTTP_PROTOCOL_ERROR
+        if isinstance(error, http.client.HTTPException)
+        else Reason.NETWORK_FAILED
+        if isinstance(error, OSError)
+        else Reason.UNEXPECTED_WORKER_FAILURE
+    )
     previous = getattr(error, '_ocr_diagnostic', None)
-    explicit = previous.reason if isinstance(previous, Diagnostic) else error.reason if isinstance(error, WorkerFailure) else None
+    explicit = (
+        previous.reason
+        if isinstance(previous, Diagnostic)
+        else error.reason
+        if isinstance(error, WorkerFailure)
+        else None
+    )
     if timed_out and explicit in (None, Reason.HTTP_BODY):
-        error._ocr_diagnostic = Diagnostic(Reason.HTTP_TIMEOUT, type(error).__name__, correlation_id, http_status)
+        error._ocr_diagnostic = Diagnostic(
+            Reason.HTTP_TIMEOUT, type(error).__name__, correlation_id, http_status
+        )
         return error
     return annotate(error, reason, correlation_id=correlation_id, http_status=http_status)
 
@@ -113,6 +135,13 @@ def diagnostic(error, fallback=Reason.UNEXPECTED_WORKER_FAILURE):
     known = getattr(error, '_ocr_diagnostic', None)
     if isinstance(known, Diagnostic):
         if getattr(error, 'cleanup_failed', False):
-            return Diagnostic(Reason.HTTP_CLEANUP_FAILED, known.exception_type, known.correlation_id, known.http_status)
+            return Diagnostic(
+                Reason.HTTP_CLEANUP_FAILED,
+                known.exception_type,
+                known.correlation_id,
+                known.http_status,
+            )
         return known
-    return Diagnostic(error.reason if isinstance(error, WorkerFailure) else fallback, type(error).__name__)
+    return Diagnostic(
+        error.reason if isinstance(error, WorkerFailure) else fallback, type(error).__name__
+    )
