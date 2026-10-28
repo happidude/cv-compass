@@ -33,6 +33,13 @@ logging:
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
+  candidate:
+    publication:
+      enabled: ${CV_CANDIDATE_PUBLICATION_ENABLED:false}
+      page-size: ${CV_CANDIDATE_PUBLICATION_PAGE_SIZE:50}
+      concurrency: ${CV_CANDIDATE_PUBLICATION_CONCURRENCY:1}
+      delay: ${CV_CANDIDATE_PUBLICATION_DELAY:10s}
+      list-page-size: ${CV_CANDIDATE_LIST_PAGE_SIZE:20}
   mapping:
     enabled: ${CV_MAPPING_ENABLED:false}
     scan-page-size: ${CV_MAPPING_SCAN_PAGE_SIZE:100}
@@ -97,5 +104,12 @@ cv:
 
 # Finite drain budget lets clients receive 413 after a moderately oversized chunked request.
 server:
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: ${CV_SESSION_SECURE:true}
+        same-site: strict
   tomcat:
     max-swallow-size: 101MB
