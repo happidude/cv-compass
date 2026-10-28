@@ -33,6 +33,15 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CvUploadIntegrationTests {
+    private TestUserSession auth;
+
+    @BeforeEach
+    void authenticateUser() throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            auth = TestUserSession.login(client, port, jdbc, json);
+        }
+    }
+
     private static final IsolatedPostgresSchema DATABASE = new IsolatedPostgresSchema();
     private static final HttpClient CLIENT =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -314,8 +323,7 @@ class CvUploadIntegrationTests {
             throws Exception {
         var response =
                 CLIENT.send(
-                        HttpRequest.newBuilder(
-                                        URI.create("http://localhost:" + port + "/api/documents"))
+                        auth.request(URI.create("http://localhost:" + port + "/api/documents"))
                                 .timeout(Duration.ofSeconds(10))
                                 .header("Content-Type", contentType)
                                 .header("X-Correlation-ID", "malformed-multipart")
@@ -354,7 +362,7 @@ class CvUploadIntegrationTests {
 
     private HttpResponse<String> send(HttpRequest.BodyPublisher body) throws Exception {
         return CLIENT.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/documents"))
+                auth.request(URI.create("http://localhost:" + port + "/api/documents"))
                         .timeout(Duration.ofSeconds(30))
                         .header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
                         .header("X-Correlation-ID", "upload-integration")
@@ -365,7 +373,7 @@ class CvUploadIntegrationTests {
 
     private HttpResponse<String> get(String path) throws Exception {
         return CLIENT.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                auth.request(URI.create("http://localhost:" + port + path))
                         .timeout(Duration.ofSeconds(10))
                         .header("X-Correlation-ID", "query-integration")
                         .GET()

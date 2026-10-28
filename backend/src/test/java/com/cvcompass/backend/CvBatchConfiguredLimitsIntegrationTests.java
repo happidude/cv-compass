@@ -20,6 +20,15 @@ import tools.jackson.databind.ObjectMapper;
         properties = {"cv.batch.max-files=2", "cv.batch.max-file-bytes=100"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CvBatchConfiguredLimitsIntegrationTests {
+    private TestUserSession auth;
+
+    @BeforeEach
+    void authenticateUser() throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            auth = TestUserSession.login(client, port, jdbc, json);
+        }
+    }
+
     private static final IsolatedPostgresSchema DATABASE = new IsolatedPostgresSchema();
     @LocalServerPort int port;
     @Autowired JdbcTemplate jdbc;
@@ -95,7 +104,7 @@ class CvBatchConfiguredLimitsIntegrationTests {
         }
         body.append("--limits--\r\n");
         return client.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                auth.request(URI.create("http://localhost:" + port + path))
                         .timeout(java.time.Duration.ofSeconds(30))
                         .header("Content-Type", "multipart/form-data; boundary=limits")
                         .POST(HttpRequest.BodyPublishers.ofString(body.toString()))

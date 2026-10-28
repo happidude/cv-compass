@@ -80,7 +80,8 @@ class MappingIntegrationTests {
         mappingProperties.setRetryBackoff(java.time.Duration.ofSeconds(30));
         assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
                 .isEqualTo(DATABASE.schemaName());
-        jdbc.execute("TRUNCATE \"CV_MAPPING_RESULTS\",\"CV_MAPPING_JOBS\"");
+        jdbc.execute(
+                "TRUNCATE \"CANDIDATE_PROPOSALS\",\"CANDIDATE_PUBLICATIONS\",\"CANDIDATE_EXPERIENCES\",\"CV_MAPPING_RESULTS\",\"CV_MAPPING_JOBS\"");
         jdbc.update(
                 "UPDATE \"CV_MAPPING_SETTINGS\" SET \"ACTIVE_CONFIG_ID\"=NULL,\"SCAN_AFTER_ID\"=0");
     }

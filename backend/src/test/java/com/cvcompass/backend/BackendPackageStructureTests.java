@@ -39,7 +39,8 @@ class BackendPackageStructureTests {
                         "config",
                         "upload",
                         "source",
-                        "api");
+                        "api",
+                        "candidateapi");
         for (var type : CLASSES) {
             Class<?> actual = type.reflect();
             String pkg = actual.getPackageName();
@@ -50,7 +51,9 @@ class BackendPackageStructureTests {
                     || RuntimeException.class.isAssignableFrom(actual))
                 assertPackage(actual, "exception");
             if (actual.isAnnotationPresent(Service.class)) assertPackage(actual, "service");
-            if (actual.isRecord() && !pkg.equals(INGESTION + ".api")) assertPackage(actual, "dto");
+            if (actual.isRecord()
+                    && !pkg.equals(INGESTION + ".api")
+                    && !pkg.equals(INGESTION + ".candidateapi")) assertPackage(actual, "dto");
             if (actual.isAnnotationPresent(Entity.class)
                     || actual.isAnnotationPresent(MappedSuperclass.class))
                 assertPackage(actual, "entity");

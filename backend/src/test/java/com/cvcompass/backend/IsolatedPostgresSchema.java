@@ -40,6 +40,7 @@ final class IsolatedPostgresSchema implements AutoCloseable {
             storageRoot = java.nio.file.Files.createTempDirectory("cv-storage-test-");
         }
         registry.add("cv.storage.provider", () -> "local");
+        registry.add("server.servlet.session.cookie.secure", () -> "false");
         registry.add("cv.storage.local.root-directory", () -> storageRoot.toString());
         registry.add("spring.datasource.url", () -> url);
         registry.add("spring.datasource.username", () -> username);
