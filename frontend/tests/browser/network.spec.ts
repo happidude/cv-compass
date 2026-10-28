@@ -13,7 +13,11 @@ async function defaults(page: Page) {
     const url = new URL(route.request().url());
     const path = url.pathname;
     let data: unknown;
-    if (path === "/api/documents") data = documentPage;
+    if (path === "/api/auth/me")
+      data = { username: "synthetic-user", roles: ["ROLE_USER"] };
+    else if (path === "/api/auth/csrf")
+      data = { token: "synthetic-csrf", headerName: "X-XSRF-TOKEN" };
+    else if (path === "/api/documents") data = documentPage;
     else if (/\/documents\/\d+$/.test(path))
       data = details.find((d) => String(d.id) === path.split("/").at(-1));
     else if (path === "/api/batches")

@@ -4,7 +4,11 @@ import { http, HttpResponse } from "msw";
 import { metadataSchema } from "../src/features/documents/schema";
 import { upload } from "../src/shared/http";
 import { apiFailure } from "../src/mocks/fixtures";
-const server = setupServer();
+const server = setupServer(
+  http.get("/api/auth/csrf", () =>
+    HttpResponse.json({ token: "synthetic-csrf", headerName: "X-XSRF-TOKEN" }),
+  ),
+);
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

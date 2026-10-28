@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { pdfAssets } from "./pdfjs-assets";
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
   if (command === "build" && env.VITE_MOCK === "true")
@@ -29,7 +30,7 @@ export default defineConfig(({ mode, command }) => {
       );
   }
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), pdfAssets()],
     publicDir: command === "build" ? false : "dev-public",
     server: {
       strictPort: true,

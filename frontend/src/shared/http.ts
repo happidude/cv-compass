@@ -38,7 +38,7 @@ export function decode<T>(text: string, schema: z.ZodType<T>): T {
     throw new RequestError("contract");
   }
 }
-function httpError(status: number, text: string) {
+export function httpError(status: number, text: string) {
   let parsed;
   try {
     parsed = apiError.safeParse(JSON.parse(text));
@@ -53,6 +53,14 @@ function httpError(status: number, text: string) {
   );
 }
 export const errorLabels: Record<string, string> = {
+  DOCUMENT_ALREADY_LINKED:
+    "Tài liệu đã thuộc hồ sơ khác. Hãy chọn tài liệu chưa liên kết.",
+  PROPOSAL_CLOSED: "Đề xuất đã được xử lý. Tải lại danh sách.",
+  PROFILE_LIMIT: "Hồ sơ đã đạt giới hạn kinh nghiệm. Liên hệ quản trị viên.",
+  AUTH_REQUIRED: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+  ACCESS_DENIED: "Bạn không có quyền truy cập.",
+  VERSION_CONFLICT: "Xung đột phiên bản. Tải lại dữ liệu trước khi chỉnh tiếp.",
+  STORAGE_FILE_MISSING: "File PDF nguồn không còn trong kho lưu trữ.",
   OCR_FAILED: "OCR thất bại ở trang này.",
   DOCUMENT_TIMEOUT: "Hết thời gian xử lý tài liệu.",
   PAGE_TIMEOUT: "Hết thời gian xử lý trang.",
@@ -108,10 +116,18 @@ export async function get<T>(
   try {
     const response = await fetch(
       new URL(config.apiBase + path, window.location.origin).href,
-      { signal: controller.signal, cache: "no-store" },
+      {
+        signal: controller.signal,
+        cache: "no-store",
+        credentials: "same-origin",
+      },
     );
     const text = await response.text();
-    if (!response.ok) throw httpError(response.status, text);
+    if (!response.ok) {
+      if (response.status === 401 && typeof window.dispatchEvent === "function")
+        window.dispatchEvent(new Event("cv-auth-expired"));
+      throw httpError(response.status, text);
+    }
     return decode(text, schema);
   } catch (error) {
     if (error instanceof RequestError) throw error;
@@ -124,13 +140,18 @@ export async function get<T>(
   }
 }
 // POST has no automatic retry. Any transport failure after send is ambiguous.
-export function upload<T>(
+export async function upload<T>(
   path: string,
   body: FormData,
   schema: z.ZodType<T>,
   onProgress: (value: number) => void,
   signal: AbortSignal,
 ): Promise<T> {
+  const csrf = await get(
+    "/auth/csrf",
+    z.object({ token: z.string(), headerName: z.string() }),
+    signal,
+  );
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const abort = () => xhr.abort();
@@ -144,6 +165,7 @@ export function upload<T>(
       new URL(config.apiBase + path, window.location.origin).href,
     );
     xhr.timeout = 120000;
+    xhr.setRequestHeader(csrf.headerName, csrf.token);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable)
         onProgress(Math.round((event.loaded * 100) / event.total));
@@ -151,6 +173,8 @@ export function upload<T>(
     xhr.onload = () => {
       cleanup();
       if (xhr.status < 200 || xhr.status >= 300) {
+        if (xhr.status === 401)
+          window.dispatchEvent(new Event("cv-auth-expired"));
         const e = httpError(xhr.status, xhr.responseText);
         e.uncertain = xhr.status >= 500 || xhr.status === 408;
         reject(e);

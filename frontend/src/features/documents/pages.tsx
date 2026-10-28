@@ -15,6 +15,7 @@ import {
 import { Status, statusInfo } from "../../shared/ui/status";
 import { Button } from "../../shared/ui/button";
 import { errorLabel } from "../../shared/http";
+import { apiUrl } from "../../shared/session";
 import type { DocumentDetail } from "./schema";
 export function DocumentsPage() {
   const q = useDocuments();
@@ -214,12 +215,18 @@ function DocumentContent({ id }: { id: string }) {
         }
         action={
           <div>
-            <Button variant="outline" disabled>
-              Xem PDF (chưa hỗ trợ)
-            </Button>
-            <p className="footnote">
-              Chưa có API xem/tải PDF dành cho người dùng.
-            </p>
+            <a
+              className="button"
+              href={apiUrl(`/documents/${id}/content`)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Xem PDF gốc
+            </a>
+            {" · "}
+            <a href={apiUrl(`/documents/${id}/content?download=true`)}>
+              Tải PDF gốc
+            </a>
           </div>
         }
       />

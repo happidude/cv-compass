@@ -511,3 +511,121 @@ p a:not(.button) {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* M11 uses the existing panels and colors, with a local source comparison pane. */
+.candidate-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 45%);
+  gap: 1rem;
+  align-items: start;
+}
+.candidate-split > *,
+.candidate-split pre {
+  min-width: 0;
+}
+.source-column {
+  position: sticky;
+  top: 1rem;
+}
+.raw-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+}
+.edit-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.edit-form label,
+.login-panel label,
+.source-column label {
+  display: grid;
+  gap: 0.25rem;
+}
+.edit-form input,
+.edit-form textarea,
+.login-panel input,
+select {
+  max-width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #94a3b8;
+  border-radius: 0.35rem;
+}
+.edit-form input[type="checkbox"] {
+  width: auto;
+}
+.login-panel {
+  max-width: 32rem;
+  margin: 4rem auto;
+  padding: 2rem;
+}
+.login-panel form {
+  display: grid;
+  gap: 1rem;
+}
+blockquote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-left: 3px solid #475569;
+  padding: 0.75rem;
+}
+@media (max-width: 1000px) {
+  .candidate-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .source-column {
+    position: static;
+  }
+}
+.candidate-screen .panel {
+  padding: 1rem;
+  margin-block: 0.75rem;
+}
+.candidate-screen h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+.candidate-screen h3 {
+  font-weight: 600;
+  margin-block: 0.5rem;
+}
+.candidate-screen button,
+.login-panel button {
+  padding: 0.45rem 0.7rem;
+  margin: 0.3rem 0.3rem 0.3rem 0;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.4rem;
+  background: #eef2ff;
+  color: #3730a3;
+  cursor: pointer;
+}
+.candidate-screen button:hover,
+.login-panel button:hover {
+  background: #e0e7ff;
+}
+.candidate-screen button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.candidate-screen details {
+  margin-block: 0.5rem;
+}
+.candidate-screen td,
+.candidate-screen th {
+  padding: 0.75rem;
+  text-align: left;
+}
+.source-column input {
+  border: 1px solid #94a3b8;
+  border-radius: 0.35rem;
+  padding: 0.5rem;
+  width: 100%;
+}
+.pdf-canvas-view canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid #cbd5e1;
+  background: white;
+}
