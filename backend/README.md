@@ -6,6 +6,9 @@ require a USER/ADMIN session; mutations require CSRF. See [M11.md](M11.md) for
 provisioning, API/configuration and local operation, and [M11_REPORT.md](M11_REPORT.md)
 for verification evidence. OCR worker bearer authentication remains separate.
 
+The M11 layer refactor and independent partial-date fix are documented in
+[M11_REFACTOR_REPORT.md](M11_REFACTOR_REPORT.md), with class mapping and fresh verification evidence.
+
 For the completed M7–M9 local UI → worker → JSONB → UI flow, admission modes,
 coordinated connection settings and safe recovery/start commands, see
 [LOCAL_OCR.md](LOCAL_OCR.md). Default admission remains synthetic-only; local mode
