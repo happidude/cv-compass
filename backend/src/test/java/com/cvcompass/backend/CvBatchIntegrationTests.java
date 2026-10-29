@@ -22,6 +22,15 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CvBatchIntegrationTests {
+    private TestUserSession auth;
+
+    @BeforeEach
+    void authenticateUser() throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            auth = TestUserSession.login(client, port, jdbc, json);
+        }
+    }
+
     static final IsolatedPostgresSchema DATABASE = new IsolatedPostgresSchema();
     static final HttpClient CLIENT = HttpClient.newHttpClient();
     static final byte[] PDF = "%PDF-1.7\nsynthetic\n%%EOF\n".getBytes(StandardCharsets.US_ASCII);
@@ -323,7 +332,7 @@ class CvBatchIntegrationTests {
 
     HttpResponse<String> send(HttpRequest.BodyPublisher body) throws Exception {
         return CLIENT.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/batches"))
+                auth.request(URI.create("http://localhost:" + port + "/api/batches"))
                         .header("Content-Type", "multipart/form-data; boundary=batch-test")
                         .POST(body)
                         .build(),
@@ -345,7 +354,7 @@ class CvBatchIntegrationTests {
         }
         body.write("--batch-test--\r\n".getBytes(StandardCharsets.US_ASCII));
         return CLIENT.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/batches"))
+                auth.request(URI.create("http://localhost:" + port + "/api/batches"))
                         .header("Content-Type", "multipart/form-data; boundary=batch-test")
                         .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
                         .build(),
@@ -354,7 +363,7 @@ class CvBatchIntegrationTests {
 
     HttpResponse<String> get(String path) throws Exception {
         return CLIENT.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build(),
+                auth.request(URI.create("http://localhost:" + port + path)).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 }

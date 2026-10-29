@@ -1,5 +1,14 @@
 # CV Compass frontend — M9
 
+M11 adds `/login`, `/candidates` and `/candidates/:id`: session/CSRF authentication,
+partial confirmation and editing, proposals/history and PDF.js source comparison.
+Run against the same-origin API proxy with a provisioned user; see
+[backend/M11.md](../backend/M11.md). The older unauthenticated live smoke below
+requires authenticated setup before reuse; use `playwright.m11-live.config.ts`
+with the isolated M11 smoke server for the current complete flow.
+Production includes pinned PDF.js 6.4.299 and its worker/font/CMap/WASM assets
+served locally, with license files; no external PDF service/CDN is used.
+
 React + TypeScript strict + Vite, npm lockfile, React Router data router, TanStack Query, Zod, Tailwind and a local shadcn/ui Button. Inter Latin/Vietnamese is served from bundled font files.
 
 ## Run

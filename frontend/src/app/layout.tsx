@@ -1,9 +1,11 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { FileText, History } from "lucide-react";
 import { config } from "../shared/config";
+import { LogoutButton } from "./auth";
 export function Layout() {
   const path = useLocation().pathname;
   const batches = path.startsWith("/batches");
+  const candidates = path.startsWith("/candidates");
   return (
     <div className="shell">
       <a href="#main" className="skip-link">
@@ -15,6 +17,7 @@ export function Layout() {
         </Link>
         <p className="nav-label">TUYỂN DỤNG</p>
         <nav aria-label="Điều hướng chính">
+          <NavLink to="/candidates">Hồ sơ ứng viên</NavLink>
           <NavLink to="/documents">
             <FileText size={16} aria-hidden="true" />
             Quản lý CV
@@ -28,10 +31,19 @@ export function Layout() {
       </aside>
       <div className="workspace">
         <header className="topbar">
+          <LogoutButton />
           <span>
             CV Compass /{" "}
-            <Link to={batches ? "/batches" : "/documents"}>
-              {batches ? "Lịch sử nhập" : "Quản lý CV"}
+            <Link
+              to={
+                candidates ? "/candidates" : batches ? "/batches" : "/documents"
+              }
+            >
+              {candidates
+                ? "Hồ sơ ứng viên"
+                : batches
+                  ? "Lịch sử nhập"
+                  : "Quản lý CV"}
             </Link>
             {path === "/documents/upload" && " / Upload"}
           </span>

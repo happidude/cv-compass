@@ -11,6 +11,20 @@ import {
 } from "./fixtures";
 const base = config.apiBase;
 export const handlers = [
+  http.get(`${base}/auth/me`, () =>
+    HttpResponse.json({ username: "synthetic-user", roles: ["ROLE_USER"] }),
+  ),
+  http.get(`${base}/auth/csrf`, () =>
+    HttpResponse.json({ token: "synthetic-csrf", headerName: "X-XSRF-TOKEN" }),
+  ),
+  http.post(
+    `${base}/auth/login`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+  http.post(
+    `${base}/auth/logout`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
   http.get(`${base}/documents`, async ({ request }) => {
     await delay(150);
     return HttpResponse.json(

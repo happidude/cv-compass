@@ -15,7 +15,7 @@ export default defineConfig({
     },
     {
       name: "http-scenarios",
-      testMatch: "network.spec.ts",
+      testMatch: ["network.spec.ts", "m11.spec.ts"],
       use: { baseURL: networkOrigin, serviceWorkers: "block" },
     },
   ],

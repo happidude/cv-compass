@@ -1,5 +1,11 @@
 # M8 — CV management and OCR read API
 
+M11 adds authenticated candidate profiles, review/history and source-PDF comparison.
+All user data APIs, including the historical upload/batch examples below, now
+require a USER/ADMIN session; mutations require CSRF. See [M11.md](M11.md) for
+provisioning, API/configuration and local operation, and [M11_REPORT.md](M11_REPORT.md)
+for verification evidence. OCR worker bearer authentication remains separate.
+
 For the completed M7–M9 local UI → worker → JSONB → UI flow, admission modes,
 coordinated connection settings and safe recovery/start commands, see
 [LOCAL_OCR.md](LOCAL_OCR.md). Default admission remains synthetic-only; local mode
