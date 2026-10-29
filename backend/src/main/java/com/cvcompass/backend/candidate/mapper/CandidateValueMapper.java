@@ -1,4 +1,4 @@
-package com.cvcompass.backend.candidate.service;
+package com.cvcompass.backend.candidate.mapper;
 
 import com.cvcompass.backend.candidate.dto.BasicValues;
 import com.cvcompass.backend.candidate.dto.ExperienceValues;
@@ -17,7 +17,7 @@ public class CandidateValueMapper {
         return node.path(field).isString() ? node.path(field).asString() : null;
     }
 
-    static LocalDate date(JsonNode node) {
+    public static LocalDate date(JsonNode node) {
         if (node.isNull() || node.isMissingNode()) return null;
         return LocalDate.of(
                 node.path("year").asInt(), node.path("month").asInt(1), node.path("day").asInt(1));

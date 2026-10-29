@@ -1,6 +1,7 @@
 package com.cvcompass.backend.candidate.service;
 
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
+import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Service;

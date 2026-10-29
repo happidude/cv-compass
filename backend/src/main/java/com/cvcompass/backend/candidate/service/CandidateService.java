@@ -2,6 +2,7 @@ package com.cvcompass.backend.candidate.service;
 
 import com.cvcompass.backend.candidate.dto.Profile;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
+import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
 import java.util.UUID;

@@ -36,8 +36,9 @@ candidate/
   controller/ CandidateController
   service/    CandidateQueryService, CandidateService, CandidateReviewService
               CandidateRevisionService, CandidateExperienceService
-              CandidateValidator, CandidateValueMapper
+              CandidateValidator
               PublicationService, PublicationSweep
+  mapper/     CandidateValueMapper
   repository/ CandidateProfileRepository, PublicationRepository
   dto/        Profile, Experience, Proposal, Summary, Page, History
               BasicEdit, ExperienceEdit, Decision, DocumentLink
@@ -70,7 +71,7 @@ mapping/
 | `CandidateService.decide` | `CandidateReviewService`: version/proposal lock, quyết định/target và audit |
 | `CandidateService.lock/expected/revision/history` | `CandidateRevisionService`: version/snapshot/audit/history; SQL ở repository |
 | `CandidateService.insert/updateExperience` | `CandidateExperienceService`: giới hạn 1.000 kể cả tombstone, UUID và writer dùng chung |
-| JSON validation/normalization/projection trong service lớn | `CandidateValidator`: USER/date/code/evidence validation; `CandidateValueMapper`: `BasicValues`/`ExperienceValues` |
+| JSON validation/normalization/projection trong service lớn | `service.CandidateValidator`: USER/date/code/evidence validation; `mapper.CandidateValueMapper`: `BasicValues`/`ExperienceValues` |
 | Nested records service/controller | `candidate.dto`: giữ JSON fields/constraints/nullability; thêm typed internal read models |
 | `CandidateFailure`, `CandidateErrors` | `candidate.exception`, giữ error/status/scope advice |
 | SQL trong `PublicationService/PublicationSweep` | `PublicationRepository`: ledger/order/proposal/extensions/cursor; profile/count dùng repository chung |
@@ -169,7 +170,7 @@ Java 25.0.4.1 / WSL `CVCompass-Ubuntu-24.04`, Gradle wrapper 9.7.1, PostgreSQL
 class tạo/drop schema UUID và temp storage riêng. Không dùng DB dev. Frontend
 Node 24.22.0/npm 11.19.1/Chromium. Chỉ synthetic PDF/OCR envelope.
 
-Executable source cuối: `7ee6a41427d02365c4a27c1af991b6a67887c8c2`.
+Executable source của gate trước follow-up chuyển mapper: `7ee6a41427d02365c4a27c1af991b6a67887c8c2`.
 Tree `backend/src`: `052b119401a6edc2a3b223bb1665ea9d98fe6406`;
 tree frontend: `896c5f2aa75cf178cc2540cb2c77207c16e10c47`. Commit tài liệu không
 đổi các tree này. Head cuối và CI run URLs được ghi trong mô tả PR thay thế/handoff;
@@ -227,3 +228,23 @@ Python OCR engine, accuracy corpus thật, deployment/production readiness vẫn
 **NOT VERIFIED**, ngoài refactor này. Giữ các đánh đổi M11: remap bảo thủ cần
 review, session in-memory một instance, provisioning do operator quản lý.
 Không merge PR tự động.
+
+## Follow-up theo yêu cầu: package mapper
+
+`CandidateValueMapper` chuyển từ `candidate.service` sang `candidate.mapper`;
+đã sửa imports của edit service, experience writer và validator. Bean name
+`candidateValueMapper` giữ nguyên. Helper `date` trở thành public static để
+validator ở package khác dùng chung, vẫn là implementation nội bộ module.
+Thân mapping, SQL, transaction và JSON contract không đổi.
+
+Architecture rule buộc class có hậu tố `Mapper` ở package `mapper`, cấm JDBC/JPA
+và dependency ngược từ mapper đến service/repository/controller/config. Các rule
+package cycle và Modulith verification vẫn giữ nguyên. Một vòng Reviewer cho
+follow-up này xác nhận chỉ thay package/import/helper visibility và tăng rule.
+
+Fresh local `spotlessCheck check --rerun-tasks --console=plain --warning-mode=all`
+đạt 431 tests/57 suites, 0 failure/error/skipped; 7/7 actionable tasks executed.
+Evidence riêng: `backend/build/m11-mapper-followup/full.log`, `junit/`.
+PostgreSQL/schema/storage tiếp tục cô lập, cleanup xong và container dừng.
+Frontend không thay source; không chạy lại local frontend cho lần di chuyển
+class Java này. Head/CI của follow-up được cập nhật trong PR #19.

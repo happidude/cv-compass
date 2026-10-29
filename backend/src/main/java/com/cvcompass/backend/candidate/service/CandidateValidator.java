@@ -1,6 +1,6 @@
 package com.cvcompass.backend.candidate.service;
 
-import static com.cvcompass.backend.candidate.service.CandidateValueMapper.date;
+import static com.cvcompass.backend.candidate.mapper.CandidateValueMapper.date;
 
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import java.time.DateTimeException;

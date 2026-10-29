@@ -37,10 +37,19 @@ class CandidateIdentityArchitectureTests {
             }
             String pkg = actual.getPackageName();
             String layer = pkg.substring(pkg.lastIndexOf('.') + 1);
-            assertThat(Set.of("controller", "service", "repository", "dto", "config", "exception"))
+            assertThat(
+                            Set.of(
+                                    "controller",
+                                    "service",
+                                    "repository",
+                                    "dto",
+                                    "config",
+                                    "exception",
+                                    "mapper"))
                     .as(type.getName())
                     .contains(layer);
             if (actual.isRecord()) assertLayer(actual, "dto");
+            if (actual.getSimpleName().endsWith("Mapper")) assertLayer(actual, "mapper");
             if (actual.isAnnotationPresent(RestController.class)) assertLayer(actual, "controller");
             if (actual.isAnnotationPresent(RestControllerAdvice.class)
                     || RuntimeException.class.isAssignableFrom(actual))
@@ -62,6 +71,8 @@ class CandidateIdentityArchitectureTests {
                         "..identity.service..",
                         "..candidate.controller..",
                         "..identity.controller..",
+                        "..candidate.mapper..",
+                        "..identity.mapper..",
                         "..identity.config..")
                 .should()
                 .dependOnClassesThat()
@@ -82,6 +93,13 @@ class CandidateIdentityArchitectureTests {
 
     @Test
     void repositoriesAndDtosDoNotDependOnApplicationOrHttpLayers() {
+        noClasses()
+                .that()
+                .resideInAnyPackage("..candidate.mapper..", "..identity.mapper..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage("..service..", "..repository..", "..controller..", "..config..")
+                .check(CLASSES);
         noClasses()
                 .that()
                 .resideInAnyPackage(
