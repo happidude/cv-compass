@@ -36,15 +36,19 @@ public class CandidateValueMapper {
         var company = data.path("company");
         var title = data.path("title");
         var period = data.path("period");
-        boolean valid = "PROPOSED".equals(period.path("state").asString());
+        boolean proposed = "PROPOSED".equals(period.path("state").asString());
+        var start = period.path("start");
+        var end = period.path("end");
+        boolean hasStart = proposed && start.isObject();
+        boolean hasEnd = proposed && end.isObject();
         return new ExperienceValues(
                 text(company, "raw"),
                 text(company, "normalized"),
                 text(title, "raw"),
-                valid ? date(period.path("start")) : null,
-                valid ? text(period.path("start"), "precision") : null,
-                valid ? date(period.path("end")) : null,
-                valid ? text(period.path("end"), "precision") : null,
+                hasStart ? date(start) : null,
+                hasStart ? text(start, "precision") : null,
+                hasEnd ? date(end) : null,
+                hasEnd ? text(end, "precision") : null,
                 period.path("ongoingAsStated").asBoolean(),
                 array(title, "functionCodes"),
                 array(company, "industryCodes"),

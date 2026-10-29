@@ -35,6 +35,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -54,6 +56,81 @@ import tools.jackson.databind.node.ObjectNode;
 @org.springframework.context.annotation.Import(M11IntegrationTests.WorkerProbe.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class M11IntegrationTests {
+    @ParameterizedTest(name = "{0}-only {1} via {2}")
+    @CsvSource({
+        "start,YEAR,SAVE", "start,MONTH,SAVE", "start,DAY,SAVE",
+        "end,YEAR,SAVE", "end,MONTH,SAVE", "end,DAY,SAVE",
+        "start,YEAR,EDIT", "start,MONTH,EDIT", "start,DAY,EDIT",
+        "end,YEAR,EDIT", "end,MONTH,EDIT", "end,DAY,EDIT"
+    })
+    void singleDateEndpointsRetainTheirOwnPrecisionInJsonColumnsAndHistory(
+            String endpoint, String precision, String command) throws Exception {
+        var doc = document();
+        var profile = published(doc);
+        if (command.equals("EDIT")) {
+            publication.publish(result(doc, raw(), false));
+            profile = queries.detail(profile.id());
+        }
+        var experience = profile.experiences().getFirst();
+        var data = (ObjectNode) experience.data().deepCopy();
+        var period = (ObjectNode) data.path("period");
+        period.putNull("start");
+        period.putNull("end");
+        period.put("state", "NOT_FOUND");
+        period.put("ongoingAsStated", false);
+        var date = json.createObjectNode().put("year", 2020).put("precision", precision);
+        if (!precision.equals("YEAR")) date.put("month", 2);
+        if (precision.equals("DAY")) date.put("day", 29);
+        period.set(endpoint, date);
+        Profile updated;
+        if (command.equals("EDIT")) {
+            var proposal = queries.proposals(profile.id(), null, 100).getFirst();
+            updated =
+                    reviews.decide(
+                            profile.id(),
+                            profile.version(),
+                            proposal.id(),
+                            "EDIT",
+                            experience.id(),
+                            data,
+                            "editor");
+        } else {
+            updated =
+                    candidates.editExperience(
+                            profile.id(),
+                            profile.version(),
+                            experience.id(),
+                            data,
+                            "SAVE",
+                            "editor");
+        }
+        var fields =
+                jdbc.queryForMap(
+                        "SELECT \"START_DATE\",\"START_PRECISION\",\"END_DATE\",\"END_PRECISION\" FROM \"CANDIDATE_EXPERIENCES\" WHERE \"ID\"=?",
+                        experience.id());
+        String present = endpoint.equals("start") ? "START" : "END";
+        String absent = endpoint.equals("start") ? "END" : "START";
+        String expected =
+                switch (precision) {
+                    case "YEAR" -> "2020-01-01";
+                    case "MONTH" -> "2020-02-01";
+                    default -> "2020-02-29";
+                };
+        assertThat(fields.get(present + "_DATE")).isEqualTo(java.sql.Date.valueOf(expected));
+        assertThat(fields.get(present + "_PRECISION")).isEqualTo(precision);
+        assertThat(fields.get(absent + "_DATE")).isNull();
+        assertThat(fields.get(absent + "_PRECISION")).isNull();
+        var saved = updated.experiences().getFirst().data().path("period");
+        assertThat(saved.path(endpoint)).isEqualTo(date);
+        assertThat(saved.path(endpoint.equals("start") ? "end" : "start").isNull()).isTrue();
+        assertThat(saved.path("state").asString()).isEqualTo("PROPOSED");
+        var snapshot = revisions.history(profile.id(), null, 1).getFirst().after();
+        if (command.equals("EDIT")) snapshot = snapshot.path("profile");
+        assertThat(snapshot.path("experiences").get(0).path("data").path("period"))
+                .isEqualTo(saved);
+        assertThat(snapshot.path("version").asLong()).isEqualTo(updated.version());
+    }
+
     @Test
     void historyFailureRollsBackPublicationThroughItsSpringProxy() throws Exception {
         var doc = document();

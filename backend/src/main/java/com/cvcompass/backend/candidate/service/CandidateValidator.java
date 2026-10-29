@@ -94,7 +94,11 @@ public class CandidateValidator {
         if (period.path("ongoingAsStated").asBoolean()
                 && !period.path("end").isNull()
                 && !period.path("end").isMissingNode()) invalid();
-        period.put("state", period.path("start").isObject() ? "PROPOSED" : "NOT_FOUND");
+        period.put(
+                "state",
+                period.path("start").isObject() || period.path("end").isObject()
+                        ? "PROPOSED"
+                        : "NOT_FOUND");
         if (!clean.path("descriptionRaw").isMissingNode()
                 && (!clean.path("descriptionRaw").isString()
                         || clean.path("descriptionRaw").asString().length() > 16384)) invalid();
