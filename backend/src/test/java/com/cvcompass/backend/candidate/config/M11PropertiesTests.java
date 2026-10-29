@@ -2,7 +2,7 @@ package com.cvcompass.backend.candidate.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.cvcompass.backend.identity.UserProvisioning;
+import com.cvcompass.backend.identity.config.UserProvisioningProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 
 class M11PropertiesTests {
     @Configuration(proxyBeanMethods = false)
-    @EnableConfigurationProperties({PublicationProperties.class, UserProvisioning.Properties.class})
+    @EnableConfigurationProperties({PublicationProperties.class, UserProvisioningProperties.class})
     static class Binding {}
 
     private final ApplicationContextRunner context =

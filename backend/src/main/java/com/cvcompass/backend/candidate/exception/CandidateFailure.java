@@ -1,4 +1,4 @@
-package com.cvcompass.backend.candidate.service;
+package com.cvcompass.backend.candidate.exception;
 
 public class CandidateFailure extends RuntimeException {
     private final int status;

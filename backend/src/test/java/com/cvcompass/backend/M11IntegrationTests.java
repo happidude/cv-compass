@@ -4,8 +4,15 @@ import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.cvcompass.backend.candidate.dto.Profile;
+import com.cvcompass.backend.candidate.exception.CandidateFailure;
+import com.cvcompass.backend.candidate.repository.PublicationRepository;
+import com.cvcompass.backend.candidate.service.CandidateQueryService;
+import com.cvcompass.backend.candidate.service.CandidateReviewService;
+import com.cvcompass.backend.candidate.service.CandidateRevisionService;
 import com.cvcompass.backend.candidate.service.CandidateService;
 import com.cvcompass.backend.candidate.service.PublicationService;
+import com.cvcompass.backend.candidate.service.PublicationSweep;
 import com.cvcompass.backend.ingestion.dto.OcrAttemptKey;
 import com.cvcompass.backend.ingestion.dto.OcrClaimRequest;
 import com.cvcompass.backend.ingestion.entity.CvDocument;
@@ -15,9 +22,11 @@ import com.cvcompass.backend.ingestion.enums.JobStatus;
 import com.cvcompass.backend.ingestion.repository.CvDocumentRepository;
 import com.cvcompass.backend.ingestion.repository.CvProcessingJobRepository;
 import com.cvcompass.backend.ingestion.service.OcrJobService;
+import com.cvcompass.backend.mapping.api.CompletedMappings;
 import com.cvcompass.backend.mapping.dto.ExperienceDefinition;
 import com.cvcompass.backend.mapping.dto.MappingDefinition;
 import com.cvcompass.backend.mapping.dto.MappingDefinition.Field;
+import com.cvcompass.backend.mapping.repository.CompletedMappingRepository;
 import com.cvcompass.backend.mapping.service.MappingService;
 import com.cvcompass.backend.storage.FileStorageService;
 import com.cvcompass.backend.storage.StorageKey;
@@ -46,6 +55,88 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class M11IntegrationTests {
     @Test
+    void historyFailureRollsBackPublicationThroughItsSpringProxy() throws Exception {
+        var doc = document();
+        long resultId = result(doc, raw(), false);
+        long profilesBefore =
+                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE_PROFILES\"", Long.class);
+        long experiencesBefore =
+                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\"", Long.class);
+        jdbc.execute(
+                "ALTER TABLE \"CANDIDATE_HISTORY\" ADD CONSTRAINT \"TEST_FAIL_PUBLICATION_HISTORY\" CHECK (\"ACTION\"<>'PUBLISH_MAPPING') NOT VALID");
+        try {
+            assertThatThrownBy(() -> publication.publish(resultId))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                    Long.class,
+                                    doc.getId()))
+                    .isNull();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                    Long.class,
+                                    resultId))
+                    .isZero();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CANDIDATE_PROFILES\"", Long.class))
+                    .isEqualTo(profilesBefore);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\"", Long.class))
+                    .isEqualTo(experiencesBefore);
+        } finally {
+            jdbc.execute(
+                    "ALTER TABLE \"CANDIDATE_HISTORY\" DROP CONSTRAINT \"TEST_FAIL_PUBLICATION_HISTORY\"");
+        }
+        assertThat(publication.publish(resultId)).isTrue();
+    }
+
+    @Test
+    void historyFailureRollsBackEditAndReviewThroughTheirSpringProxies() throws Exception {
+        var doc = document();
+        var profile = published(doc);
+        publication.publish(result(doc, raw(), false));
+        profile = queries.detail(profile.id());
+        var before = profile;
+        var proposal = queries.proposals(profile.id(), null, 100).getFirst();
+        var historyBefore = revisions.history(profile.id(), null, 100);
+        jdbc.execute(
+                "ALTER TABLE \"CANDIDATE_HISTORY\" ADD CONSTRAINT \"TEST_FAIL_USER_HISTORY\" CHECK (\"ACTION\" NOT IN ('EDIT_BASIC','ACCEPT_PROPOSAL')) NOT VALID");
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    candidates.basic(
+                                            before.id(),
+                                            before.version(),
+                                            json.readTree("{\"fullName\":\"Synthetic rollback\"}"),
+                                            false,
+                                            "editor"))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(queries.detail(before.id())).isEqualTo(before);
+            assertThatThrownBy(
+                            () ->
+                                    reviews.decide(
+                                            before.id(),
+                                            before.version(),
+                                            proposal.id(),
+                                            "ACCEPT",
+                                            before.experiences().getFirst().id(),
+                                            null,
+                                            "reviewer"))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(queries.detail(before.id())).isEqualTo(before);
+            assertThat(queries.proposals(before.id(), null, 100)).containsExactly(proposal);
+            assertThat(revisions.history(before.id(), null, 100)).isEqualTo(historyBefore);
+        } finally {
+            jdbc.execute(
+                    "ALTER TABLE \"CANDIDATE_HISTORY\" DROP CONSTRAINT \"TEST_FAIL_USER_HISTORY\"");
+        }
+    }
+
+    @Test
     void missingOrInvalidDatePrecisionReturnsValidationError() throws Exception {
         var p = published(document());
         for (String precision : List.of("missing", "INVALID", "oversized")) {
@@ -72,7 +163,7 @@ class M11IntegrationTests {
         var doc = document();
         publication.publish(
                 result(doc, "WORK EXPERIENCE\nEmployer: Meadow Labs\nDates: 2018 - 2020", false));
-        var p = candidates.detail(candidate(doc));
+        var p = queries.detail(candidate(doc));
         var data = (ObjectNode) p.experiences().getFirst().data().deepCopy();
         ((ObjectNode) data.path("company")).put("raw", "Synthetic corrected employer");
         var edited =
@@ -143,7 +234,7 @@ class M11IntegrationTests {
                                 .content("{\"version\":0,\"confirm\":true}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("VERSION_CONFLICT"));
-        assertThat(candidates.detail(profile.id()).version()).isEqualTo(profile.version());
+        assertThat(queries.detail(profile.id()).version()).isEqualTo(profile.version());
     }
 
     @org.springframework.web.bind.annotation.RestController
@@ -166,6 +257,9 @@ class M11IntegrationTests {
     @Autowired ObjectMapper json;
     @Autowired PublicationService publication;
     @Autowired CandidateService candidates;
+    @Autowired CandidateQueryService queries;
+    @Autowired CandidateRevisionService revisions;
+    @Autowired CandidateReviewService reviews;
     @Autowired MappingService mapping;
     @Autowired OcrJobService ocr;
     @Autowired CvDocumentRepository documents;
@@ -279,9 +373,9 @@ class M11IntegrationTests {
                 d.getId());
     }
 
-    private CandidateService.Profile published(CvDocument d) throws Exception {
+    private Profile published(CvDocument d) throws Exception {
         publication.publish(result(d, raw(), false));
-        return candidates.detail(candidate(d));
+        return queries.detail(candidate(d));
     }
 
     @Test
@@ -293,7 +387,7 @@ class M11IntegrationTests {
                         "SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"CV_DOCUMENT_ID\"=?", doc.getId());
         assertThat(publication.publish(r)).isTrue();
         assertThat(publication.publish(r)).isFalse();
-        var p = candidates.detail(candidate(doc));
+        var p = queries.detail(candidate(doc));
         assertThat(p.basic()).isEmpty();
         assertThat(p.experiences()).hasSize(1);
         assertThat(p.experiences().getFirst().state()).isEqualTo("UNVERIFIED");
@@ -326,7 +420,7 @@ class M11IntegrationTests {
             assertThat(List.of(a.get(10, TimeUnit.SECONDS), b.get(10, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder(true, false);
         }
-        assertThat(candidates.detail(candidate(doc)).experiences()).hasSize(1);
+        assertThat(queries.detail(candidate(doc)).experiences()).hasSize(1);
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
@@ -358,7 +452,7 @@ class M11IntegrationTests {
                                 r))
                 .isZero();
         assertThat(publication.publish(r)).isTrue();
-        assertThat(candidates.detail(candidate(doc)).version()).isEqualTo(1);
+        assertThat(queries.detail(candidate(doc)).version()).isEqualTo(1);
     }
 
     @Test
@@ -367,9 +461,9 @@ class M11IntegrationTests {
         long older = result(doc, raw(), false),
                 newer = result(doc, raw().replace("2018", "2019"), false);
         publication.publish(newer);
-        var before = candidates.detail(candidate(doc));
+        var before = queries.detail(candidate(doc));
         publication.publish(older);
-        assertThat(candidates.detail(candidate(doc))).isEqualTo(before);
+        assertThat(queries.detail(candidate(doc))).isEqualTo(before);
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
@@ -419,7 +513,7 @@ class M11IntegrationTests {
                                 String.class,
                                 p.id()))
                 .isEqualTo("Synthetic user");
-        assertThat(candidates.list(null, 100).content())
+        assertThat(queries.list(null, 100).content())
                 .anySatisfy(
                         row -> {
                             assertThat(row.id()).isEqualTo(p.id());
@@ -430,22 +524,22 @@ class M11IntegrationTests {
                         p.id(), basic.version(), key, null, "CONFIRM", "reviewer");
         long r = result(doc, raw(), false);
         publication.publish(r);
-        var remapped = candidates.detail(p.id());
+        var remapped = queries.detail(p.id());
         assertThat(remapped.experiences()).isEqualTo(confirmed.experiences());
         assertThat(remapped.basic()).isEqualTo(basic.basic());
-        assertThat(candidates.proposals(p.id(), null, 100)).hasSize(1);
+        assertThat(queries.proposals(p.id(), null, 100)).hasSize(1);
         var deleted =
                 candidates.editExperience(
                         p.id(), remapped.version(), key, null, "DELETE", "editor");
         publication.publish(result(doc, raw(), false));
-        assertThat(candidates.detail(p.id()).experiences()).isEmpty();
+        assertThat(queries.detail(p.id()).experiences()).isEmpty();
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT \"DELETED\" FROM \"CANDIDATE_EXPERIENCES\" WHERE \"ID\"=?",
                                 Boolean.class,
                                 key))
                 .isTrue();
-        assertThat(candidates.history(p.id(), null, 100))
+        assertThat(revisions.history(p.id(), null, 100))
                 .anySatisfy(
                         h -> {
                             assertThat(h.actor()).isEqualTo("editor");
@@ -466,10 +560,10 @@ class M11IntegrationTests {
                                         p.id(), p.version(), json.readTree("{}"), false, "two"))
                 .hasMessage("VERSION_CONFLICT");
         publication.publish(result(doc, raw(), false));
-        var current = candidates.detail(p.id());
-        var proposal = candidates.proposals(p.id(), null, 100).getFirst();
+        var current = queries.detail(p.id());
+        var proposal = queries.proposals(p.id(), null, 100).getFirst();
         var decided =
-                candidates.decide(
+                reviews.decide(
                         p.id(),
                         current.version(),
                         proposal.id(),
@@ -481,7 +575,7 @@ class M11IntegrationTests {
         assertThat(decided.experiences().getFirst().state()).isEqualTo("CONFIRMED");
         assertThatThrownBy(
                         () ->
-                                candidates.decide(
+                                reviews.decide(
                                         p.id(),
                                         current.version(),
                                         proposal.id(),
@@ -492,7 +586,7 @@ class M11IntegrationTests {
                 .hasMessage("VERSION_CONFLICT");
         assertThatThrownBy(
                         () ->
-                                candidates.decide(
+                                reviews.decide(
                                         p.id(),
                                         decided.version(),
                                         proposal.id(),
@@ -512,9 +606,9 @@ class M11IntegrationTests {
         var linked = candidates.attach(p.id(), p.version(), extra.getId(), "operator");
         publication.publish(result(extra, raw(), false));
         assertThat(candidate(extra)).isEqualTo(p.id());
-        assertThat(candidates.detail(p.id()).documents()).hasSize(2);
-        assertThat(candidates.detail(p.id()).experiences()).hasSize(1);
-        assertThat(candidates.proposals(p.id(), null, 100)).hasSize(1);
+        assertThat(queries.detail(p.id()).documents()).hasSize(2);
+        assertThat(queries.detail(p.id()).experiences()).hasSize(1);
+        assertThat(queries.proposals(p.id(), null, 100)).hasSize(1);
         var second = published(document());
         assertThatThrownBy(
                         () ->
@@ -645,7 +739,7 @@ class M11IntegrationTests {
                                         "SAVE",
                                         "operator"))
                 .hasMessage("VALIDATION_ERROR");
-        assertThat(candidates.detail(p.id()).version()).isEqualTo(p.version());
+        assertThat(queries.detail(p.id()).version()).isEqualTo(p.version());
     }
 
     @Test
@@ -674,8 +768,9 @@ class M11IntegrationTests {
         jdbc.update(
                 "UPDATE \"CANDIDATE_PUBLICATION_SETTINGS\" SET \"AFTER_ID\"=0,\"UPPER_ID\"=NULL WHERE \"ID\"=1");
         var sweep =
-                new com.cvcompass.backend.candidate.service.PublicationSweep(
-                        jdbc, new com.cvcompass.backend.mapping.api.CompletedMappings(jdbc));
+                new PublicationSweep(
+                        new PublicationRepository(jdbc),
+                        new CompletedMappings(new CompletedMappingRepository(jdbc)));
         var tx = new TransactionTemplate(transactions);
         var observed = new ArrayList<Long>(tx.execute(status -> sweep.reserve(1)));
         Long upper =
@@ -686,8 +781,9 @@ class M11IntegrationTests {
         long later = result(document(), raw(), false);
         assertThat(later).isGreaterThan(upper);
         var restarted =
-                new com.cvcompass.backend.candidate.service.PublicationSweep(
-                        jdbc, new com.cvcompass.backend.mapping.api.CompletedMappings(jdbc));
+                new PublicationSweep(
+                        new PublicationRepository(jdbc),
+                        new CompletedMappings(new CompletedMappingRepository(jdbc)));
         while (jdbc.queryForObject(
                         "SELECT \"UPPER_ID\" FROM \"CANDIDATE_PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
                         Long.class)
@@ -708,8 +804,8 @@ class M11IntegrationTests {
         var doc = document();
         var profile = published(doc);
         publication.publish(result(doc, raw(), false));
-        var current = candidates.detail(profile.id());
-        var proposal = candidates.proposals(profile.id(), null, 100).getFirst();
+        var current = queries.detail(profile.id());
+        var proposal = queries.proposals(profile.id(), null, 100).getFirst();
         var barrier = new CyclicBarrier(2);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var first =
@@ -717,7 +813,7 @@ class M11IntegrationTests {
                             () -> {
                                 barrier.await();
                                 try {
-                                    candidates.decide(
+                                    reviews.decide(
                                             profile.id(),
                                             current.version(),
                                             proposal.id(),
@@ -726,9 +822,7 @@ class M11IntegrationTests {
                                             null,
                                             "first");
                                     return "OK";
-                                } catch (
-                                        com.cvcompass.backend.candidate.service.CandidateFailure
-                                                e) {
+                                } catch (CandidateFailure e) {
                                     return e.getMessage();
                                 }
                             });
@@ -737,7 +831,7 @@ class M11IntegrationTests {
                             () -> {
                                 barrier.await();
                                 try {
-                                    candidates.decide(
+                                    reviews.decide(
                                             profile.id(),
                                             current.version(),
                                             proposal.id(),
@@ -746,18 +840,16 @@ class M11IntegrationTests {
                                             null,
                                             "second");
                                     return "OK";
-                                } catch (
-                                        com.cvcompass.backend.candidate.service.CandidateFailure
-                                                e) {
+                                } catch (CandidateFailure e) {
                                     return e.getMessage();
                                 }
                             });
             assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder("OK", "VERSION_CONFLICT");
         }
-        assertThat(candidates.detail(profile.id()).version()).isEqualTo(current.version() + 1);
-        assertThat(candidates.detail(profile.id()).experiences()).hasSize(1);
-        var history = candidates.history(profile.id(), null, 1).getFirst();
+        assertThat(queries.detail(profile.id()).version()).isEqualTo(current.version() + 1);
+        assertThat(queries.detail(profile.id()).experiences()).hasSize(1);
+        var history = revisions.history(profile.id(), null, 1).getFirst();
         assertThat(history.after().path("profile").path("version").asLong())
                 .isEqualTo(current.version() + 1);
     }
@@ -777,9 +869,7 @@ class M11IntegrationTests {
                                     candidates.attach(
                                             first.id(), first.version(), extra.getId(), "one");
                                     return "OK";
-                                } catch (
-                                        com.cvcompass.backend.candidate.service.CandidateFailure
-                                                e) {
+                                } catch (CandidateFailure e) {
                                     return e.getMessage();
                                 }
                             });
@@ -791,9 +881,7 @@ class M11IntegrationTests {
                                     candidates.attach(
                                             second.id(), second.version(), extra.getId(), "two");
                                     return "OK";
-                                } catch (
-                                        com.cvcompass.backend.candidate.service.CandidateFailure
-                                                e) {
+                                } catch (CandidateFailure e) {
                                     return e.getMessage();
                                 }
                             });

@@ -1,14 +1,15 @@
-package com.cvcompass.backend.identity;
+package com.cvcompass.backend.identity.config;
 
+import com.cvcompass.backend.identity.service.UserLookupService;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -23,36 +24,16 @@ public class UserSecurity {
         return new BCryptPasswordEncoder(12);
     }
 
-    private UserDetailsService applicationUsers(JdbcTemplate jdbc) {
-        return username ->
-                jdbc
-                        .query(
-                                "SELECT \"USERNAME\",\"PASSWORD_HASH\",\"ROLE\",\"ENABLED\" FROM \"CV_USERS\" WHERE \"USERNAME\"=?",
-                                (rs, n) ->
-                                        User.withUsername(rs.getString(1))
-                                                .password(rs.getString(2))
-                                                .roles(rs.getString(3))
-                                                .disabled(!rs.getBoolean(4))
-                                                .build(),
-                                username)
-                        .stream()
-                        .findFirst()
-                        .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
-    }
-
     @Bean
     @Order(2)
     SecurityFilterChain userApiSecurityChain(
-            HttpSecurity http, JdbcTemplate jdbc, PasswordEncoder userPasswordEncoder) {
-        var provider =
-                new org.springframework.security.authentication.dao.DaoAuthenticationProvider(
-                        applicationUsers(jdbc));
+            HttpSecurity http, UserLookupService users, PasswordEncoder userPasswordEncoder) {
+        var provider = new DaoAuthenticationProvider(users::load);
         provider.setPasswordEncoder(userPasswordEncoder);
         var csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         http.securityMatcher("/api/**", "/error")
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
-                .authenticationManager(
-                        new org.springframework.security.authentication.ProviderManager(provider))
+                .authenticationManager(new ProviderManager(provider))
                 .csrf(
                         config ->
                                 config.csrfTokenRepository(csrf)
@@ -95,9 +76,8 @@ public class UserSecurity {
         return http.build();
     }
 
-    private static void error(
-            jakarta.servlet.http.HttpServletResponse response, int status, String code)
-            throws java.io.IOException {
+    private static void error(HttpServletResponse response, int status, String code)
+            throws IOException {
         response.setStatus(status);
         response.setContentType("application/json");
         response.setHeader("Cache-Control", "no-store");

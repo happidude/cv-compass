@@ -1,31 +1,41 @@
 package com.cvcompass.backend.candidate.service;
 
+import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
+import com.cvcompass.backend.candidate.repository.PublicationRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
 import com.cvcompass.backend.mapping.api.CompletedMappings;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class PublicationService {
-    private final JdbcTemplate jdbc;
+    private final PublicationRepository publications;
+    private final CandidateProfileRepository repository;
     private final CompletedMappings mappings;
     private final CandidateDocuments documents;
-    private final CandidateService profiles;
+    private final CandidateQueryService queries;
+    private final CandidateRevisionService revisions;
+    private final CandidateExperienceService experiences;
     private final ObjectMapper json;
 
     public PublicationService(
-            JdbcTemplate jdbc,
+            PublicationRepository publications,
+            CandidateProfileRepository repository,
             CompletedMappings mappings,
             CandidateDocuments documents,
-            CandidateService profiles,
+            CandidateQueryService queries,
+            CandidateRevisionService revisions,
+            CandidateExperienceService experiences,
             ObjectMapper json) {
-        this.jdbc = jdbc;
+        this.publications = publications;
+        this.repository = repository;
         this.mappings = mappings;
         this.documents = documents;
-        this.profiles = profiles;
+        this.queries = queries;
+        this.revisions = revisions;
+        this.experiences = experiences;
         this.json = json;
     }
 
@@ -47,74 +57,32 @@ public class PublicationService {
                         && !body.path("experiences").isEmpty();
         // Serialize skipped rows too, without manufacturing a candidate identity.
         documents.lock(result.documentId());
-        if (Boolean.TRUE.equals(
-                jdbc.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?)",
-                        Boolean.class,
-                        resultId))) return false;
+        if (publications.exists(resultId)) return false;
         if (!usable) {
-            ledger(result, null, "SKIPPED");
+            publications.ledger(result, null, "SKIPPED");
             return true;
         }
-        boolean stale =
-                Boolean.TRUE.equals(
-                        jdbc.queryForObject(
-                                """
-   SELECT EXISTS(SELECT 1 FROM "CANDIDATE_PUBLICATIONS" WHERE "DOCUMENT_ID"=? AND "STATUS" IN ('PUBLISHED','PROPOSED')
-   AND ("EXTRACTION_ID","CONFIG_ID","RESULT_ID")>(?,?,?))
-   """,
-                                Boolean.class,
-                                result.documentId(),
-                                result.extractionId(),
-                                result.configId(),
-                                result.id()));
+        boolean stale = publications.stale(result);
         if (stale) {
-            ledger(result, null, "SUPERSEDED");
+            publications.ledger(result, null, "SUPERSEDED");
             return true;
         }
         long id = documents.lockAndResolve(result.documentId());
-        jdbc.update(
-                "INSERT INTO \"CANDIDATE_PROFILES\" (\"CANDIDATE_ID\") VALUES (?) ON CONFLICT DO NOTHING",
-                id);
-        long version = profiles.lock(id);
-        var before = profiles.detail(id);
-        boolean initial =
-                jdbc.queryForObject(
-                                        "SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\" WHERE \"CANDIDATE_ID\"=?",
-                                        Integer.class,
-                                        id)
-                                == 0
-                        && version == 0;
-        ledger(result, id, initial ? "PUBLISHED" : "PROPOSED");
+        publications.ensureProfile(id);
+        long version = revisions.lock(id);
+        var before = queries.detail(id);
+        boolean initial = repository.experienceCount(id) == 0 && version == 0;
+        publications.ledger(result, id, initial ? "PUBLISHED" : "PROPOSED");
         for (var experience : body.path("experiences")) {
             if (initial)
-                profiles.insertExperience(
+                experiences.insertExperience(
                         id, experience, "UNVERIFIED", "MAPPING", result.documentId(), result.id());
-            else
-                jdbc.update(
-                        "INSERT INTO \"CANDIDATE_PROPOSALS\" (\"ID\",\"CANDIDATE_ID\",\"RESULT_ID\",\"DOCUMENT_ID\",\"DATA\") VALUES (?,?,?,?,?::jsonb)",
-                        UUID.randomUUID(),
-                        id,
-                        result.id(),
-                        result.documentId(),
-                        experience.toString());
+            else publications.propose(UUID.randomUUID(), id, result, experience);
         }
-        jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"EXTENSIONS\"=?::jsonb WHERE \"CANDIDATE_ID\"=?",
-                json.createObjectNode().put("schemaVersion", 1).set("mapping", body).toString(),
-                id);
-        profiles.revision(id, version, "SYSTEM", "PUBLISH_MAPPING", before, profiles.detail(id));
+        publications.extensions(
+                id,
+                json.createObjectNode().put("schemaVersion", 1).set("mapping", body).toString());
+        revisions.revision(id, version, "SYSTEM", "PUBLISH_MAPPING", before, queries.detail(id));
         return true;
-    }
-
-    private void ledger(CompletedMappings.Result result, Long candidate, String status) {
-        jdbc.update(
-                "INSERT INTO \"CANDIDATE_PUBLICATIONS\" (\"RESULT_ID\",\"CANDIDATE_ID\",\"DOCUMENT_ID\",\"EXTRACTION_ID\",\"CONFIG_ID\",\"STATUS\") VALUES (?,?,?,?,?,?)",
-                result.id(),
-                candidate,
-                result.documentId(),
-                result.extractionId(),
-                result.configId(),
-                status);
     }
 }
