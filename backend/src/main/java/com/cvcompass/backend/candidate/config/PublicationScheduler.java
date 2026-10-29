@@ -1,10 +1,12 @@
 package com.cvcompass.backend.candidate.config;
 
 import com.cvcompass.backend.candidate.service.PublicationService;
+import com.cvcompass.backend.candidate.service.PublicationSweep;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,13 +15,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 @EnableConfigurationProperties(PublicationProperties.class)
 public class PublicationScheduler {
     private final PublicationProperties properties;
-    private final com.cvcompass.backend.candidate.service.PublicationSweep sweep;
+    private final PublicationSweep sweep;
     private final PublicationService publication;
     private final ExecutorService executor;
 
     public PublicationScheduler(
             PublicationProperties properties,
-            com.cvcompass.backend.candidate.service.PublicationSweep sweep,
+            PublicationSweep sweep,
             PublicationService publication) {
         this.properties = properties;
         this.sweep = sweep;
@@ -39,7 +41,7 @@ public class PublicationScheduler {
                 Thread.currentThread().interrupt();
                 return;
             } catch (ExecutionException ex) {
-                org.slf4j.LoggerFactory.getLogger(getClass())
+                LoggerFactory.getLogger(getClass())
                         .warn("event=PUBLICATION_RETRY errorCode=PUBLICATION_FAILED");
             }
     }

@@ -1,0 +1,97 @@
+package com.cvcompass.backend.candidate.service;
+
+import com.cvcompass.backend.candidate.dto.Profile;
+import com.cvcompass.backend.candidate.exception.CandidateFailure;
+import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+
+@Service
+public class CandidateReviewService {
+    private final CandidateProfileRepository repository;
+    private final CandidateQueryService queries;
+    private final CandidateRevisionService revisions;
+    private final CandidateExperienceService experiences;
+    private final CandidateValidator validator;
+
+    public CandidateReviewService(
+            CandidateProfileRepository repository,
+            CandidateQueryService queries,
+            CandidateRevisionService revisions,
+            CandidateExperienceService experiences,
+            CandidateValidator validator) {
+        this.repository = repository;
+        this.queries = queries;
+        this.revisions = revisions;
+        this.experiences = experiences;
+        this.validator = validator;
+    }
+
+    @Transactional
+    public Profile decide(
+            long id,
+            long version,
+            UUID proposalId,
+            String decision,
+            UUID target,
+            JsonNode edited,
+            String actor) {
+        revisions.expected(id, version);
+        var before = queries.detail(id);
+        var rows = repository.lockProposal(id, proposalId);
+        if (rows.isEmpty()) throw new CandidateFailure(409, "PROPOSAL_CLOSED");
+        var proposal = rows.getFirst();
+        if (!List.of("ACCEPT", "EDIT", "REJECT").contains(decision))
+            throw new CandidateFailure(400, "VALIDATION_ERROR");
+        if (!"REJECT".equals(decision)) {
+            var old =
+                    target == null
+                            ? null
+                            : before.experiences().stream()
+                                    .filter(e -> e.id().equals(target))
+                                    .findFirst()
+                                    .orElseThrow(
+                                            () ->
+                                                    new CandidateFailure(
+                                                            404, "EXPERIENCE_NOT_FOUND"));
+            var data = "EDIT".equals(decision) ? validator.userExperience(edited) : proposal.data();
+            String origin = "EDIT".equals(decision) ? "USER" : "MAPPING";
+            String state = "EDIT".equals(decision) ? "EDITED" : "CONFIRMED";
+            if (old == null)
+                experiences.insertExperience(
+                        id,
+                        data,
+                        state,
+                        origin,
+                        "EDIT".equals(decision) ? null : proposal.documentId(),
+                        "EDIT".equals(decision) ? null : proposal.resultId());
+            else
+                experiences.updateExperience(
+                        old.id(),
+                        data,
+                        state,
+                        origin,
+                        "EDIT".equals(decision) ? null : proposal.documentId(),
+                        "EDIT".equals(decision) ? null : proposal.resultId());
+        }
+        repository.decide(proposalId, decision, actor);
+        revisions.revision(
+                id,
+                version,
+                actor,
+                decision + "_PROPOSAL",
+                Map.of("profile", before, "proposal", proposal),
+                Map.of(
+                        "profile",
+                        queries.detail(id),
+                        "proposalId",
+                        proposalId,
+                        "decision",
+                        decision));
+        return queries.detail(id);
+    }
+}

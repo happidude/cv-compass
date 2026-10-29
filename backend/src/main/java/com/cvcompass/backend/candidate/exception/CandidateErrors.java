@@ -1,6 +1,5 @@
-package com.cvcompass.backend.candidate.controller;
+package com.cvcompass.backend.candidate.exception;
 
-import com.cvcompass.backend.candidate.service.CandidateFailure;
 import com.cvcompass.backend.web.ApiError;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
