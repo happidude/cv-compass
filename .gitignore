@@ -50,10 +50,32 @@ credentials/
 /worker/uploads/
 /worker/sample_cvs/
 
-# Local project documentation
-/docs/
-!/docs/
-/docs/*
-!/docs/conventions/
-!/docs/conventions/**
-/AGENTS.md
+# Shared Markdown documentation is tracked; other local doc artifacts stay private.
+/docs/**
+!/docs/**/
+!/docs/**/*.md
+
+# Project agent config is shared; local agent state remains ignored.
+/.codex/**
+!/.codex/config.toml
+!/.codex/agents/
+!/.codex/agents/implementer.toml
+!/.codex/agents/tester.toml
+!/.codex/agents/reviewer.toml
+
+# Keep sensitive/runtime exclusions authoritative after documentation exceptions.
+secrets/
+credentials/
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.pdf
+/docs/api-tests/
+
+# Local client-derived design material is not a shared document.
+/docs/CV_Compass_M10_1_Design.md

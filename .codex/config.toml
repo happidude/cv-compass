@@ -1,0 +1,4 @@
+# Project-scoped agent orchestration; no user credentials or machine settings.
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 1
