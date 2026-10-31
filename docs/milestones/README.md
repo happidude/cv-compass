@@ -7,6 +7,7 @@ Task bảo trì không cần gán số milestone ứng dụng.
 | Task | Bằng chứng duyệt spec | Kiểm chứng |
 | --- | --- | --- |
 | Bảo trì workflow agent | [Spec](agent-workflow/spec.md): task rõ ràng của developer, 2026-10-31 | [Bằng chứng](agent-workflow/verification.md) |
+| Parser thông tin cá nhân | [Spec](personal-info-parser/spec.md): task docs trong chat, 2026-10-31; kế hoạch chờ duyệt, chưa Active | [Bằng chứng docs](personal-info-parser/verification.md) |
 
 Không tạo nhãn Active/hoàn thành từ source có sẵn, log cũ, tên branch hoặc PR tồn tại.
 Chỉ ghi trạng thái khi developer xác nhận và có bằng chứng spec/PR/commit hỗ trợ.
