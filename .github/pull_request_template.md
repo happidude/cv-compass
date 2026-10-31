@@ -6,10 +6,9 @@
 - Acceptance criteria and evidence:
 - Changed files/modules:
 - API/DB/dependency/security/privacy impact:
-- Implementer accompanying tests/helpers/synthetic fixtures and independent Tester verification:
-- Primary-assigned repair owner and one-writer handoffs; assertions/checks/coverage preserved:
-- CI/security-hook scope (explicit approval or none):
-- Separately assigned/authorized sensitive operations (settings/rulesets/secrets, production, release, merge) or none:
+- Test ownership and handoffs follow [root Execution and delivery](../AGENTS.md#execution-and-delivery):
+- CI/security-hook scope: approved spec with exact paths/intent, or none:
+- Human-only operations: confirm no agent merge, GitHub settings/branch protection/rulesets, repository secret creation/editing, releases/tags or production database/server/deployment operations:
 - Scope exclusions:
 
 ## Verification
@@ -26,7 +25,6 @@
 <None, or context/options/recommendation and work left undone for each outside-spec decision.>
 
 ## Limitations and next step
-<Remaining limitations and next action. Ordinary development does not include
-merge, production/deploy, release or GitHub settings/rulesets/secrets; these require
-a separately assigned task and explicit authorization. Record this task's actual
+<Remaining limitations and next action. Root human-only operations are never
+performed by agents, regardless of task authorization. Record this task's actual
 exclusions and preserve any Draft-only instruction.>

@@ -11,10 +11,9 @@
 - Out of scope:
 
 ## Impact and ownership
-- Allowed files/modules; Implementer production and accompanying test/helper/synthetic-fixture ownership:
-- Tester independent acceptance verification and missing-test ownership (no production edits):
-- Primary-assigned repair owner, exclusive write lease and handoff:
-- Assertions/checks/coverage preserved by every role:
+- Allowed files/modules:
+- Test ownership follows [root Execution and delivery](../../AGENTS.md#execution-and-delivery):
+- Assigned repair owner, exclusive write lease and handoff:
 - API/DB/security/dependency/privacy/architecture impact (none or approved decision):
 - Open decisions and independent work possible:
 
@@ -25,5 +24,5 @@
 - Docs/config-only checks and application-suite N/A rationale if applicable:
 - Expected reports/warnings; maximum three fix–test–review cycles:
 - Publishing authorization and PR Draft/Ready constraints:
-- CI/security-hook edits: explicit approved files/intent or none; no weakening checks:
-- Separately assigned/authorized sensitive operations (settings/rulesets/secrets, production, release, merge) or none:
+- CI/security-hook edits: approved spec lists exact paths/intent, or none; no weakened/skipped checks:
+- Confirm root human-only operations are excluded from agent execution in every task:

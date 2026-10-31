@@ -58,9 +58,9 @@ explicit blockers/NOT VERIFIED evidence, per the agent workflow.
 
 PR targets main and uses [PR template](../.github/pull_request_template.md), spec, verification,
 exact source, review findings/cycles and Open Questions. Human review remains
-required. Merge, production/deploy, release and GitHub settings/rulesets/secrets
-are outside ordinary development and require a separately assigned task plus
-explicit authorization. Commit/push/PR permission does not include them.
+required. Merge, GitHub settings/branch protection/rulesets, repository secret
+creation/editing, releases/tags and production database/server/deployment operations
+are human-only. Agents never perform them, regardless of task authorization.
 Never force push, push main, rewrite history, bypass hooks or delete remote
 branches. Do not automatically remove local branches/worktrees.
 

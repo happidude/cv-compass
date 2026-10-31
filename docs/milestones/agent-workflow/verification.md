@@ -71,6 +71,11 @@ the project definitions; this chat cannot claim it hot-reloaded them.
 
 ## Follow-up evidence — 2026-10-31
 
+Historical evidence for the prior follow-up at
+fcd986783e2176a98af4b51a995212c5e402a181. The sensitive-operation wording tested
+in that iteration is superseded by the second bounded revision below; it is not
+current authority or verification of these new edits.
+
 Fresh authorization and acceptance criteria: [spec follow-up](spec.md#follow-up-authorization--2026-10-31).
 Starting inspected local/PR head: f0c4049a28da23f79ffcd6c965b048dcba3cc8e3.
 PR base: 81a8a6220e34871ea9fc68aa8e65d19785d0eff9. This is a new maximum-three-cycle
@@ -95,9 +100,9 @@ follow-up section only. No application checks are applicable to docs/config edit
 - Independent ownership/authorization checks PASS: Implementer accompanying tests,
   helpers and synthetic fixtures; independent Tester acceptance/missing tests with
   no production fixes; read-only Reviewer; primary assigns one repair owner/write
-  lease; no weakened assertions/checks/coverage; explicitly scoped CI/hooks and
-  separately assigned/authorized sensitive operations. Historical/task-specific
-  restrictions were distinguished from current general rules.
+  lease; no weakened assertions/checks/coverage; explicitly scoped CI/hooks.
+  That check also covered the now-superseded sensitive-operation policy; it does
+  not establish current permission for human-only operations.
 - Canonical .github/pull_request_template.md is trackable, with the former docs
   form a single compatibility pointer. Private original M10.1 draft remains
   ignored and absent from intended/index files; it was not read/scanned/copied/
@@ -127,3 +132,63 @@ Cycle 1 independent read-only review and final staged verification are pending.
 CI for the new follow-up head is NOT VERIFIED until it is pushed and actual runs
 are inspected. Native dispatch/full secret scan remain NOT VERIFIED as above.
 Keep Draft; no completion/merge-readiness or application milestone claim.
+
+
+## Second bounded revision — phase 1 evidence
+
+Approval: [second revision spec](spec.md#second-bounded-revision-authorization--2026-10-31).
+Inspected starting local/PR head: fcd986783e2176a98af4b51a995212c5e402a181.
+PR base: 81a8a6220e34871ea9fc68aa8e65d19785d0eff9. The fresh budget is at most
+three total fix–test–review cycles including the later translation phase.
+
+Phase 1 implementation restores human-only operations regardless of task,
+keeps CI/security-hook changes conditional on a spec with exact paths/intent,
+and centralizes full test-ownership prose in root Execution and delivery.
+Component duplicates are removed; workflow role table remains, and routing is
+production defects to Implementer, defects in Tester-added tests to Tester.
+Policy/verification/templates point to root; each agent TOML has one ownership
+sentence and its role-specific constraints. Earlier permissive statements above
+are superseded historical records, not current authority.
+
+Fresh phase 1 cycle 1 independent Tester checks: PASS, Windows/PowerShell with
+Python 3.14.6 stdlib. Command:
+py -3.14 E:/cv-compass/backend/build/agent-workflow-revision2/check_phase1.py.
+
+- Whole tracked Markdown corpus: 69 files and 228 relative links, zero missing
+  targets, heading anchors or ignored/untracked link targets. Full PR payload:
+  36 paths; this phase changes 14. Four TOML files parse; 31/31 ignore probes pass.
+- Human-only operations remain never-for-agents regardless of task; scoped CI/
+  security-hook changes require exact spec paths/intent and cannot weaken checks.
+  Active wording scan outside docs/history found no affirmative conditional
+  permission. Earlier spec/evidence wording is explicitly superseded history.
+- Full ownership prose is in root Execution and delivery; component duplicates
+  are absent with clean EOF, policy/verification/PR form reference root, workflow
+  retains its role table and correct defect routing, and each changed agent TOML
+  has one ownership sentence plus role-specific constraints.
+- Application/dependency/build/formatter/canonical JSON/CI workflow diff against
+  PR base is empty. Canonical PR template is tracked; private original M10.1 is
+  ignored and absent from intended/index files, and was not read/scanned/hashed.
+- git diff --check and git diff --cached --check: PASS. Index is empty at this
+  check, so final staged-source parity remains a primary pre-review check.
+  Explicit new-file whitespace scan found no issues. A temporary classifier was
+  corrected to recognize the approved PR template as outside frozen CI paths;
+  no source or requirement was changed for that helper correction.
+- Translation inventory is prepared, not executed: 23 English Markdown paths
+  plus description/developer_instructions in three agent TOMLs. Eight safe explicit
+  Markdown exclusions have working-byte SHA256 snapshots: five docs/history files,
+  backend/HISTORICAL_VERIFICATION.md, POC database draft and mostly Vietnamese/mixed
+  backend README. Preserve excluded bytes, paths/URLs, commands/flags/code fences,
+  TOML keys/name, role names, status labels and technical terms in phase 2.
+  Root-only language policy is the sole approved semantic change during translation;
+  all other binding rules require a source-to-target equivalence table.
+- Fresh results/file fingerprints and the safe excluded-byte inventory are in
+  ignored backend/build/agent-workflow-revision2/results.json and
+  translation-inventory.json. They exclude the private original and do not claim
+  a future English-checkpoint commit hash.
+
+Read-only Reviewer cycle 1 is pending before the English-only checkpoint commit.
+No translation, application/dependency/build/formatter/CI workflow or human-only
+operation is performed by this phase. Earlier native/full scanner attempts remain
+NOT VERIFIED; neither probe was repeated or relabeled PASS. CI for the future
+new head remains NOT VERIFIED. Keep Draft and use at most three total cycles for
+this revision including translation; the English checkpoint must precede phase 2.

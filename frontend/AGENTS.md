@@ -17,8 +17,3 @@ Read [frontend conventions](../docs/conventions/frontend.md) and [README](README
 - Inspect actual reports/counts and warning output on final source. Existing CI
   remains intact. See [verification](../docs/VERIFICATION.md); do not substitute
   old verification evidence for a fresh check.
-
-- Implementer may write accompanying tests, helpers and synthetic fixtures; prefer
-  test-first for behavior changes. Tester independently verifies acceptance criteria
-  and adds missing tests, never production code. Primary assigns each repair with
-  one writer at a time; no role may weaken assertions/checks or reduce coverage.

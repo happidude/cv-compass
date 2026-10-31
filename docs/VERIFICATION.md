@@ -4,10 +4,7 @@ Applies to final source, alongside component README/conventions and the approved
 spec. Historical evidence is classified in [docs index](README.md).
 Use the [evidence template](templates/verification.md) and
 [canonical PR template](../.github/pull_request_template.md).
-Implementer may maintain accompanying tests/helpers/synthetic fixtures, preferably
-test-first for behavior changes. Tester independently checks acceptance criteria
-and adds missing tests, never production code. Primary assigns the repair owner
-and exclusive write lease; no role may weaken assertions/checks/coverage.
+Test ownership follows [root Execution and delivery](../AGENTS.md#execution-and-delivery).
 
 ## Prepare and execute
 
@@ -56,8 +53,9 @@ failure; NOT VERIFIED means missing evidence; N/A means irrelevant with reason.
 - Frontend CI: frontend/workflow path filters; Node 24, locked install, format/lint/
   typecheck/unit/build and Chromium browser checks.
 
-CI workflows/security hooks may be edited only within explicitly approved task
-scope; never reduce checks to conceal failures. This docs/config follow-up leaves
+CI workflows/security hooks may be edited only when an approved spec lists the
+exact paths and intent; never weaken or skip checks to conceal failures.
+Outside-scope proposals belong under Open Questions. This docs/config follow-up leaves
 CI pipelines unchanged, keeps unittest and adds no tools/dependencies. Rule files
 under component paths may trigger component CI; docs/root changes alone may not
 trigger path-filtered jobs. A missing/pending run is not PASS; check the exact new
@@ -70,6 +68,6 @@ change machine/trust settings to make a check run. If unavailable, record
 NOT VERIFIED, the concrete limitation and next action. Keep new follow-up evidence
 separate from historical delivery checks/review budgets.
 
-GitHub settings/rulesets/secrets, production, release and merge need a separately
-assigned task and explicit authorization; normal verification/PR delivery does
-not include those operations.
+The human-only operations in [root rules](../AGENTS.md#permissions-and-safety)
+and [policy Level A](AGENT_POLICY.md#level-a--human-only-operations-and-safety-invariants)
+are never performed by agents, regardless of task authorization.

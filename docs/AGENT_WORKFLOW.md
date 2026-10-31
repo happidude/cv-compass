@@ -14,13 +14,9 @@ needed for scope already approved. Missing approval blocks dependent implementat
 Do not infer Active/completed milestone status; see [roadmap](roadmap.md).
 
 Primary coordinates spec → Implementer → Tester → Reviewer → PR, sequentially.
-Implementer may write or change the accompanying tests, helpers and synthetic
-fixtures; prefer a failing acceptance/regression test before changing behavior.
-Implementer then makes the minimum production change. Tester independently derives
-checks from the acceptance criteria, verifies the result and adds missing tests;
-Tester never fixes production code. No role may weaken assertions, skip checks
-or reduce coverage to hide defects. Docs/config-only work uses applicable structural
-checks; do not add artificial application tests or dependencies.
+Test ownership follows [root Execution and delivery](../AGENTS.md#execution-and-delivery).
+Docs/config-only work uses applicable structural checks; do not add artificial
+application tests or dependencies.
 
 | Role | Owns | Must not do |
 | --- | --- | --- |
@@ -55,11 +51,10 @@ explicitly assigns it. Primary remains responsible for scope and complete eviden
 4. Findings need stable ID, severity, exact file/line, impact, evidence or
    reproduction, recommended fix and disposition (open / fixed and verified /
    rejected with evidence). Missing checks are evidence gaps, not invented defects.
-5. Primary assigns each repair explicitly: production fixes go to Implementer;
-   accompanying test/helper/synthetic-fixture fixes may go to Implementer or Tester.
-   Tester retains independent acceptance verification and cannot fix production
-   code. Grant only one writer at a time. Each repair is followed by affected
-   verification, required full gates on final source and another Reviewer pass.
+5. Primary routes production defects to Implementer and defects in Tester-added
+   tests to Tester. Each repair receives an explicit owner and exclusive write
+   lease, then affected verification, required full gates on final source and
+   another Reviewer pass.
 
 At most **three complete fix–test–review cycles**, counting initial review as
 cycle 1. Keep one counter for the task; fixes/agent replacement do not reset it.
@@ -84,11 +79,12 @@ Stage explicit paths, inspect staged diff, commit (Conventional Commits), push t
 approved branch and open PR. Existing commit/push authorization persists; do not
 ask again. If required verification is blocked, an explicitly requested source
 snapshot may be published as a **draft**, with blockers and NOT VERIFIED checks;
-it is not accepted/completed. CI workflow/security-hook edits require explicitly
-approved task scope and cannot weaken checks for green results. GitHub settings,
-rulesets/secrets, production, releases and merge are outside normal development
-and require a separately assigned task and explicit authorization; ordinary
-commit/push/PR permission does not cover them. This workflow follow-up performs
+it is not accepted/completed. CI workflow/security-hook edits require an approved
+spec listing exact paths and intent; never weaken or skip checks to get green.
+Outside-scope proposals go under Open Questions. Merge, GitHub settings/branch
+protection/rulesets, repository secret creation/editing, releases/tags and
+production database/server/deployment operations are human-only: agents never
+perform them, regardless of task authorization. This workflow follow-up performs
 none of those operations. Never automatically delete branches/worktrees.
 Stop at the assigned task.
 

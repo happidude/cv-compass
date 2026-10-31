@@ -42,6 +42,10 @@ review cycles. Publish a draft if required verification remains blocked.
 
 ## Follow-up authorization — 2026-10-31
 
+Historical approval record for fcd986783e2176a98af4b51a995212c5e402a181.
+Its sensitive-operation policy is superseded by the second bounded revision below;
+it grants no current permission for human-only operations.
+
 A new explicit developer request authorizes a fresh maximum of three fix–test–review
 cycles for Draft PR #20 on chore/agent-workflow. Inspected starting local/PR head:
 f0c4049a28da23f79ffcd6c965b048dcba3cc8e3; PR base:
@@ -49,14 +53,10 @@ f0c4049a28da23f79ffcd6c965b048dcba3cc8e3; PR base:
 evidence for the initial delivery, not checks of this follow-up.
 
 Acceptance criteria:
-1. Implementer may write accompanying tests/helpers/synthetic fixtures and prefers
-   test-first for behavior changes. Tester independently verifies acceptance and
-   adds missing tests, never production fixes. All roles preserve assertions/checks/
-   coverage. Primary assigns each repair with one writer at a time.
-2. CI/security-hook edits require an explicitly approved task scope; checks cannot
-   be weakened for green results. GitHub settings/rulesets/secrets, production,
-   release and merge require a separately assigned task and explicit authorization;
-   they are outside ordinary development. This follow-up performs none of them.
+1. Test ownership follows [root Execution and delivery](../../../AGENTS.md#execution-and-delivery); the prior iteration checked that source and its scoped handoffs.
+2. This earlier iteration revised CI/security-hook scope and sensitive-operation
+   wording. The latter policy was superseded by the second bounded revision's
+   human-only rule; this historical criterion grants no current permission.
 3. Canonical PR template is .github/pull_request_template.md, tracked, with the old
    docs template reduced to a pointer and relevant links updated.
 4. Synchronize active rules/policy/workflow/verification/templates/custom-agent
@@ -74,3 +74,56 @@ related templates/docs/links and .github/pull_request_template.md only. Applicat
 dependency, build/formatter config and .github/workflows are frozen. No new archives,
 documentation deduplication sweep or Active milestone assignment. Primary coordinates
 → Implementer edits → Tester verifies → Reviewer reads only, with exclusive handoffs.
+
+## Second bounded revision authorization — 2026-10-31
+
+Developer authorizes a new iteration starting at inspected local/PR head
+fcd986783e2176a98af4b51a995212c5e402a181; PR base remains
+81a8a6220e34871ea9fc68aa8e65d19785d0eff9. Use the existing branch and Draft PR #20.
+The fresh counter starts at cycle 1, maximum three fix–test–review cycles total,
+including the separately reviewed translation phase. No new branch or PR.
+
+Phase 1 acceptance (English commit first):
+- Restore human-only, never-for-agents merge, GitHub settings/branch protection/
+  rulesets, repository secret creation/edit, releases/tags and production DB/server/
+  deployment operations, regardless of task. Keep scoped CI/security-hook edits
+  conditional on an approved spec listing exact paths and intent; never weaken
+  checks. Keep secret/CV confidentiality and no external CV content transmission.
+- Full test-ownership prose belongs only in root AGENTS.md; component additions
+  are removed, policy/verification/PR template point to root, workflow keeps its
+  role table and routes production defects to Implementer and Tester-added test
+  defects to Tester. Agent TOMLs use one ownership sentence plus role-specific rules.
+- Check whole-repo active wording outside docs/history without reading the private
+  M10.1 draft. Earlier spec/evidence statements are superseded historical approval
+  records, never current permission. Record any retained historical wording clearly.
+- Tester verifies and Reviewer reads the entire PR diff before commit 1, message
+  docs: ..., English. Do not translate before this checkpoint.
+
+Phase 2 acceptance (separate translation commit):
+- Translate PR-added/modified English Markdown and agent description/instructions
+  into Vietnamese without changing requirements. Exclude docs/history/*,
+  backend/HISTORICAL_VERIFICATION.md, POC database draft, already-Vietnamese files
+  and all frozen application/canonical JSON/CI artifacts; preserve excluded bytes.
+- Preserve paths, URLs, commands/flags, code blocks, TOML keys/name, role names,
+  conventional status labels and technical terms. Update all inbound heading anchors.
+- Root AGENTS.md alone defines language: docs/rules/templates/PR Vietnamese;
+  code/code comments/identifiers/commit messages English. Other files refer to it.
+- Tester produces a per-binding-rule equivalence table against commit 1, checks
+  English residue with explicit allowed exceptions, and reruns links/TOML/ignore/
+  whitespace/frozen-diff checks. Reviewer compares both versions read-only.
+- Commit 2 message: docs: translate shared agent documentation to Vietnamese.
+  Vietnamese PR body lists both SHAs, translated/excluded files with reasons.
+
+For both phases: one writer; Primary → Implementer → Tester → read-only Reviewer;
+relative Markdown links/anchors have no broken targets, TOML parses, ignore probes
+protect private M10.1 and retain canonical PR template tracking. Application/source,
+dependencies/build/formatter and CI workflows are frozen against base81a8a62.
+Native dispatch/full secret scanning stay NOT VERIFIED unless actually established.
+Normal push only to chore/agent-workflow; keep Draft, no Ready/merge/force push or
+sensitive operations. CI results must identify the new head; no premature CI PASS.
+
+## Open Questions — deferred work
+
+Not authorized now: remove task-specific statements from durable rules/templates;
+merge the three workflow documents; archive M6/M10/M11 reports; assign Active in
+roadmap. Record these as next work in the PR; do not perform them in this iteration.
