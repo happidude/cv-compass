@@ -1,9 +1,15 @@
-<a id="documentation-index"></a>
-
 # Mục lục tài liệu
 
-Markdown dùng chung được quản lý phiên bản. Secrets, CV, runtime capture và
-report sinh ra vẫn ignored. Phân loại theo nội dung; chỉ tên file không đủ để quyết định di chuyển.
+Quyền track/ignore theo [root](../AGENTS.md). Phân loại theo nội dung, không di chuyển theo tên.
+Mặc định đọc root + AGENTS component + spec; nguồn kích hoạt chi tiết tại root/component.
+
+| Khi cần | Nguồn tra cứu |
+| --- | --- |
+| Chọn mức/handoff | [Workflow](AGENT_WORKFLOW.md) |
+| Xác định phạm vi cần duyệt, sửa kiến trúc/dữ liệu | [Policy tham chiếu](AGENT_POLICY.md) |
+| Branch/commit/PR | [Git](CV_COMPASS_GIT_WORKFLOW.md) |
+| Chọn/chạy check | [Kiểm chứng](VERIFICATION.md) |
+| Task tối ưu workflow hiện tại | [Spec](milestones/agent-workflow-lean/spec.md), [bằng chứng](milestones/agent-workflow-lean/verification.md) |
 
 | Loại | Nguồn | Cách dùng |
 | --- | --- | --- |
@@ -23,8 +29,6 @@ lịch sử khảo sát/áp dụng; hướng dẫn backend tách bằng chứng 
 Các phần contract/vận hành còn dùng vẫn có đường dẫn truy cập.
 MAPPING/M11 và thiết kế worker giữ đường dẫn hiện có vì contract và tham chiếu runtime
 vẫn đang dùng; phân loại từng phần theo bảng trên, không archive cả file.
-
-<a id="reference-audit-and-retention"></a>
 
 ## Audit tham chiếu và lưu giữ
 

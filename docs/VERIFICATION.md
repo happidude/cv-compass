@@ -1,81 +1,38 @@
-<a id="local-verification-procedure"></a>
+# Kiểm chứng
 
-# Quy trình kiểm chứng local
+Đọc [root](../AGENTS.md) về quyền/ownership; [workflow](AGENT_WORKFLOW.md) về mức/vòng.
 
-Áp dụng cho source cuối, cùng README/convention component và spec đã duyệt.
-Bằng chứng lịch sử được phân loại trong [mục lục docs](README.md).
-Dùng [mẫu bằng chứng](templates/verification.md) và
-[PR template chính](../.github/pull_request_template.md).
-Trách nhiệm test theo [Thực hiện và bàn giao tại root](../AGENTS.md#thực-hiện-và-bàn-giao).
+## Lệnh theo phạm vi
 
-<a id="prepare-and-execute"></a>
-
-## Chuẩn bị và thực hiện
-
-Đọc thư mục, branch, status và prerequisite. Giữ thay đổi của developer.
-Kiểm tra biến test có được đặt mà không in giá trị; không đọc private env file
-hoặc trỏ test sang dữ liệu development/production. Dùng schema, storage và
-resource tổng hợp cô lập. Thiếu prerequisite: BLOCKED / NOT VERIFIED kèm bước tiếp theo.
-
-| Phạm vi ảnh hưởng | Local check bắt buộc |
+| Phạm vi | Affected check mỗi vòng; full gate trên source cuối hoặc CI PR |
 | --- | --- |
-| Backend code/tests | Affected tests, formatter đã cấu hình, rồi full `./gradlew check --rerun-tasks` từ backend (PowerShell `.\gradlew.bat check --rerun-tasks`), Java 25/PostgreSQL 17; Modulith khi áp dụng |
-| Worker code/tests | Đường dẫn Ruff format/check trong worker rules; Ubuntu/WSL CPython 3.14.8 đã provision, Docker Linux/cgroup v2, baseline builder hiện có rồi verifier; bằng chứng full `tests/run_checks.py --xml <fresh-path>` mới trong verifier |
-| Frontend code/tests | Prettier hiện có, `npm run check` và `npm run test:browser` từ frontend |
-| Chỉ docs/rules/agent TOML | Link/anchor tương đối, audit phân loại/tham chiếu, field TOML và ranh giới vai trò, kiểm tra Git ignore/staging, diff CI/application đóng băng, PR template chính đã track, loại bản nháp riêng tư, `git diff --check` và `git diff --cached --check`; application suite N/A kèm lý do |
+| Backend | Java 25/PostgreSQL 17; từ backend: `./gradlew test --tests <affected>` và `./gradlew spotlessApply`; full `./gradlew check --rerun-tasks` (Windows `.\gradlew.bat`); Modulith khi áp dụng |
+| Worker | Từ worker: `ruff format src tests spikes run_worker.py run_pull_worker.py`, `ruff check src tests spikes run_worker.py run_pull_worker.py`; unittest affected; full builder/verifier dưới đây |
+| Frontend | Từ frontend: `npm exec prettier -- --write src tests`, affected Vitest; full `npm run check` và `npm run test:browser` |
+| Docs/rules/TOML | Toàn Markdown link/anchor, tham chiếu/phân loại khi di chuyển; TOML parse/field/role; ignore/staging; diff frozen theo spec; `git diff --check`, `git diff --cached --check`; app suite N/A có lý do |
 
-Full gate worker, chạy từ root trên Linux host đã provision:
-`python3.14 worker/spikes/m6_2_hardening/build_baseline.py` rồi
-`python3.14 worker/spikes/m6_2_hardening/verify_baseline.py`. Dùng output mới theo
-README; chạy `--cleanup-only` theo ownership tương ứng kể cả thất bại, chỉ sau
-khi lượt chạy đã dừng. Không gọi subset là full Docker verification.
-Chạy công cụ hiện có, không cài global tool hoặc đổi application dependency.
+Full worker từ root trên Ubuntu/WSL CPython 3.14.8 đã provision + Docker Linux/cgroup v2:
+`python3.14 worker/spikes/m6_2_hardening/build_baseline.py`, rồi
+`python3.14 worker/spikes/m6_2_hardening/verify_baseline.py`.
+Report full `tests/run_checks.py --xml <fresh-path>` mới trong verifier;
+`--cleanup-only` theo ownership kể cả fail, sau khi lượt chạy dừng. Subset/syntax không chứng minh full Docker.
+Prerequisite/resource theo README component; kiểm biến test có đặt, không in giá trị/đọc private env.
+Dữ liệu test theo policy; thiếu prerequisite báo BLOCKED/check NOT VERIFIED và bước tiếp.
 
-<a id="inspect-evidence-and-warnings"></a>
+## Bằng chứng
 
-## Đọc bằng chứng và warning
+CI là nguồn sự thật về gate CI; không viết lại report dài. Log ra file, đọc tóm tắt/đuôi,
+XML/HTML/problems report mới, số tests/failures/errors/skips, task/report thiếu và warning.
+UP-TO-DATE/NO-SOURCE/cache/report cũ không chứng minh chạy. Đánh giá WARN/ERROR dự kiến của negative test.
+Giữ `-Xlint:deprecation`/formatter/linter; sửa warning mới trong phạm vi,
+warning ngoài phạm vi/công cụ ghi nguồn/nguyên nhân/ảnh hưởng/lý do hoãn; không đổi build config để che.
+Log dài không dán vào hội thoại.
 
-Đọc terminal log và JUnit/XML/HTML/problems report mới khi được tạo.
-Ghi số tests/failures/errors/skips, task đã chạy và report dự kiến còn thiếu.
-UP-TO-DATE, NO-SOURCE, cache và report cũ không chứng minh đã thực thi;
-N/A cần lý do cụ thể. Đánh giá các dòng WARN/ERROR dự kiến từ negative test.
-
-Giữ `-Xlint:deprecation` và gate formatter/linter hiện có. Sửa warning mới
-trong phạm vi; ghi nguồn/nguyên nhân/ảnh hưởng và lý do hoãn cho warning ngoài
-phạm vi hoặc từ công cụ. Không đổi build config, suppress warning hoặc bỏ
-assertion để che lỗi. Kiểm tra lại source cuối sau sửa, trong ngân sách ba vòng.
-
-Ghi commit source chính xác hoặc base kèm fingerprint file trước commit;
-commit chỉ cập nhật bằng chứng tài liệu có thể tham chiếu payload đã review giống hệt.
-Không chèn hash commit tương lai vào chính nó. Source CI và local phải nhận diện
-riêng được. PASS là đã chạy thành công; FAIL là thất bại được chứng minh;
-NOT VERIFIED là thiếu bằng chứng; N/A là không liên quan kèm lý do.
-
-<a id="existing-ci-and-task-scope"></a>
-
-## CI hiện có và phạm vi task
-
-- Persistence CI: mọi PR/push tới main; Java 25/PostgreSQL 17, Gradle check.
-- Worker CI: lọc đường dẫn worker/workflow; build baseline Python/Docker đã
-  provision, full verifier, cleanup theo ownership và artifact provenance.
-- Frontend CI: lọc đường dẫn frontend/workflow; Node 24, cài từ lockfile,
-  format/lint/typecheck/unit/build và Chromium browser check.
-
-Chỉ được sửa CI workflow/security hook khi spec đã duyệt liệt kê chính xác
-đường dẫn và mục đích; không làm yếu/bỏ check để che thất bại.
-Đề xuất ngoài phạm vi thuộc Open Questions. Lượt follow-up docs/config này giữ
-nguyên CI pipeline, unittest và không thêm công cụ/dependency. Rule file dưới
-component có thể kích hoạt CI component; chỉ docs/root có thể không kích hoạt
-job lọc đường dẫn. Run thiếu/pending không phải PASS; kiểm tra chính xác head mới
-trước khi báo CI PASS. Không mặc nhiên cho rằng đã tự động secret/dependency scan.
-
-Thử native custom-agent dispatch và secret scanner sẵn có khi môi trường hỗ trợ.
-Ghi lệnh/event/bằng chứng thực tế và source; TOML/parser PASS không chứng minh
-role dispatch. Không cài global tool hoặc đổi cấu hình máy/trust để check chạy được.
-Nếu không có, ghi NOT VERIFIED, giới hạn cụ thể và bước tiếp theo. Giữ bằng chứng
-follow-up mới riêng với các check/ngân sách review của lần bàn giao lịch sử.
-
-Agent không bao giờ thực hiện các thao tác chỉ dành cho con người tại
-[quy tắc root](../AGENTS.md#quyền-và-an-toàn) và
-[policy Level A](AGENT_POLICY.md#level-a--thao-tác-chỉ-dành-cho-con-người-và-nguyên-tắc-an-toàn),
-bất kể task có cho phép hay không.
+Ghi source SHA hoặc base + fingerprint payload trước commit; commit chỉ bằng chứng có thể trỏ payload
+đã review giống hệt, không hash tương lai tự tham chiếu. Local/CI báo riêng cùng source cuối;
+PASS đã chạy thành công; FAIL thất bại chứng minh; NOT VERIFIED thiếu bằng chứng; N/A không liên quan có lý do.
+Persistence CI mọi PR/push main; worker/frontend CI lọc đường dẫn, giữ full suite/cleanup/provenance/browser.
+Run thiếu/pending không PASS; chỉ báo CI PASS sau khi kiểm đúng head mới đã kết thúc.
+Thử native dispatch/scanner có sẵn khi môi trường hỗ trợ; ghi lệnh/event/source/kết quả,
+không có thì NOT VERIFIED + lý do/bước tiếp. Parser không thay dispatch; không mặc nhiên có secret scan.
+Tách bằng chứng mới khỏi lịch sử/ngân sách cũ. Dùng [mẫu](templates/verification.md).
