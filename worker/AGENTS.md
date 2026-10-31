@@ -1,26 +1,28 @@
-# Worker agent rules
+<a id="worker-agent-rules"></a>
 
-Inherits [root rules](../AGENTS.md). Read [worker conventions](../docs/conventions/worker.md),
-[README](README.md) and the relevant [contract map](../docs/contracts/README.md).
+# Quy tắc agent cho worker
 
-- CPython 3.14.8 target, src layout, hash-locked dependencies, unittest.
-  No pytest, new framework, LLM, candidate parser or prompt without separate approval.
-- Implement approved worker scope autonomously. Do not edit Java without permission.
-- PDF child is offline: no PostgreSQL, HTTP, credentials or Docker socket. HTTP pull
-  belongs to the host supervisor; Spring controls retry and persistence.
-- Native PDF text first, OCR only when needed; preserve raw output, never invent data.
-  Keep business normalization and identity association in Java.
-- Keep `design/` runtime schema/limits and build provenance paths/bytes intact;
-  taxonomy is not authorization to move runtime assets or change the wire contract.
-- Public/boundary functions in new code need parameter/return hints.
-  Use `observability.event`, enums and context allowlists; no personal data or
-  arbitrary error messages/paths in logs.
-- Ruff single quotes/width 100. From worker: `ruff format src tests spikes run_worker.py run_pull_worker.py`
-  then `ruff check src tests spikes run_worker.py run_pull_worker.py`.
-  No blanket fix, second formatter or global tool installation.
+Kế thừa [quy tắc root](../AGENTS.md). Đọc [convention worker](../docs/conventions/worker.md),
+[README](README.md) và [bản đồ contract](../docs/contracts/README.md) liên quan.
+
+- Mục tiêu CPython 3.14.8, src layout, dependency khóa hash, unittest.
+  Không dùng pytest, framework mới, LLM, candidate parser hoặc prompt nếu chưa duyệt riêng.
+- Tự thực hiện phạm vi worker đã duyệt. Không sửa Java khi chưa được phép.
+- PDF child offline: không PostgreSQL, HTTP, credential hoặc Docker socket.
+  HTTP pull thuộc host supervisor; Spring kiểm soát retry và persistence.
+- Ưu tiên native PDF text, chỉ OCR khi cần; giữ raw output, không bịa dữ liệu.
+  Chuẩn hóa nghiệp vụ và liên kết danh tính thuộc Java.
+- Giữ nguyên đường dẫn/byte của runtime schema/limits trong `design/` và build provenance;
+  phân loại tài liệu không cấp quyền di chuyển runtime asset hoặc đổi wire contract.
+- Public/boundary function mới cần parameter/return hints.
+  Dùng `observability.event`, enum và context allowlist; không log dữ liệu cá nhân
+  hoặc error message/đường dẫn tùy ý.
+- Ruff single quotes/width 100. Từ worker: `ruff format src tests spikes run_worker.py run_pull_worker.py`
+  rồi `ruff check src tests spikes run_worker.py run_pull_worker.py`.
+  Không blanket fix, dùng formatter thứ hai hoặc cài global tool.
 - unittest `test_*.py`, `*Tests(unittest.TestCase)`, `test_snake_case`;
-  synthetic fixtures only.
-- Full gate uses provisioned Ubuntu/WSL CPython + Docker Linux/cgroup v2, existing
-  baseline build/verifier and fresh `tests/run_checks.py --xml <fresh-path>`
-  reports. Subset/syntax checks never establish full Docker PASS.
-  Follow [verification](../docs/VERIFICATION.md) and preserve cleanup ownership.
+  chỉ synthetic fixture.
+- Full gate dùng Ubuntu/WSL CPython đã provision + Docker Linux/cgroup v2,
+  baseline builder/verifier hiện có và report full `tests/run_checks.py --xml <fresh-path>` mới.
+  Subset/syntax check không bao giờ chứng minh full Docker PASS.
+  Theo [kiểm chứng](../docs/VERIFICATION.md) và giữ cơ chế cleanup theo ownership.

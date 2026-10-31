@@ -1,9 +1,11 @@
-# Workflow compatibility entry
+<a id="workflow-compatibility-entry"></a>
 
-The current procedure is [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md), with
-[local verification](VERIFICATION.md) and [Git procedure](CV_COMPASS_GIT_WORKFLOW.md).
-Update new task references to those documents.
+# Điểm trỏ tương thích của workflow
 
-The superseded single-agent procedure is retained in
-[history](history/single-agent-workflow.md) for provenance only. It does not override
-current permissions, role ownership, cycle limits or publishing authorization.
+Quy trình hiện hành là [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md), cùng
+[kiểm chứng local](VERIFICATION.md) và [quy trình Git](CV_COMPASS_GIT_WORKFLOW.md).
+Task mới phải tham chiếu các tài liệu đó.
+
+Quy trình một agent đã bị thay thế được giữ trong
+[lịch sử](history/single-agent-workflow.md) chỉ để truy nguyên. Nó không thay thế
+quyền hiện hành, trách nhiệm vai trò, giới hạn số vòng hoặc quyền publish.

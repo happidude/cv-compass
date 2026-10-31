@@ -1,112 +1,119 @@
-# Agent workflow
+<a id="agent-workflow"></a>
 
-Use [root rules](../AGENTS.md), [policy](AGENT_POLICY.md),
-[Git procedure](CV_COMPASS_GIT_WORKFLOW.md), component rules/conventions and an
-approved [spec](templates/spec.md). This procedure supersedes the single-agent
-workflow; historical results never authorize implementation or establish acceptance.
+# Workflow agent
 
-## Approval and orchestration
+Dùng [quy tắc root](../AGENTS.md), [policy](AGENT_POLICY.md),
+[quy trình Git](CV_COMPASS_GIT_WORKFLOW.md), rules/conventions của component và
+[spec](templates/spec.md) đã duyệt. Quy trình này thay workflow một agent;
+kết quả lịch sử không cấp quyền triển khai hoặc chứng minh nghiệm thu.
 
-The primary agent records the approved spec, approval source/date, base commit,
-branch/worktree, acceptance criteria, allowed paths, excluded work and permissions.
-An explicit task message can be the approval source; no second spec approval is
-needed for scope already approved. Missing approval blocks dependent implementation.
-Do not infer Active/completed milestone status; see [roadmap](roadmap.md).
+<a id="approval-and-orchestration"></a>
 
-Primary coordinates spec → Implementer → Tester → Reviewer → PR, sequentially.
-Test ownership follows [root Execution and delivery](../AGENTS.md#execution-and-delivery).
-Docs/config-only work uses applicable structural checks; do not add artificial
-application tests or dependencies.
+## Phê duyệt và điều phối
 
-| Role | Owns | Must not do |
+Primary ghi spec đã duyệt, nguồn/ngày phê duyệt, base commit, branch/worktree,
+acceptance criteria, đường dẫn được phép, phần loại trừ và quyền.
+Task rõ ràng trong tin nhắn có thể là nguồn phê duyệt; không cần duyệt spec lần hai
+cho phạm vi đã được duyệt. Thiếu phê duyệt thì chặn phần triển khai phụ thuộc.
+Không suy ra milestone Active/hoàn thành; xem [roadmap](roadmap.md).
+
+Primary lần lượt điều phối spec → Implementer → Tester → Reviewer → PR.
+Trách nhiệm test theo [Thực hiện và bàn giao tại root](../AGENTS.md#thực-hiện-và-bàn-giao).
+Docs/config dùng check cấu trúc phù hợp; không thêm application test giả tạo
+hoặc dependency. Ngôn ngữ theo [quy tắc root](../AGENTS.md#thực-hiện-và-bàn-giao).
+
+| Vai trò | Phụ trách | Không được làm |
 | --- | --- | --- |
-| Primary | Spec, scope, handoffs, evidence, bounded cycles, docs/config coordination, Git/PR delivery | Concurrent writes or self-accept unresolved blockers |
-| Implementer | Approved production code, accompanying tests/helpers/synthetic fixtures and scoped docs | Weaken assertions/checks/coverage or expand scope |
-| Tester | Independent acceptance verification, missing tests and test helpers/synthetic fixtures | Fix production code, weaken assertions/checks/coverage or replace full checks with subsets |
-| Reviewer | Read-only complete diff/context review and findings | Edit any file, run write-producing tools, accept on behalf of developer |
+| Primary | Spec, phạm vi, handoff, bằng chứng, vòng sửa có giới hạn, điều phối docs/config, bàn giao Git/PR | Ghi đồng thời hoặc tự chấp nhận blocker chưa giải quyết |
+| Implementer | Production code đã duyệt, test/helper/synthetic fixture đi cùng và docs trong phạm vi | Làm yếu assertion/check/coverage hoặc mở rộng phạm vi |
+| Tester | Kiểm chứng acceptance độc lập, test còn thiếu và test helper/synthetic fixture | Sửa production code, làm yếu assertion/check/coverage hoặc dùng subset thay full check |
+| Reviewer | Review chỉ đọc toàn bộ diff/context và báo finding | Sửa file, chạy công cụ tạo file, nghiệm thu thay developer |
 
-Only one writer per working tree, including primary, agents, formatters/builds and
-tests that create files. Primary grants an explicit write lease: owner, paths,
-base/source, task, allowed commands and expected report. Wait for the agent to
-finish and release it before the next writer; interruption alone is not release:
-confirm subprocesses have stopped and inspect status/diff. Reviewer runs only
-read-only inspection while all writers/checks are stopped. No background writes.
-Different worktrees require independent scope; do not assume shared contracts can
-be edited concurrently.
+Mỗi working tree chỉ có một writer, kể cả Primary, agent, formatter/build và test
+tạo file. Primary cấp lease ghi độc quyền rõ ràng: người giữ quyền, đường dẫn,
+base/source, nhiệm vụ, lệnh được phép và report dự kiến. Chờ agent hoàn tất và trả
+quyền trước writer kế tiếp; chỉ ngắt agent chưa đủ để trả quyền: xác nhận subprocess
+đã dừng và đọc status/diff. Reviewer chỉ đọc khi mọi writer/check đã dừng.
+Không ghi nền. Các worktree khác cần phạm vi độc lập; không mặc nhiên cho phép
+sửa contract dùng chung đồng thời.
 
-Each handoff includes spec/approval link, base/current commit or fingerprint,
-changed/untracked paths, commands/results, findings and next owner. Agents read
-the applicable rules; they cannot delegate onward or publish unless primary
-explicitly assigns it. Primary remains responsible for scope and complete evidence.
+Mỗi handoff có link spec/phê duyệt, base/current commit hoặc fingerprint,
+đường dẫn đã sửa/untracked, lệnh/kết quả, finding và người nhận tiếp theo.
+Agent đọc quy tắc áp dụng; không được giao việc tiếp hoặc publish nếu Primary chưa
+phân công rõ. Primary vẫn chịu trách nhiệm phạm vi và toàn bộ bằng chứng.
 
-## Bounded implementation, verification and review
+<a id="bounded-implementation-verification-and-review"></a>
 
-1. Implement only approved criteria, preserving existing code ownership/contracts.
-2. Tester runs affected checks then applicable full local gates on final source;
-   follow [verification](VERIFICATION.md), inspect fresh reports and warnings.
-3. Reviewer reads the full diff against the agreed base, staged/unstaged changes
-   and intended new files, plus relevant callers/contracts/tests. Assess acceptance,
-   correctness, module/transaction boundaries, security/privacy, concurrency,
-   logging and test gaps; mark irrelevant categories N/A with reason.
-4. Findings need stable ID, severity, exact file/line, impact, evidence or
-   reproduction, recommended fix and disposition (open / fixed and verified /
-   rejected with evidence). Missing checks are evidence gaps, not invented defects.
-5. Primary routes production defects to Implementer and defects in Tester-added
-   tests to Tester. Each repair receives an explicit owner and exclusive write
-   lease, then affected verification, required full gates on final source and
-   another Reviewer pass.
+## Triển khai, kiểm chứng và review có giới hạn
 
-At most **three complete fix–test–review cycles**, counting initial review as
-cycle 1. Keep one counter for the task; fixes/agent replacement do not reset it.
-Critical (exposure/data loss), High (major correctness/security/acceptance) and
-Medium (material defect/test gap) block acceptance; Low can be documented.
-No automatic fourth cycle. Remaining blockers after cycle 3: report **BLOCKED**,
-retain evidence and request a new bounded task/decision. Never waive findings to
-pass. Outside-spec issues are reported under PR Open Questions; continue only
-independent approved work. An environment obstacle is BLOCKED with checks
-NOT VERIFIED; a demonstrated check failure is FAIL. Neither is PASS.
+1. Chỉ triển khai tiêu chí đã duyệt, giữ ownership code và contract hiện có.
+2. Tester chạy affected checks rồi full local gate áp dụng trên source cuối;
+   theo [kiểm chứng](VERIFICATION.md), đọc report mới và warning.
+3. Reviewer đọc toàn diff so với base thống nhất, phần staged/unstaged và file mới
+   dự định đưa vào, cùng caller/contract/test liên quan. Đánh giá acceptance,
+   tính đúng, ranh giới module/transaction, security/quyền riêng tư, concurrency,
+   logging và thiếu test; mục không liên quan ghi N/A kèm lý do.
+4. Finding cần ID ổn định, severity, file/line chính xác, ảnh hưởng, bằng chứng
+   hoặc cách tái hiện, cách sửa đề xuất và trạng thái xử lý: mở / đã sửa và
+   kiểm chứng / bác bỏ có bằng chứng. Thiếu check là thiếu bằng chứng, không phải lỗi bịa ra.
+5. Primary giao lỗi production cho Implementer và lỗi trong test do Tester thêm
+   cho Tester. Mỗi lần sửa có người phụ trách và lease ghi độc quyền rõ ràng,
+   rồi chạy affected verification, full gate bắt buộc trên source cuối và Reviewer review lại.
 
-## Delivery gate
+Tối đa **ba vòng sửa–test–review hoàn chỉnh**, lần review đầu tính là vòng 1.
+Giữ một bộ đếm cho task; sửa lỗi/đổi agent không đặt lại bộ đếm.
+Critical: lộ dữ liệu/mất dữ liệu; High: lỗi lớn về tính đúng/security/acceptance;
+Medium: lỗi hoặc thiếu test đáng kể; các mức đó chặn nghiệm thu. Low có thể ghi nhận.
+Không tự mở vòng 4. Sau vòng 3 còn blocker: báo **BLOCKED**, giữ bằng chứng và yêu cầu
+task/quyết định mới có giới hạn. Không bỏ finding để qua gate.
+Vấn đề ngoài spec ghi trong Open Questions của PR; chỉ tiếp tục phần đã duyệt độc lập.
+Trở ngại môi trường là BLOCKED, check là NOT VERIFIED; check thất bại được chứng minh
+là FAIL. Cả hai đều không phải PASS.
 
-All criteria met, no unresolved Critical/High/Medium, scoped local checks passed,
-complete final diff reviewed, no secrets/CVs/runtime artifacts, and diff-check clean.
-Changes after review require a new pass within the budget. Local and CI evidence
-identify the same final source; report each separately, including path-filtered CI.
-Do not claim merge readiness until required CI is green.
+<a id="delivery-gate"></a>
 
-Use [verification template](templates/verification.md) and [PR template](../.github/pull_request_template.md).
-Stage explicit paths, inspect staged diff, commit (Conventional Commits), push the
-approved branch and open PR. Existing commit/push authorization persists; do not
-ask again. If required verification is blocked, an explicitly requested source
-snapshot may be published as a **draft**, with blockers and NOT VERIFIED checks;
-it is not accepted/completed. CI workflow/security-hook edits require an approved
-spec listing exact paths and intent; never weaken or skip checks to get green.
-Outside-scope proposals go under Open Questions. Merge, GitHub settings/branch
-protection/rulesets, repository secret creation/editing, releases/tags and
-production database/server/deployment operations are human-only: agents never
-perform them, regardless of task authorization. This workflow follow-up performs
-none of those operations. Never automatically delete branches/worktrees.
-Stop at the assigned task.
+## Gate bàn giao
 
-## Codex custom agents
+Đạt mọi tiêu chí, không còn Critical/High/Medium, local check trong phạm vi PASS,
+review toàn diff cuối, không secrets/CV/runtime artifact và diff-check sạch.
+Sửa sau review phải review lại trong ngân sách còn lại. Bằng chứng local và CI
+xác định cùng source cuối; báo riêng từng loại, kể cả CI lọc theo đường dẫn.
+Không tuyên bố sẵn sàng merge khi CI bắt buộc chưa xanh.
 
-Checked against official OpenAI documentation on 2026-10-31:
-[custom agents and controls](https://learn.chatgpt.com/docs/agent-configuration/subagents),
-[configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference),
-and [AGENTS.md discovery](https://developers.openai.com/codex/guides/agents-md).
+Dùng [mẫu kiểm chứng](templates/verification.md) và [PR template](../.github/pull_request_template.md).
+Stage đường dẫn rõ ràng, đọc staged diff, commit theo Conventional Commits, push
+branch đã duyệt và mở PR. Quyền commit/push đã có vẫn hiệu lực; không hỏi lại.
+Nếu check bắt buộc bị chặn, source snapshot được yêu cầu rõ ràng có thể publish
+dưới dạng **draft**, nêu blocker và check NOT VERIFIED; không coi là đã nghiệm thu/
+hoàn tất. Sửa CI workflow/security hook cần spec đã duyệt liệt kê chính xác
+đường dẫn và mục đích; không làm yếu hoặc bỏ check để có kết quả xanh.
+Đề xuất ngoài phạm vi ghi dưới Open Questions. Merge, GitHub settings/branch
+protection/rulesets, tạo/sửa repository secret, releases/tags và thao tác
+database/server/deployment production chỉ dành cho con người: agent không bao giờ
+thực hiện, bất kể task có cho phép hay không. Lượt follow-up workflow này không
+thực hiện thao tác nào trong số đó. Không tự xóa branch/worktree.
+Dừng ở nhiệm vụ được giao.
 
-Project definitions are standalone `.codex/agents/{implementer,tester,reviewer}.toml`;
-required fields are name, description and developer_instructions. Project
-`.codex/config.toml` enables agents and caps open subagents at one; close a finished
-agent before spawning another. The primary still enforces the write lease.
-Models/effort inherit the session; no account-specific model is pinned.
-Reviewer read-only behavior is instruction-based: custom files inherit parent
-permissions and cannot enforce an independent read-only sandbox. Use a parent
-read-only session for stronger review isolation when needed; do not claim TOML
-instructions enforce OS-level isolation.
+<a id="codex-custom-agents"></a>
 
-Project configuration may require a trusted checkout and a new session. Validate
-syntax/schema and actual role discovery separately. A current chat does not reload
-new roles automatically. If custom-role dispatch is unavailable, report it and use
-sequential explicitly instructed roles without claiming native dispatch succeeded.
-No global settings, credentials, MCP services or new dependencies are required.
+## Custom agent của Codex
+
+Đối chiếu tài liệu OpenAI chính thức ngày 2026-10-31:
+[custom agent và kiểm soát](https://learn.chatgpt.com/docs/agent-configuration/subagents),
+[tham chiếu cấu hình](https://learn.chatgpt.com/docs/config-file/config-reference),
+và [cách nạp AGENTS.md](https://developers.openai.com/codex/guides/agents-md).
+
+Định nghĩa dự án là các file riêng `.codex/agents/{implementer,tester,reviewer}.toml`;
+field bắt buộc: name, description, developer_instructions.
+`.codex/config.toml` bật agent và giới hạn một subagent đang mở; đóng agent đã
+hoàn tất trước khi tạo agent khác. Primary vẫn kiểm soát lease ghi độc quyền.
+Model/effort kế thừa phiên; không pin model riêng cho tài khoản.
+Reviewer chỉ đọc theo chỉ dẫn: custom file kế thừa quyền của phiên chính và không
+thể thực thi sandbox chỉ đọc riêng. Khi cần cô lập review mạnh hơn, dùng phiên chính
+read-only; không khẳng định chỉ dẫn TOML thực thi cô lập ở mức hệ điều hành.
+
+Cấu hình dự án có thể cần checkout được tin cậy và phiên mới. Xác minh riêng
+syntax/schema và việc phát hiện role thực tế. Chat hiện tại không tự nạp lại role mới.
+Nếu không có custom-role dispatch, báo rõ và dùng các vai trò được chỉ dẫn tuần tự,
+không tuyên bố native dispatch thành công.
+Không cần global setting, credential, MCP service hoặc dependency mới.

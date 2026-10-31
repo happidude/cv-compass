@@ -1,83 +1,87 @@
-# M7.3 → M7.5 integration — implementation, not acceptance evidence
+<a id="m73--m75-integration--implementation-not-acceptance-evidence"></a>
 
-> Historical v1 design/evidence. New results use `cv-compass.ocr/2.0` and only `raw_text`; see `OCR_V2_RAW_TEXT.md`. Existing v1 snapshots/outcomes remain valid.
+# Tích hợp M7.3 → M7.5 — implementation, không phải bằng chứng nghiệm thu
 
-Local admission extension: the default contract below remains synthetic-only.
-An explicitly configured local deployment sends `synthetic_only=false` and
-`local_only=true` in claim data; the worker must opt in to the same mode in
-`pull.toml`. Local admission snapshots bind actual document hash/size and measured
-profile provenance with `admission_mode=local`, without a fabricated `fixture_id`.
-No result schema, auth, lease, fencing, replay or isolation rule changes. See
-[LOCAL_OCR.md](../../backend/LOCAL_OCR.md); this is not a production gate waiver.
+> Thiết kế/bằng chứng v1 lịch sử. Kết quả mới dùng `cv-compass.ocr/2.0` và chỉ `raw_text`; xem `OCR_V2_RAW_TEXT.md`. Snapshot/kết quả v1 hiện có vẫn hợp lệ.
 
-Base origin/main `afba013d0e40355b13f4adf9dbd59302d162988d`. Dedicated branch
-feature/m7-integration. No new migration or broker, no changes to old migrations,
-no candidate mapping, frontend or worker DB access. Accuracy has not been evaluated;
-quality evaluation remains backlog. GCC/Tesseract unresolved still blocks production.
+Phần mở rộng tiếp nhận cục bộ: contract mặc định bên dưới vẫn chỉ dùng dữ liệu tổng hợp.
+Deployment cục bộ được cấu hình rõ ràng gửi `synthetic_only=false` và `local_only=true`
+trong claim data; worker phải chủ động chọn cùng chế độ trong `pull.toml`.
+Snapshot tiếp nhận cục bộ gắn hash/kích thước document thực tế và provenance profile
+đã đo với `admission_mode=local`, không bịa `fixture_id`.
+Không đổi result schema, auth, lease, fencing, replay hoặc quy tắc cô lập.
+Xem [LOCAL_OCR.md](../../backend/LOCAL_OCR.md); không miễn gate production.
 
-## M7.3: authenticated backend HTTP
+Base origin/main `afba013d0e40355b13f4adf9dbd59302d162988d`. Branch riêng
+feature/m7-integration. Không migration/broker mới, không sửa migration cũ,
+không candidate mapping, frontend hoặc worker DB access. Chưa đánh giá accuracy;
+đánh giá chất lượng vẫn ở backlog. GCC/Tesseract chưa giải quyết vẫn chặn production.
+
+<a id="m73-authenticated-backend-http"></a>
+
+## M7.3: HTTP backend có xác thực
 
 Base `/internal/ocr/v1`: POST `/claims`, PUT `/attempts/{uuid}/lease`, GET
-`/attempts/{uuid}/input`, PUT `/attempts/{uuid}/result` and `/failure`.
-Scoped Spring SecurityFilterChain authenticates before MVC/body decoding, with
-stateless ROLE_OCR_WORKER and per-worker AuthenticationProvider; Boot BOM manages
-the security dependency. Unmatched public API keeps its existing policy, no global
-CSRF disable/default login or generated user. Disabled→503, invalid/revoked
-credential→401, forbidden worker/profile→403, unknown attempt→404, stale/conflict→409,
+`/attempts/{uuid}/input`, PUT `/attempts/{uuid}/result` và `/failure`.
+Spring SecurityFilterChain theo phạm vi xác thực trước MVC/body decoding, dùng
+stateless ROLE_OCR_WORKER và AuthenticationProvider từng worker; Boot BOM quản lý
+security dependency. Public API không khớp giữ policy hiện có, không tắt CSRF toàn cục/
+default login hoặc user tự sinh. Disabled→503, credential không hợp lệ/thu hồi→401,
+worker/profile không được phép→403, attempt không biết→404, cũ/xung đột→409,
 bytes→413, media/encoding→415, range→416, contract/provenance→422.
-Safe ApiError only; no request contents/tokens in logs. Use direct TLS on private VPS
-or trusted TLS proxy with backend bound to loopback. Non-loopback cleartext is
-rejected. Do not expose these routes, trust arbitrary forwarded headers or log
-Authorization/X-Lease-Token at proxies.
+Chỉ ApiError an toàn; không log request content/token. Dùng TLS trực tiếp trên VPS riêng
+hoặc TLS proxy được tin cậy, backend bind loopback. Từ chối cleartext ngoài loopback.
+Không public route này, tin forwarded header tùy ý hoặc log Authorization/X-Lease-Token tại proxy.
 
-Per-worker Bearer secrets: 43–256 base64url characters, provision outside Git. Server
-configuration stores SHA256 credential hashes and profile allowlists; worker_id in a
-request body is not accepted. Rotate by adding hash, switching worker secret, then
-removing old hash and redeploying. Duplicate hashes across workers fail validation.
-Revocation also denies terminal replay. No authentication dependency in PDF children.
+Bearer secret mỗi worker: 43–256 ký tự base64url, provision ngoài Git. Cấu hình server
+giữ SHA256 credential hash và profile allowlist; không nhận worker_id trong request body.
+Xoay vòng bằng thêm hash, chuyển worker secret, rồi xóa hash cũ và redeploy.
+Hash trùng giữa các worker làm validation fail. Thu hồi cũng từ chối terminal replay.
+Không authentication dependency trong PDF child.
 
-Claim body exactly `{"protocol":"cv-compass.ocr-job/1.0","profile_revision":"<revision>"}`.
-Headers: canonical UUID Idempotency-Key + X-Lease-Token (32 random bytes, unpadded
-base64url), generated/persisted before claim. 201 new /200 replay with Location,
-204 empty. `ApiResponse.data` contains protocol, string job_id, attempt UUID, attempt_no,
-server_time/lease_expires_at/hard_deadline_at, synthetic_only=true, size_bytes,
-input_path and unchanged M6 ocr_request. Lease PUT accepts exactly `{}`.
+Claim body chính xác `{"protocol":"cv-compass.ocr-job/1.0","profile_revision":"<revision>"}`.
+Header: UUID canonical Idempotency-Key + X-Lease-Token, 32 byte ngẫu nhiên base64url
+không padding, được sinh/lưu trước claim. 201 mới /200 replay có Location,
+204 khi rỗng. `ApiResponse.data` có protocol, job_id dạng string, attempt UUID,
+attempt_no, server_time/lease_expires_at/hard_deadline_at, synthetic_only=true,
+size_bytes, input_path và ocr_request M6 không đổi. Lease PUT chỉ nhận `{}`.
 
-Input checks job→attempt locks, proof and DB clock after locks without lease renewal.
-Storage streaming is outside the transaction; opaque key only, no client paths,
-filenames, redirects or compression. Content-Length/X-Content-SHA256 are supplied;
-worker rechecks actual size/hash before OCR. Streaming checks elapsed time between
-reads; blocking socket writes remain an HTTP server/proxy deployment concern, not a
-claim of a hard filesystem I/O deadline. No transaction spans HTTP transfer/OCR.
+Input kiểm tra lock job→attempt, proof và DB clock sau lock, không gia hạn lease.
+Stream storage ngoài transaction; chỉ opaque key, không client path, filename,
+redirect hoặc compression. Có Content-Length/X-Content-SHA256; worker kiểm lại
+kích thước/hash thực trước OCR. Stream kiểm tra thời gian trôi qua giữa lần đọc;
+socket write bị block vẫn là vấn đề triển khai HTTP server/proxy, không khẳng định
+hard filesystem I/O deadline. Không transaction kéo dài qua HTTP transfer/OCR.
 
-The formerly referenced docs/POC_OCR_API_CONTRACT.md is absent in this checkout.
-See the [contract source map](../../docs/contracts/README.md) and
-[raw-text v2 extension](OCR_V2_RAW_TEXT.md) before changes; this historical v1
-description is not a replacement contract approval. The M6 schema snapshot remains
-preserved alongside v2.
-Strict UTF8, duplicate/unknown keys, depth32, body caps and M6 semantics remain.
-Digest is exact UTF8 HTTP bytes, not reserialized JSON. Deployment metadata is checked
-against the immutable admission snapshot; preflight failures retain null observations
-and empty models. These are authenticated worker declarations, not remote hardware
-attestation. Delivered result is terminal (including OCR failed and cleanup warning).
-201 receipt /200 exact replay even after expiry; different bytes or stale fence→409.
-JSONB retains pages/text/raw_text/status/confidence/timings/engines/models/config.
-Spring owns all DB writes. No rebind, overwrite or fabricated extraction.
+File từng tham chiếu docs/POC_OCR_API_CONTRACT.md không có trong checkout này.
+Xem [bản đồ nguồn contract](../../docs/contracts/README.md) và
+[phần mở rộng raw-text v2](OCR_V2_RAW_TEXT.md) trước thay đổi; mô tả v1 lịch sử này
+không thay phê duyệt contract. Snapshot schema M6 vẫn giữ cùng v2.
+Giữ UTF8 nghiêm ngặt, duplicate/unknown key, depth32, body cap và ngữ nghĩa M6.
+Digest là byte UTF8 HTTP chính xác, không phải JSON serialize lại. Metadata deployment
+được đối chiếu snapshot tiếp nhận bất biến; lỗi preflight giữ observation null
+và model rỗng. Đây là khai báo worker đã xác thực, không phải chứng thực phần cứng từ xa.
+Result đã giao là terminal, kể cả OCR fail và cleanup warning.
+201 receipt /200 replay chính xác kể cả đã hết hạn; byte khác hoặc fence cũ→409.
+JSONB giữ pages/text/raw_text/status/confidence/timings/engines/models/config.
+Spring sở hữu toàn bộ ghi DB. Không rebind, ghi đè hoặc bịa extraction.
 
-Failure body: protocol + M7.2 OcrFailureCode, excluding server-only LEASE_EXPIRED.
-Only DOWNLOAD_UNAVAILABLE/SUPERVISOR_TIMEOUT/LEASE_EXPIRED retry; hash/config/invalid
-result do not. The configured scheduler calls existing expireDue, retaining job→attempt
-lock order, retry budget/quarantine and hard deadline. Defaults remain 3 attempts,
-120s lease/30s heartbeat. Technical tests cannot open production gate.
+Failure body: protocol + OcrFailureCode M7.2, không gồm LEASE_EXPIRED chỉ phía server.
+Chỉ DOWNLOAD_UNAVAILABLE/SUPERVISOR_TIMEOUT/LEASE_EXPIRED retry; hash/config/
+result không hợp lệ thì không. Scheduler đã cấu hình gọi expireDue hiện có,
+giữ lock order job→attempt, ngân sách retry/quarantine và hard deadline.
+Mặc định vẫn 3 attempt, lease120s/heartbeat30s. Technical test không thể mở gate production.
 
-## M7.4: Ubuntu host supervisor
+<a id="m74-ubuntu-host-supervisor"></a>
 
-Run `python worker/run_pull_worker.py --config <absolute-operator.toml> [--once]`.
-Standard-library HTTP, validated TLS, pinned origin, no redirects, bounded retries,
-absolute socket deadline (including trickle responses). HTTPS DNS lookup still
-depends on host resolver. Plain HTTP allows numeric loopback IPs only.
+## M7.4: Host supervisor Ubuntu
 
-External TOML template (placeholders intentionally invalid; NOT measured pins):
+Chạy `python worker/run_pull_worker.py --config <absolute-operator.toml> [--once]`.
+HTTP thư viện chuẩn, TLS đã validate, origin được pin, không redirect, retry có giới hạn,
+absolute socket deadline kể cả trickle response. HTTPS DNS lookup vẫn phụ thuộc
+host resolver. HTTP thường chỉ cho phép IP loopback dạng số.
+
+Mẫu TOML ngoài repository, placeholder cố ý không hợp lệ, KHÔNG phải pin đã đo:
 
 ```toml
 enabled = false
@@ -102,45 +106,46 @@ max_envelope_bytes = 8454144
 max_spool_bytes = 67108864
 ```
 
-Create private Linux spool outside Git, mode0700, owned by supervisor UID, distinct
-from backend storage/inbox. Use existing M6 build_baseline.py/verify_baseline.py and
-hash lockfiles; no laptop-only image. Require diagnostic Docker config + pinned
-image ID/fingerprint; no native fallback or job-provided flags/config. The validated
-operator TOML is snapshotted privately before CLI invocation. Credential environment
-names must use CV_COMPASS_OCR_ prefix; LANG/PATH/HOME cannot be repurposed. Credentials stay in
-supervisor; unchanged M6 safe child environment/mounts contain no token/socket.
+Tạo spool Linux riêng ngoài Git, mode0700, thuộc UID supervisor, tách storage/inbox
+backend. Dùng M6 build_baseline.py/verify_baseline.py và hash lockfile hiện có,
+không dùng image chỉ có trên laptop. Bắt buộc Docker config diagnostic cùng image ID/
+fingerprint được pin; không native fallback hoặc flag/config do job cung cấp.
+TOML operator đã validate được snapshot riêng trước gọi CLI. Tên biến môi trường
+credential phải dùng prefix CV_COMPASS_OCR_; không dùng lại LANG/PATH/HOME vào mục đích khác.
+Credential ở supervisor; environment/mount an toàn M6 child không đổi, không chứa token/socket.
 
-Exclusive flock, one attempt at a time; persist claim UUID/token before HTTP. Stream
-bounded PDF, verify size/SHA256, call existing M6 CLI in-process with heartbeat thread.
-Monotonic lease budget is capped by original local hard deadline even if DB clock
-rolls back. Lost heartbeat cancels through M6 owned-child kill/wait/remove lifecycle,
-including cancellation during staging; never kill only Docker CLI. Pipeline timeout
-must fit the remaining hard deadline with HTTP reserve before OCR begins.
+Flock độc quyền, mỗi lần một attempt; lưu claim UUID/token trước HTTP. Stream PDF
+có giới hạn, kiểm size/SHA256, gọi M6 CLI hiện có trong process cùng heartbeat thread.
+Ngân sách lease monotonic bị chặn bởi hard deadline local ban đầu kể cả DB clock
+lùi. Mất heartbeat hủy qua vòng đời kill/wait/remove child thuộc M6, kể cả hủy khi
+staging; không chỉ kill Docker CLI. Timeout pipeline phải nằm trong hard deadline
+còn lại, có dự phòng HTTP trước khi OCR bắt đầu.
 
-Spool complete result envelope once, resend identical bytes. Crash/lost receipt replays
-saved outcome only, never OCR again. Receipt validates job/attempt identities. Cleanup
-warning submits the valid terminal result then halts intake, preserving locks/spool.
-Uncertain outcome, stale lease, quota or cleanup errors retain private state and halt.
-No automatic stale-lock deletion, foreign-resource cleanup, TTL purge or new intake
-while uncertain. Operator owns retention/disk quotas. Configured spool budget limits
-intake; active M6 temp budget remains separately enforced by existing M6 controls.
+Spool result envelope hoàn chỉnh một lần, gửi lại byte giống hệt. Crash/mất receipt
+chỉ replay kết quả đã lưu, không OCR lại. Receipt validate danh tính job/attempt.
+Cleanup warning gửi terminal result hợp lệ rồi dừng nhận mới, giữ lock/spool.
+Kết quả không chắc chắn, lease cũ, quota hoặc lỗi cleanup giữ private state và dừng.
+Không tự xóa stale lock, cleanup resource khác, TTL purge hoặc nhận mới khi chưa chắc chắn.
+Operator chịu trách nhiệm retention/disk quota. Spool budget cấu hình giới hạn intake;
+temp budget M6 đang hoạt động vẫn được kiểm soát riêng bằng cơ chế M6 hiện có.
 
-Recovery: stop supervisor; inspect its claim.json, owned UUID directory and M6 cleanup
-ledger. Resolve **only owned** leftovers using M6 procedures. Remove halt.json only
-after review; restarting replays submission.json/failure.json exactly. A persisted
-CLEANUP_FAILED warning continues to halt even if its lock/ledger has disappeared.
-After verifying the terminal receipt and resolving owned resources, manually archive
-that owned UUID directory and its claim journal together; never alter result bytes
-or erase an unacknowledged outcome to resume intake. Incomplete
-directory without an outcome needs manual disposition, never automatic OCR rerun.
-Never commit these private files (tokens/PDF/results) or expose them to PDF children.
+Khôi phục: dừng supervisor; xem claim.json, thư mục UUID thuộc nó và cleanup ledger M6.
+Chỉ giải quyết phần còn sót **thuộc sở hữu** theo quy trình M6. Chỉ xóa halt.json
+sau review; restart replay chính xác submission.json/failure.json. CLEANUP_FAILED
+warning đã lưu tiếp tục chặn dù lock/ledger đã biến mất. Sau kiểm terminal receipt và
+giải quyết resource thuộc sở hữu, archive thủ công thư mục UUID đó cùng claim journal;
+không sửa byte result hoặc xóa kết quả chưa được xác nhận để tiếp tục nhận việc.
+Thư mục chưa hoàn chỉnh không có outcome cần quyết định thủ công, không tự OCR lại.
+Không commit file riêng tư này, gồm token/PDF/result, hoặc để PDF child truy cập.
 
-## M7.5: synthetic enrollment and atomic enqueue
+<a id="m75-synthetic-enrollment-and-atomic-enqueue"></a>
 
-Both cv.ocr.enabled and cv.ocr.integration.enabled default false. Integration requires
-non-prod profile, local storage, synthetic-storage-root matching configured storage,
-namespace, nonempty workers/profiles and known generated fixture manifests.
-Use external operator YAML, not a public enrollment endpoint:
+## M7.5: Đăng ký dữ liệu tổng hợp và enqueue nguyên tử
+
+Cả cv.ocr.enabled và cv.ocr.integration.enabled mặc định false. Tích hợp yêu cầu
+profile không phải prod, local storage, synthetic-storage-root khớp storage cấu hình,
+namespace, workers/profiles không rỗng và manifest fixture được sinh đã biết.
+Dùng YAML operator ngoài repository, không phải endpoint đăng ký công khai:
 
 ```yaml
 cv:
@@ -167,34 +172,37 @@ cv:
           profile-revision: "<revision>"
 ```
 
-Configure storage root and DB credentials externally under existing conventions.
-Typed cv.ocr.integration properties expose reaper-delay/download-timeout/control-body
-caps; application.yaml provides CV_OCR_* bindings. Registry has no permissive defaults.
-Only known synthetic SHA + size in dedicated namespace enrolls; never filename/public
-boolean/blanket storage scanning. Unknown PDF keeps ingestion semantics but no OCR job.
+Cấu hình storage root và DB credential bên ngoài theo convention hiện có.
+Property cv.ocr.integration có kiểu cung cấp reaper-delay/download-timeout/
+control-body cap; application.yaml có binding CV_OCR_*. Registry không có mặc định
+nới lỏng. Chỉ synthetic SHA + size đã biết trong namespace riêng được đăng ký;
+không theo filename/public boolean/quét toàn storage. PDF không biết giữ ngữ nghĩa
+ingestion nhưng không có OCR job.
 
-CvDocumentService invokes enqueue in the existing metadata transaction after single/
-batch/disk persistence callback, before commit. MANDATORY propagation + saveAndFlush:
-enqueue/commit failure rolls metadata/item/counter/history back and invokes existing
-storage compensation. No after-commit gap. Admission snapshot binds generated ID +
+CvDocumentService gọi enqueue trong metadata transaction hiện có sau callback
+persistence single/batch/disk, trước commit. Propagation MANDATORY + saveAndFlush:
+enqueue/commit fail rollback metadata/item/counter/history và gọi storage compensation
+hiện có. Không khoảng trống after-commit. Admission snapshot gắn generated ID +
 fixture ID/hash/size/namespace + deployment manifest. Generation1 uniqueness/composite
-FKs and legacy rows stay unchanged. Batch counters remain ingestion-only.
+FK và legacy row không đổi. Batch counter vẫn chỉ dành cho ingestion.
 
-## Verification boundaries
+<a id="verification-boundaries"></a>
 
-Backend: JDK25, `cd backend; ./gradlew check --rerun-tasks`. Real PostgreSQL17 tests
-use isolated schemas and private TEST_DB_URL/USERNAME/PASSWORD. OcrWorkerIntegrationTests
-uses live HTTP + PG, **not** OCR-engine/resource-safety evidence.
+## Ranh giới kiểm chứng
 
-Ubuntu: fresh venv, `pip install --require-hashes -r worker/requirements.lock -r
-worker/requirements-test.lock`, `pip check`; provision Tesseract/models/font via M6.
-Full `python worker/tests/run_checks.py --xml <new.xml>` requires host + Docker child.
-`run_m7_independent_checks.py --xml <new.xml>` is explicitly a **subset**, not full gate.
-compileall is syntax only. Transport stand-ins/unit fakes never prove PG/OCR integration.
-Exact source fingerprint, commands/counts/logs are recorded in local M7 handoff;
-old M6 80/80 or M7.2 results are not evidence for this source.
+Backend: JDK25, `cd backend; ./gradlew check --rerun-tasks`. Test PostgreSQL17 thật
+dùng schema cô lập và TEST_DB_URL/USERNAME/PASSWORD riêng. OcrWorkerIntegrationTests
+dùng HTTP + PG thật, **không phải** bằng chứng OCR engine/an toàn tài nguyên.
 
-Docker is currently BLOCKED by the reported runtime problem; no restart, reconfigure,
-privileged fallback or resource-bomb is authorized. Full Docker suite and real
-backend→adapter→M6 child→JSONB flow are NOT VERIFIED until restored. No commit/push/
-merge or M8 under this invocation. Baseline trial is not production-ready.
+Ubuntu: venv mới, `pip install --require-hashes -r worker/requirements.lock -r
+worker/requirements-test.lock`, `pip check`; provision Tesseract/model/font qua M6.
+Full `python worker/tests/run_checks.py --xml <new.xml>` cần host + Docker child.
+`run_m7_independent_checks.py --xml <new.xml>` rõ ràng là **subset**, không full gate.
+compileall chỉ kiểm syntax. Transport stand-in/unit fake không chứng minh tích hợp PG/OCR.
+Fingerprint source chính xác, lệnh/số liệu/log ghi ở handoff M7 local;
+kết quả M6 80/80 hoặc M7.2 cũ không là bằng chứng cho source này.
+
+Docker hiện BLOCKED do vấn đề runtime đã báo; không cho phép restart,
+reconfigure, privileged fallback hoặc resource-bomb. Full Docker suite và luồng
+backend→adapter→M6 child→JSONB thật là NOT VERIFIED tới khi khôi phục.
+Không commit/push/merge hoặc M8 trong lượt này. Baseline trial không sẵn sàng production.

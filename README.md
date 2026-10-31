@@ -1,8 +1,8 @@
 # CV Compass
 
-CV ingestion, local OCR and candidate management.
+Tiếp nhận CV, OCR cục bộ và quản lý ứng viên.
 
-- [Agent rules](AGENTS.md) and [workflow](docs/AGENT_WORKFLOW.md)
-- [Documentation index](docs/README.md) and [roadmap](docs/roadmap.md)
-- Component setup: [backend](backend/README.md), [worker](worker/README.md),
+- [Quy tắc agent](AGENTS.md) và [workflow](docs/AGENT_WORKFLOW.md)
+- [Mục lục tài liệu](docs/README.md) và [roadmap](docs/roadmap.md)
+- Thiết lập component: [backend](backend/README.md), [worker](worker/README.md),
   [frontend](frontend/README.md)

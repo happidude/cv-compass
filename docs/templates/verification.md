@@ -1,33 +1,41 @@
-# <Task or milestone> verification
+<a id="verification"></a>
 
-## Source and scope
-- Spec/approval:
-- Base and exact tested/reviewed commit or payload fingerprints:
-- Changed files and acceptance criterion → evidence mapping:
-- Environment/tool versions, isolated resources (no credentials/paths containing CV data):
+# Kiểm chứng <task hoặc milestone>
 
-## Executed checks
-| Command and working directory | Source | Result | Tests / failures / errors / skipped | Evidence |
+<a id="source-and-scope"></a>
+
+## Source và phạm vi
+- Spec/phê duyệt:
+- Base và commit đã test/review chính xác hoặc fingerprint payload:
+- File thay đổi và ánh xạ acceptance criterion → bằng chứng:
+- Môi trường/version công cụ, resource cô lập (không credential/đường dẫn chứa dữ liệu CV):
+
+<a id="executed-checks"></a>
+
+## Check đã thực hiện
+| Lệnh và thư mục làm việc | Source | Kết quả | Tests / failures / errors / skipped | Bằng chứng |
 | --- | --- | --- | --- | --- |
-| <actual command> | <commit/fingerprint> | PASS / FAIL / NOT VERIFIED / N/A | <fresh counts or N/A> | <log/report, no private data> |
+| <lệnh thực tế> | <commit/fingerprint> | PASS / FAIL / NOT VERIFIED / N/A | <số liệu mới hoặc N/A> | <log/report, không dữ liệu riêng tư> |
 
 ## Review
-- Cycle count (1–3), Reviewer, base/source, actual diff including new files:
-- Findings: ID/severity/file:line/impact/evidence/fix/disposition:
-- Warnings fixed/remaining, cause/impact/deferral:
-- Acceptance criteria met or unresolved:
+- Số vòng (1–3), Reviewer, base/source, diff thực tế gồm file mới:
+- Finding: ID/severity/file:line/ảnh hưởng/bằng chứng/cách sửa/cách xử lý:
+- Warning đã sửa/còn lại, nguyên nhân/ảnh hưởng/lý do hoãn:
+- Acceptance criteria đã đạt hoặc chưa giải quyết:
 
-## Delivery and limitations
+<a id="delivery-and-limitations"></a>
+
+## Bàn giao và giới hạn
 - Local gate:
-- CI result and exact new head (separate from local and prior deliveries):
-- Native custom-agent dispatch command/events/result (parser PASS is separate):
-- Secret scanner command/coverage/result or NOT VERIFIED with next action:
-- Canonical PR template tracked; private M10.1 draft ignored and absent from commit:
-- Application/dependency/build/formatter/CI unchanged against PR base where required:
-- Missing verification, reason and next action:
-- Production/accuracy/real-data acceptance (never implied by technical PASS):
-- PR/commit link:
-- BLOCKED if unresolved after cycle 3; no self-acceptance:
+- Kết quả CI và head mới chính xác (tách khỏi local và các lần bàn giao trước):
+- Lệnh/event/kết quả native custom-agent dispatch (parser PASS là bằng chứng riêng):
+- Lệnh/phạm vi/kết quả secret scanner hoặc NOT VERIFIED kèm bước tiếp theo:
+- PR template chính đã track; bản nháp M10.1 riêng tư ignored và không nằm trong commit:
+- Application/dependency/build/formatter/CI không đổi so với base PR khi có yêu cầu:
+- Phần chưa kiểm chứng, lý do và bước tiếp theo:
+- Nghiệm thu production/accuracy/dữ liệu thật (không bao giờ suy từ technical PASS):
+- Link PR/commit:
+- BLOCKED nếu sau vòng 3 còn vấn đề; không tự chấp nhận:
 
 ## Open Questions
-- Outside-spec issue: context, options, recommendation, dependent work left undone.
+- Vấn đề ngoài spec: bối cảnh, lựa chọn, khuyến nghị, phần phụ thuộc chưa thực hiện.

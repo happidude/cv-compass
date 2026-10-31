@@ -1,20 +1,21 @@
 # Roadmap
 
-No milestone is declared Active here. Current Active milestone, approved next
-scope and completion/merge statuses are **not confirmed** by this documentation
-migration. Source files, branch names and historical PASS counts are not approval.
+Không công bố milestone nào là Active tại đây. Milestone Active hiện tại,
+phạm vi tiếp theo đã duyệt và trạng thái hoàn thành/merge **chưa được xác nhận**
+bởi lần tổ chức tài liệu này. File source, tên branch và số liệu PASS lịch sử
+không phải phê duyệt.
 
-| Item | Evidence available | What remains unconfirmed |
+| Hạng mục | Bằng chứng có sẵn | Phần chưa xác nhận |
 | --- | --- | --- |
-| POC ingestion/database | [Foundation draft](POC_CV_INGESTION_DATABASE_FOUNDATION.md), [backend references](../backend/README.md) | Current acceptance/closure and remaining scope |
-| OCR integration/raw text | [Contract map](contracts/README.md), [worker README](../worker/README.md) | Current milestone status; production/accuracy approval |
-| Mapping | [sanitized mapping reference](specs/mapping-design-reference.md), [mapping references](../backend/MAPPING.md) | Design approval provenance and current milestone closure |
-| Candidate/review | [M11 document](../backend/M11.md), [report](../backend/M11_REPORT.md) | Current acceptance/closure and next scope |
-| Agent workflow maintenance | [Approved task spec](milestones/agent-workflow/spec.md) | Delivery evidence is separate; this is not an application milestone |
+| Tiếp nhận POC/database | [Bản nháp nền tảng](POC_CV_INGESTION_DATABASE_FOUNDATION.md), [tham chiếu backend](../backend/README.md) | Nghiệm thu/đóng hiện tại và phạm vi còn lại |
+| Tích hợp OCR/raw text | [Bản đồ contract](contracts/README.md), [README worker](../worker/README.md) | Trạng thái milestone hiện tại; phê duyệt production/accuracy |
+| Mapping | [tham chiếu mapping đã loại dữ liệu riêng tư](specs/mapping-design-reference.md), [tham chiếu mapping](../backend/MAPPING.md) | Nguồn phê duyệt thiết kế và trạng thái đóng milestone hiện tại |
+| Ứng viên/review | [Tài liệu M11](../backend/M11.md), [report](../backend/M11_REPORT.md) | Nghiệm thu/đóng hiện tại và phạm vi tiếp theo |
+| Bảo trì workflow agent | [Spec task đã duyệt](milestones/agent-workflow/spec.md) | Bằng chứng bàn giao riêng; không phải milestone ứng dụng |
 
-Use [milestone registry rules](milestones/README.md) before adding an entry. A human
-must identify the approved spec, status evidence and branch/worktree before a
-future milestone starts. No new numbering or implementation permission is implied.
+Đọc [quy tắc danh mục milestone](milestones/README.md) trước khi thêm mục.
+Con người phải xác định spec đã duyệt, bằng chứng trạng thái và branch/worktree
+trước khi bắt đầu milestone tương lai. Không ngụ ý số thứ tự mới hoặc quyền triển khai.
 
-Legacy branch/worktree plan is [historical](history/legacy-milestone-plan.md);
-it must not be used to select an Active task.
+Kế hoạch branch/worktree cũ là [lịch sử](history/legacy-milestone-plan.md);
+không được dùng để chọn task Active.

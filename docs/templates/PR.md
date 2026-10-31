@@ -1,5 +1,7 @@
-# Pull request template
+<a id="pull-request-template"></a>
 
-The single canonical template is
+# Mẫu pull request
+
+Mẫu chính duy nhất nằm tại
 [.github/pull_request_template.md](../../.github/pull_request_template.md).
-Use and maintain that file; this compatibility pointer contains no duplicate form.
+Dùng và bảo trì file đó; điểm trỏ tương thích này không chứa bản mẫu trùng lặp.

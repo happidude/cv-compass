@@ -1,16 +1,18 @@
-# Contract map
+<a id="contract-map"></a>
 
-This index locates existing contracts; it does not change or approve their content.
+# Bản đồ contract
 
-| Surface | Existing sources | Caution |
+Mục lục này xác định vị trí contract có sẵn; không thay đổi hoặc phê duyệt nội dung.
+
+| Bề mặt | Nguồn hiện có | Lưu ý |
 | --- | --- | --- |
-| OCR HTTP coordination | [M7 integration](../../worker/design/M7_INTEGRATION.md), backend OCR DTO/controller/tests | Contains v1 history; read raw-text extension too |
-| OCR result v1/v2 | [Raw-text v2](../../worker/design/OCR_V2_RAW_TEXT.md), worker/design/ocr-v1.schema.json, ocr-v1.limits.json, ocr-v2.schema.json, ocr-v2.limits.json | Canonical runtime assets; preserve paths and byte parity with backend copies |
-| Mapping | [Mapping](../../backend/MAPPING.md), [experience v2](../../backend/MAPPING_EXPERIENCE_V2.md) | Mixed implementation/spec; not automatic milestone acceptance |
-| Candidate/auth/public API | [M11](../../backend/M11.md), [backend guide](../../backend/README.md), frontend boundary schemas/tests | Earlier public API examples predate session/CSRF requirements |
+| Điều phối OCR HTTP | [Tích hợp M7](../../worker/design/M7_INTEGRATION.md), DTO/controller/test OCR backend | Có lịch sử v1; đọc thêm phần mở rộng raw-text |
+| Kết quả OCR v1/v2 | [Raw-text v2](../../worker/design/OCR_V2_RAW_TEXT.md), worker/design/ocr-v1.schema.json, ocr-v1.limits.json, ocr-v2.schema.json, ocr-v2.limits.json | Runtime asset canonical; giữ đường dẫn và byte parity với bản sao backend |
+| Mapping | [Mapping](../../backend/MAPPING.md), [experience v2](../../backend/MAPPING_EXPERIENCE_V2.md) | Trộn implementation/spec; không tự chứng minh nghiệm thu milestone |
+| Ứng viên/auth/public API | [M11](../../backend/M11.md), [hướng dẫn backend](../../backend/README.md), boundary schema/test frontend | Ví dụ public API trước đây có trước yêu cầu session/CSRF |
 
-The old referenced `docs/POC_OCR_API_CONTRACT.md` is absent from this checkout.
-Do not recreate an approved contract from assumptions. Before integration changes,
-reconcile the existing sources, actual shapes/status/auth/tests and developer
-approval; record disagreements in PR Open Questions. Historical references to the
-absent file remain evidence of the old gap, not active dependencies to read.
+File từng được tham chiếu `docs/POC_OCR_API_CONTRACT.md` không có trong checkout này.
+Không dựng lại contract đã duyệt từ giả định. Trước khi đổi tích hợp,
+đối chiếu nguồn hiện có, shape/status/auth/test thực tế và phê duyệt của developer;
+ghi khác biệt trong Open Questions của PR. Tham chiếu lịch sử đến file thiếu vẫn
+là bằng chứng khoảng trống cũ, không phải dependency hiện hành cần đọc.

@@ -1,30 +1,38 @@
-## Summary
-<Problem, resulting behavior or documentation outcome, important decisions.>
+<a id="summary"></a>
 
-## Approved spec and changes
-- Spec/approval source:
-- Acceptance criteria and evidence:
-- Changed files/modules:
-- API/DB/dependency/security/privacy impact:
-- Test ownership and handoffs follow [root Execution and delivery](../AGENTS.md#execution-and-delivery):
-- CI/security-hook scope: approved spec with exact paths/intent, or none:
-- Human-only operations: confirm no agent merge, GitHub settings/branch protection/rulesets, repository secret creation/editing, releases/tags or production database/server/deployment operations:
-- Scope exclusions:
+## Tóm tắt
+<Vấn đề, hành vi hoặc kết quả tài liệu sau thay đổi và quyết định quan trọng.>
 
-## Verification
-- Exact commit or reviewed payload fingerprint:
-- Local commands, environment, fresh counts, warnings and outcomes:
-- CI result and exact new head, separate from local and earlier delivery evidence:
-- Native role dispatch and secret scan: actual command/events, result or NOT VERIFIED/next action:
-- Canonical PR template tracked; private draft ignored/absent; frozen application/dependency/build/formatter/CI diff:
-- Reviewer/cycles (maximum three), findings and dispositions:
-- NOT VERIFIED / N/A checks, reasons and next actions:
-- Gate: ready for review / draft BLOCKED (never self-accept blockers).
+<a id="approved-spec-and-changes"></a>
+
+## Spec đã duyệt và thay đổi
+- Spec/nguồn phê duyệt:
+- Acceptance criteria và bằng chứng:
+- File/module thay đổi:
+- Ảnh hưởng API/DB/dependency/security/quyền riêng tư:
+- Trách nhiệm test và handoff theo [Thực hiện và bàn giao tại root](../AGENTS.md#thực-hiện-và-bàn-giao):
+- Phạm vi CI/security-hook: spec đã duyệt với chính xác đường dẫn/mục đích, hoặc không có:
+- Thao tác chỉ dành cho con người: xác nhận agent không merge, đổi GitHub settings/branch protection/rulesets, tạo/sửa repository secret, releases/tags hoặc thao tác database/server/deployment production:
+- Phần ngoài phạm vi:
+
+<a id="verification"></a>
+
+## Kiểm chứng
+- Commit hoặc fingerprint payload đã review chính xác:
+- Lệnh local, môi trường, số liệu mới, warning và kết quả:
+- Kết quả CI và head mới chính xác, tách khỏi local và bằng chứng bàn giao trước:
+- Native role dispatch và secret scan: lệnh/event thực tế, kết quả hoặc NOT VERIFIED/bước tiếp theo:
+- PR template chính đã track; bản nháp riêng tư ignored/không có trong commit; diff application/dependency/build/formatter/CI đóng băng:
+- Reviewer/số vòng (tối đa ba), finding và cách xử lý:
+- Check NOT VERIFIED / N/A, lý do và bước tiếp theo:
+- Gate: sẵn sàng review / bản nháp BLOCKED (không tự chấp nhận blocker).
 
 ## Open Questions
-<None, or context/options/recommendation and work left undone for each outside-spec decision.>
+<Không có, hoặc bối cảnh/lựa chọn/khuyến nghị và phần chưa thực hiện cho từng quyết định ngoài spec.>
 
-## Limitations and next step
-<Remaining limitations and next action. Root human-only operations are never
-performed by agents, regardless of task authorization. Record this task's actual
-exclusions and preserve any Draft-only instruction.>
+<a id="limitations-and-next-step"></a>
+
+## Giới hạn và bước tiếp theo
+<Giới hạn còn lại và bước tiếp theo. Agent không bao giờ thực hiện thao tác chỉ
+dành cho con người ở root, bất kể task có cho phép hay không. Ghi phần loại trừ
+thực tế của task và giữ mọi chỉ dẫn chỉ dùng Draft.>

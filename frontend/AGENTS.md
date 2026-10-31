@@ -1,19 +1,20 @@
-# Frontend agent rules
+<a id="frontend-agent-rules"></a>
 
-Inherits [root rules](../AGENTS.md). Edit frontend only within explicit task scope.
-Read [frontend conventions](../docs/conventions/frontend.md) and [README](README.md).
+# Quy tắc agent cho frontend
 
-- Keep React function components/hooks, strict TypeScript, Router, TanStack Query,
-  Zod and existing semantic CSS/Tailwind. Do not add dependencies or change tool config.
-- Preserve app/shared/features boundaries, public feature exports and hook order.
-  Server state uses Query; UI state stays local. Keep side-effect import order.
-- Validate HTTP data at boundaries; preserve wire fields, IDs, retry/cancellation
-  and upload unknown-outcome behavior. Never render OCR as HTML or store it locally.
-- No CV/token/body logging, real CV fixtures or production credentials in VITE bundles.
-- Prettier: 2 spaces, double quotes, semicolons, width 80; existing ESLint rules.
-  `npm exec prettier -- --write src tests`; no mass cleanup of runtime/generated assets.
-- Vitest `*.test.ts(x)`, Playwright `*.spec.ts`, MSW/Testing Library, synthetic data.
-  From frontend: `npm run check` and `npm run test:browser`.
-- Inspect actual reports/counts and warning output on final source. Existing CI
-  remains intact. See [verification](../docs/VERIFICATION.md); do not substitute
-  old verification evidence for a fresh check.
+Kế thừa [quy tắc root](../AGENTS.md). Chỉ sửa frontend trong phạm vi task rõ ràng.
+Đọc [convention frontend](../docs/conventions/frontend.md) và [README](README.md).
+
+- Giữ React function component/hooks, TypeScript strict, Router, TanStack Query,
+  Zod và semantic CSS/Tailwind hiện có. Không thêm dependency hoặc đổi cấu hình công cụ.
+- Giữ ranh giới app/shared/features, public feature export và thứ tự hook.
+  Server state dùng Query; UI state giữ cục bộ. Giữ thứ tự import có side effect.
+- Kiểm tra dữ liệu HTTP tại boundary; giữ wire field, ID, retry/cancellation
+  và cách xử lý kết quả upload không xác định. Không render OCR thành HTML hoặc lưu cục bộ.
+- Không log CV/token/body, dùng fixture CV thật hoặc đưa credential production vào VITE bundle.
+- Prettier: 2 spaces, double quotes, semicolons, width 80; giữ rule ESLint hiện có.
+  `npm exec prettier -- --write src tests`; không cleanup hàng loạt runtime/generated asset.
+- Vitest `*.test.ts(x)`, Playwright `*.spec.ts`, MSW/Testing Library, dữ liệu tổng hợp.
+  Từ frontend: `npm run check` và `npm run test:browser`.
+- Đọc report/số liệu và warning thực tế trên source cuối. Giữ nguyên CI hiện có.
+  Xem [kiểm chứng](../docs/VERIFICATION.md); không dùng bằng chứng cũ thay check mới.
