@@ -50,7 +50,11 @@ worker rechecks actual size/hash before OCR. Streaming checks elapsed time betwe
 reads; blocking socket writes remain an HTTP server/proxy deployment concern, not a
 claim of a hard filesystem I/O deadline. No transaction spans HTTP transfer/OCR.
 
-Result wrapper reuses docs/POC_OCR_API_CONTRACT.md and unchanged M6 result schema.
+The formerly referenced docs/POC_OCR_API_CONTRACT.md is absent in this checkout.
+See the [contract source map](../../docs/contracts/README.md) and
+[raw-text v2 extension](OCR_V2_RAW_TEXT.md) before changes; this historical v1
+description is not a replacement contract approval. The M6 schema snapshot remains
+preserved alongside v2.
 Strict UTF8, duplicate/unknown keys, depth32, body caps and M6 semantics remain.
 Digest is exact UTF8 HTTP bytes, not reserialized JSON. Deployment metadata is checked
 against the immutable admission snapshot; preflight failures retain null observations
