@@ -1,5 +1,3 @@
-<a id="milestone-and-task-registry"></a>
-
 # Danh mục milestone và task
 
 Một thư mục chứa `spec.md` và `verification.md`; bắt đầu từ mẫu

@@ -1,41 +1,26 @@
-<a id="verification"></a>
+# Kiểm chứng <task>
 
-# Kiểm chứng <task hoặc milestone>
+- Spec/nguồn phê duyệt:
+- Base/source SHA hoặc fingerprint payload; branch/worktree:
+- Mức workflow/lý do/giới hạn vòng theo [workflow](../AGENT_WORKFLOW.md):
+- Môi trường/prerequisite cô lập:
 
-<a id="source-and-scope"></a>
+## Check
 
-## Source và phạm vi
-- Spec/phê duyệt:
-- Base và commit đã test/review chính xác hoặc fingerprint payload:
-- File thay đổi và ánh xạ acceptance criterion → bằng chứng:
-- Môi trường/version công cụ, resource cô lập (không credential/đường dẫn chứa dữ liệu CV):
+CI là nguồn sự thật về gate CI; link run, không viết lại report dài.
 
-<a id="executed-checks"></a>
-
-## Check đã thực hiện
-| Lệnh và thư mục làm việc | Source | Kết quả | Tests / failures / errors / skipped | Bằng chứng |
+| Acceptance criterion | Lệnh thực tế/thư mục | Source | Kết quả | Log/report tóm tắt |
 | --- | --- | --- | --- | --- |
-| <lệnh thực tế> | <commit/fingerprint> | PASS / FAIL / NOT VERIFIED / N/A | <số liệu mới hoặc N/A> | <log/report, không dữ liệu riêng tư> |
+| <tiêu chí> | <lệnh> | <SHA/fingerprint> | PASS/FAIL/NOT VERIFIED/N/A | <link/số liệu/warning> |
 
-## Review
-- Số vòng (1–3), Reviewer, base/source, diff thực tế gồm file mới:
-- Finding: ID/severity/file:line/ảnh hưởng/bằng chứng/cách sửa/cách xử lý:
-- Warning đã sửa/còn lại, nguyên nhân/ảnh hưởng/lý do hoãn:
-- Acceptance criteria đã đạt hoặc chưa giải quyết:
+## Review và bàn giao
 
-<a id="delivery-and-limitations"></a>
-
-## Bàn giao và giới hạn
-- Local gate:
-- Kết quả CI và head mới chính xác (tách khỏi local và các lần bàn giao trước):
-- Lệnh/event/kết quả native custom-agent dispatch (parser PASS là bằng chứng riêng):
-- Lệnh/phạm vi/kết quả secret scanner hoặc NOT VERIFIED kèm bước tiếp theo:
-- PR template chính đã track; bản nháp M10.1 riêng tư ignored và không nằm trong commit:
-- Application/dependency/build/formatter/CI không đổi so với base PR khi có yêu cầu:
-- Phần chưa kiểm chứng, lý do và bước tiếp theo:
-- Nghiệm thu production/accuracy/dữ liệu thật (không bao giờ suy từ technical PASS):
-- Link PR/commit:
-- BLOCKED nếu sau vòng 3 còn vấn đề; không tự chấp nhận:
+- Reviewer/vòng/SHA đã review/finding và xử lý:
+- Local và CI tách riêng; link CI run/head chính xác:
+- Native dispatch/secret scan: bằng chứng thực tế hoặc NOT VERIFIED, lý do/bước tiếp:
+- Check chưa chạy/không liên quan: NOT VERIFIED/N/A kèm lý do/bước tiếp:
+- Giới hạn/gate/BLOCKED; link PR/commit:
 
 ## Open Questions
-- Vấn đề ngoài spec: bối cảnh, lựa chọn, khuyến nghị, phần phụ thuộc chưa thực hiện.
+
+<Bối cảnh/lựa chọn/khuyến nghị, phần phụ thuộc chưa làm.>

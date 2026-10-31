@@ -1,119 +1,62 @@
-<a id="agent-workflow"></a>
-
 # Workflow agent
 
-Dùng [quy tắc root](../AGENTS.md), [policy](AGENT_POLICY.md),
-[quy trình Git](CV_COMPASS_GIT_WORKFLOW.md), rules/conventions của component và
-[spec](templates/spec.md) đã duyệt. Quy trình này thay workflow một agent;
-kết quả lịch sử không cấp quyền triển khai hoặc chứng minh nghiệm thu.
+Task rõ là phê duyệt; thiếu thì chặn phần phụ thuộc.
 
-<a id="approval-and-orchestration"></a>
+## Chọn mức
 
-## Phê duyệt và điều phối
-
-Primary ghi spec đã duyệt, nguồn/ngày phê duyệt, base commit, branch/worktree,
-acceptance criteria, đường dẫn được phép, phần loại trừ và quyền.
-Task rõ ràng trong tin nhắn có thể là nguồn phê duyệt; không cần duyệt spec lần hai
-cho phạm vi đã được duyệt. Thiếu phê duyệt thì chặn phần triển khai phụ thuộc.
-Không suy ra milestone Active/hoàn thành; xem [roadmap](roadmap.md).
-
-Primary lần lượt điều phối spec → Implementer → Tester → Reviewer → PR.
-Trách nhiệm test theo [Thực hiện và bàn giao tại root](../AGENTS.md#thực-hiện-và-bàn-giao).
-Docs/config dùng check cấu trúc phù hợp; không thêm application test giả tạo
-hoặc dependency. Ngôn ngữ theo [quy tắc root](../AGENTS.md#thực-hiện-và-bàn-giao).
-
-| Vai trò | Phụ trách | Không được làm |
+| Mức | Điều kiện và luồng | Tối đa vòng |
 | --- | --- | --- |
-| Primary | Spec, phạm vi, handoff, bằng chứng, vòng sửa có giới hạn, điều phối docs/config, bàn giao Git/PR | Ghi đồng thời hoặc tự chấp nhận blocker chưa giải quyết |
-| Implementer | Production code đã duyệt, test/helper/synthetic fixture đi cùng và docs trong phạm vi | Làm yếu assertion/check/coverage hoặc mở rộng phạm vi |
-| Tester | Kiểm chứng acceptance độc lập, test còn thiếu và test helper/synthetic fixture | Sửa production code, làm yếu assertion/check/coverage hoặc dùng subset thay full check |
-| Reviewer | Review chỉ đọc toàn bộ diff/context và báo finding | Sửa file, chạy công cụ tạo file, nghiệm thu thay developer |
+| 1 | Docs/format/comment/sửa hiển nhiên không đổi nghiệp vụ: Primary → check → CI; không spawn subagent | 2 |
+| 2 | Hành vi thường; quy tắc/AGENTS.md/policy/TOML/template/CI/security hook luôn tối thiểu mức 2, kể cả docs: Implementer + test → affected tests → CI → Reviewer chỉ đọc; không Tester riêng | 2 |
+| 3 | Bắt buộc: persistence/migration, auth/security, logic dữ liệu cá nhân, API/OCR contract, transaction/async, cô lập/sandbox worker hoặc > khoảng 10 file code: Implementer → Tester → Reviewer | 3 |
 
-Mỗi working tree chỉ có một writer, kể cả Primary, agent, formatter/build và test
-tạo file. Primary cấp lease ghi độc quyền rõ ràng: người giữ quyền, đường dẫn,
-base/source, nhiệm vụ, lệnh được phép và report dự kiến. Chờ agent hoàn tất và trả
-quyền trước writer kế tiếp; chỉ ngắt agent chưa đủ để trả quyền: xác nhận subprocess
-đã dừng và đọc status/diff. Reviewer chỉ đọc khi mọi writer/check đã dừng.
-Không ghi nền. Các worktree khác cần phạm vi độc lập; không mặc nhiên cho phép
-sửa contract dùng chung đồng thời.
+Developer được ép luồng. Docs/config chỉ check cấu trúc, không test giả/dependency.
 
-Mỗi handoff có link spec/phê duyệt, base/current commit hoặc fingerprint,
-đường dẫn đã sửa/untracked, lệnh/kết quả, finding và người nhận tiếp theo.
-Agent đọc quy tắc áp dụng; không được giao việc tiếp hoặc publish nếu Primary chưa
-phân công rõ. Primary vẫn chịu trách nhiệm phạm vi và toàn bộ bằng chứng.
+## Brief và handoff
 
-<a id="bounded-implementation-verification-and-review"></a>
+Brief (<25 dòng):
 
-## Triển khai, kiểm chứng và review có giới hạn
+```text
+Spec: <link, nguồn/ngày duyệt>; acceptance: <tiêu chí>
+Path sửa/loại trừ: <...>
+Base/source: <SHA/fingerprint, branch/worktree>
+Mức/lý do/tối đa vòng: <...>
+Role/chủ sửa/lease: <người, path, lệnh, report>
+Tài liệu cần đọc: <AGENTS root/component, spec/brief; theo trigger>
+Reviewer backend/worker: <thêm docs/AGENT_POLICY.md mục Kiến trúc và dữ liệu vào dòng trên>
+không đọc tài liệu khác
+Handoff: <file/untracked, source, lệnh/kết quả, finding, người nhận>
+```
 
-1. Chỉ triển khai tiêu chí đã duyệt, giữ ownership code và contract hiện có.
-2. Tester chạy affected checks rồi full local gate áp dụng trên source cuối;
-   theo [kiểm chứng](VERIFICATION.md), đọc report mới và warning.
-3. Reviewer đọc toàn diff so với base thống nhất, phần staged/unstaged và file mới
-   dự định đưa vào, cùng caller/contract/test liên quan. Đánh giá acceptance,
-   tính đúng, ranh giới module/transaction, security/quyền riêng tư, concurrency,
-   logging và thiếu test; mục không liên quan ghi N/A kèm lý do.
-4. Finding cần ID ổn định, severity, file/line chính xác, ảnh hưởng, bằng chứng
-   hoặc cách tái hiện, cách sửa đề xuất và trạng thái xử lý: mở / đã sửa và
-   kiểm chứng / bác bỏ có bằng chứng. Thiếu check là thiếu bằng chứng, không phải lỗi bịa ra.
-5. Primary giao lỗi production cho Implementer và lỗi trong test do Tester thêm
-   cho Tester. Mỗi lần sửa có người phụ trách và lease ghi độc quyền rõ ràng,
-   rồi chạy affected verification, full gate bắt buộc trên source cuối và Reviewer review lại.
+Primary chịu trách nhiệm bằng chứng; subagent không tự delegate/publish/task mới.
+Trả lease trước writer kế: chờ xong, xác nhận subprocess dừng, đọc status/diff; interrupt chưa đủ.
+Không ghi nền; worktree riêng cần độc lập, không mặc nhiên sửa contract chung đồng thời.
+Reviewer chờ writer/check dừng; không format/build/test/tool ghi, cài tool/đổi Git/publish.
 
-Tối đa **ba vòng sửa–test–review hoàn chỉnh**, lần review đầu tính là vòng 1.
-Giữ một bộ đếm cho task; sửa lỗi/đổi agent không đặt lại bộ đếm.
-Critical: lộ dữ liệu/mất dữ liệu; High: lỗi lớn về tính đúng/security/acceptance;
-Medium: lỗi hoặc thiếu test đáng kể; các mức đó chặn nghiệm thu. Low có thể ghi nhận.
-Không tự mở vòng 4. Sau vòng 3 còn blocker: báo **BLOCKED**, giữ bằng chứng và yêu cầu
-task/quyết định mới có giới hạn. Không bỏ finding để qua gate.
-Vấn đề ngoài spec ghi trong Open Questions của PR; chỉ tiếp tục phần đã duyệt độc lập.
-Trở ngại môi trường là BLOCKED, check là NOT VERIFIED; check thất bại được chứng minh
-là FAIL. Cả hai đều không phải PASS.
+## Vòng sửa và review
 
-<a id="delivery-gate"></a>
+Check/log: [kiểm chứng](VERIFICATION.md). Review đầu là vòng 1; đổi agent/sửa lỗi không reset.
+Primary giao lỗi production → Implementer, lỗi test do Tester thêm → Tester; sửa/check/review trong ngân sách.
+Review đầu: toàn diff/base (committed/staged/unstaged/mới), caller/contract/test;
+kiểm acceptance/đúng/module/transaction/security/privacy/concurrency/logging/test thiếu; N/A cần lý do.
+Sau: delta từ SHA đã review + finding cũ; mức 3 cuối đọc toàn diff.
+Finding: ID ổn định, severity, file:line, ảnh hưởng, bằng chứng/tái hiện, cách sửa/chủ sửa;
+mở/đã sửa và kiểm chứng/bác bỏ có bằng chứng. Không bịa lỗi từ check thiếu.
+Critical (lộ/mất dữ liệu), High (lỗi lớn đúng/security/acceptance), Medium (lỗi/test thiếu đáng kể) chặn nghiệm thu;
+Low có thể ghi nhận. Hết vòng còn blocker: BLOCKED, giữ bằng chứng, cần task/quyết định mới có giới hạn;
+không tự thêm vòng/bỏ finding.
 
 ## Gate bàn giao
 
-Đạt mọi tiêu chí, không còn Critical/High/Medium, local check trong phạm vi PASS,
-review toàn diff cuối, không secrets/CV/runtime artifact và diff-check sạch.
-Sửa sau review phải review lại trong ngân sách còn lại. Bằng chứng local và CI
-xác định cùng source cuối; báo riêng từng loại, kể cả CI lọc theo đường dẫn.
-Không tuyên bố sẵn sàng merge khi CI bắt buộc chưa xanh.
+Đạt acceptance, hết blocker, local PASS, review theo mức; không secrets/CV/runtime artifact, diff-check sạch.
+Sửa sau review phải review lại; [mẫu bằng chứng](templates/verification.md).
+CI bắt buộc chưa xanh không nói sẵn sàng merge. Snapshot yêu cầu rõ có thể Draft khi check bị chặn;
+ghi BLOCKED/NOT VERIFIED, chưa hoàn tất. [Git/PR](CV_COMPASS_GIT_WORKFLOW.md).
 
-Dùng [mẫu kiểm chứng](templates/verification.md) và [PR template](../.github/pull_request_template.md).
-Stage đường dẫn rõ ràng, đọc staged diff, commit theo Conventional Commits, push
-branch đã duyệt và mở PR. Quyền commit/push đã có vẫn hiệu lực; không hỏi lại.
-Nếu check bắt buộc bị chặn, source snapshot được yêu cầu rõ ràng có thể publish
-dưới dạng **draft**, nêu blocker và check NOT VERIFIED; không coi là đã nghiệm thu/
-hoàn tất. Sửa CI workflow/security hook cần spec đã duyệt liệt kê chính xác
-đường dẫn và mục đích; không làm yếu hoặc bỏ check để có kết quả xanh.
-Đề xuất ngoài phạm vi ghi dưới Open Questions. Merge, GitHub settings/branch
-protection/rulesets, tạo/sửa repository secret, releases/tags và thao tác
-database/server/deployment production chỉ dành cho con người: agent không bao giờ
-thực hiện, bất kể task có cho phép hay không. Lượt follow-up workflow này không
-thực hiện thao tác nào trong số đó. Không tự xóa branch/worktree.
-Dừng ở nhiệm vụ được giao.
+## Custom agent
 
-<a id="codex-custom-agents"></a>
-
-## Custom agent của Codex
-
-Đối chiếu tài liệu OpenAI chính thức ngày 2026-10-31:
-[custom agent và kiểm soát](https://learn.chatgpt.com/docs/agent-configuration/subagents),
-[tham chiếu cấu hình](https://learn.chatgpt.com/docs/config-file/config-reference),
-và [cách nạp AGENTS.md](https://developers.openai.com/codex/guides/agents-md).
-
-Định nghĩa dự án là các file riêng `.codex/agents/{implementer,tester,reviewer}.toml`;
-field bắt buộc: name, description, developer_instructions.
-`.codex/config.toml` bật agent và giới hạn một subagent đang mở; đóng agent đã
-hoàn tất trước khi tạo agent khác. Primary vẫn kiểm soát lease ghi độc quyền.
-Model/effort kế thừa phiên; không pin model riêng cho tài khoản.
-Reviewer chỉ đọc theo chỉ dẫn: custom file kế thừa quyền của phiên chính và không
-thể thực thi sandbox chỉ đọc riêng. Khi cần cô lập review mạnh hơn, dùng phiên chính
-read-only; không khẳng định chỉ dẫn TOML thực thi cô lập ở mức hệ điều hành.
-
-Cấu hình dự án có thể cần checkout được tin cậy và phiên mới. Xác minh riêng
-syntax/schema và việc phát hiện role thực tế. Chat hiện tại không tự nạp lại role mới.
-Nếu không có custom-role dispatch, báo rõ và dùng các vai trò được chỉ dẫn tuần tự,
-không tuyên bố native dispatch thành công.
-Không cần global setting, credential, MCP service hoặc dependency mới.
+`.codex/agents/*.toml`: name/description/developer_instructions; chỉ một subagent, đóng xong mới tạo.
+Model/effort/quyền kế thừa; không pin model tài khoản.
+Reviewer read-only là chỉ dẫn, không sandbox OS; cô lập mạnh dùng phiên read-only.
+Có thể cần trust/phiên mới, không hot-reload. Thiếu native dispatch: vai trò tuần tự có chỉ dẫn,
+báo rõ. Không cần global setting/credential/MCP/dependency mới.
