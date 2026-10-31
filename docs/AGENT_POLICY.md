@@ -25,20 +25,19 @@ tổ chức rules/docs không cấp quyền đổi ứng dụng.
 
 ## Kiến trúc và dữ liệu
 
+[Bất biến dữ liệu tại root](../AGENTS.md#bất-biến-dữ-liệu) là nguồn chính; phần này chỉ bổ sung chi tiết.
+
 - Modular monolith + Python worker riêng, giữ public interface Modulith, không tạo vòng phụ thuộc.
-  Spring Boot sở hữu ghi DB, vòng đời job/retry/quyền worker độc quyền, validation,
-  chuẩn hóa/liên kết ứng viên. Host supervisor chỉ internal HTTP đã thống nhất;
-  PDF child offline, không DB/HTTP/credential/Docker socket.
-- Giữ PDF gốc, raw extraction/OCR và kết quả cấu trúc; không ghi đè nguồn, bịa field,
-  tự gộp danh tính hoặc unique tên/email/điện thoại. Liên kết ứng viên nullable;
-  chưa biết để null/bỏ qua. Không coi “Present” cũ vẫn hiện tại hoặc cộng trùng kinh nghiệm chồng lấn.
-  Thất bại không bao giờ xóa bản gốc; upload thành công độc lập OCR. Kiểm tra kiểu/kích thước/đường dẫn an toàn.
-- Chỉ cơ chế log/allowlist hiện có; không log dữ liệu cá nhân/nội dung CV/body/token/đường dẫn tùy ý/exception tự do.
+  Spring Boot sở hữu vòng đời job/retry/quyền worker độc quyền và liên kết ứng viên.
+  PDF child không DB/HTTP/credential/Docker socket.
+- Hệ thống giữ kết quả cấu trúc, không ghi đè nguồn; không unique tên/email/điện thoại.
+  Liên kết ứng viên nullable; chưa biết để null/bỏ qua. Không coi “Present” cũ vẫn hiện tại
+  hoặc cộng trùng kinh nghiệm chồng lấn. Upload thành công độc lập OCR; kiểm tra kiểu/kích thước/đường dẫn an toàn.
+- Chỉ cơ chế log/allowlist hiện có; không log exception tự do.
   Test dùng dữ liệu tổng hợp, schema/storage cô lập, không development/runtime/production.
   Technical PASS không mở gate production/accuracy OCR chưa giải quyết.
 - PostgreSQL 17, chỉ Flyway; UPPERCASE_SNAKE_CASE có quote, BIGINT identity,
   TIMESTAMPTZ, PK/FK rõ, JSONB theo thiết kế. Không Hibernate auto-update, PDF binary trong DB,
   bảng search suy đoán. Giữ nguyên byte/đường dẫn runtime schema/limits và build provenance.
-- LLM/parser/prompt, search/ranking/embedding/vector DB, matching/merging, taxonomy/normalization,
-  tuyển dụng/đối tác/báo cáo/phân tán/hạ tầng mới hoặc tính năng tương lai cần duyệt riêng;
-  không tự thêm Kafka/RabbitMQ/Redis/Kubernetes.
+- Vector DB, matching/merging, taxonomy/normalization, tuyển dụng/đối tác/báo cáo/phân tán
+  hoặc tính năng tương lai cần duyệt riêng; không tự thêm Kafka/RabbitMQ/Redis/Kubernetes.

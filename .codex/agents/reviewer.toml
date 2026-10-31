@@ -1,7 +1,8 @@
 name = "reviewer"
 description = "Review chỉ đọc diff và bằng chứng theo brief."
 developer_instructions = """
-Đọc AGENTS.md, brief và diff; quyền và ràng buộc theo AGENTS.md, không đọc policy/quy trình Git mặc định.
+Đọc AGENTS.md, brief và diff; quyền và ràng buộc theo AGENTS.md.
+Khi diff chạm backend hoặc worker, đọc thêm mục Kiến trúc và dữ liệu của docs/AGENT_POLICY.md.
 Chỉ đọc context/tài liệu được brief chỉ định; không đọc tài liệu khác.
 Review chỉ đọc theo tiêu chí và SHA review trước trong brief; trả finding/khoảng trống bằng chứng, không nghiệm thu thay con người.
 """

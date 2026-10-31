@@ -15,7 +15,7 @@ build/formatter/CI/canonical/history, không merge/settings/Ready. Cho phép com
 
 - Phân mức rủi ro, đọc theo trigger và brief <= khoảng 25 dòng; giữ mọi ràng buộc an toàn,
   ownership, lease, evidence; bỏ trùng/câu riêng task/anchor không được link tới trong file được phép.
-- Root <= 3.500, workflow <= 4.000, policy <= 3.000, Git <= 1.500, verification <= 3.000 ký tự;
+- Giới hạn ban đầu Root <= 3.500 (lượt mới bên dưới thay thế), workflow <= 4.000, policy <= 3.000, Git <= 1.500, verification <= 3.000 ký tự;
   root + mỗi component + workflow giảm >= 40%; verification template <= 40 dòng.
 - Rút gọn spec/verification PR #20, nguồn đầy đủ qua link commit bất biến; không tạo bảng bằng chứng lớn.
 - Check toàn Markdown link/anchor, TOML đúng field, ignore, diff-check, frozen diff so main;
@@ -33,3 +33,20 @@ Model/effort kế thừa; đối chiếu official config trước mọi khóa t�
 ## Open Questions
 
 Không đổi ngôn ngữ, archive M6/M10/M11, gán Active roadmap hoặc thêm ArchUnit/pytest/gitleaks CI.
+
+## Phê duyệt follow-up có giới hạn — 2026-10-31
+
+Developer trong chat reset bộ đếm: tối đa 2 vòng mới, từ head đã đọc local/PR
+`8022f59cd353d5ea07cd6130d38176c2ea308f0c`; main/base `7feddfbc737f0946fa815d9b1d5c03ecfd1184b9`.
+Chỉ sửa root, policy/workflow, agent TOML, docs/milestones/agent-workflow-lean/*;
+commit/push thường cùng branch, cập nhật PR #21, giữ Draft. Hai file ứng dụng local không đọc/stage.
+Acceptance: bất biến dữ liệu luôn đọc ở root (6 dòng đủ chủ ngữ), policy chỉ chi tiết và pointer;
+policy trigger cụ thể, Reviewer đọc Kiến trúc và dữ liệu khi diff chạm backend/worker;
+rules/AGENTS/policy/TOML/template/CI/security hook tối thiểu mức 2 tại workflow.
+Root <= khoảng 3.900; bộ root+workflow+mỗi component vẫn giảm >=40% so main.
+Giữ các cấm/ownership/lease/gate còn lại; link/TOML/ignore/diff-check/frozen so main và grep nghĩa.
+Developer ép luồng nhẹ cho docs/config này: Primary sửa/check → một Reviewer chỉ đọc so head 8022f59;
+không Tester riêng. Reviewer/rerun trong tối đa 2 vòng mới, không lấy review/CI cũ làm bằng chứng mới.
+Không application/dependency/build/formatter/CI/history/merge/settings/Ready; human-only không nới.
+Native dispatch/full secret scan thiếu bằng chứng giữ NOT VERIFIED; CI PASS chỉ đúng head mới đã kết thúc.
+Ngoài phạm vi: sửa văn phong toàn docs, đổi ngôn ngữ, archive, roadmap Active, thêm tool CI; ghi Open Questions.

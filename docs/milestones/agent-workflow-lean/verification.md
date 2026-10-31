@@ -5,7 +5,7 @@
 - Mức: luồng nhẹ developer ép, Primary → check cấu trúc → Reviewer chỉ đọc; docs/config thuần túy.
 - Môi trường: PowerShell/Python stdlib; script/log tạm backend/build/agent-workflow-lean ignored.
 
-## Kết quả
+## Bằng chứng trước follow-up — 8022f59
 
 Local: `py -3.14 -X utf8 backend/build/agent-workflow-lean/check.py` từ root (Python 3.14.6):
 PASS 72 Markdown/231 link và anchor, 4 TOML đúng field, 33/33 ignore probes,
@@ -35,3 +35,18 @@ Khóa model/effort tùy chọn chưa áp dụng; nguồn đối chiếu ngày 20
 Schema có hai khóa agents.default_subagent_model/default_subagent_reasoning_effort và project overrides;
 chưa có giá trị model độc lập tài khoản/effort phù hợp mọi mức nên giữ kế thừa, không đoán.
 Không đổi ngôn ngữ, archive báo cáo cũ, gán Active hay thêm công cụ CI.
+
+## Follow-up evidence — 2026-10-31
+
+- Nguồn mới đã đọc local/PR: `8022f59cd353d5ea07cd6130d38176c2ea308f0c`; main vẫn `7feddfb`.
+- Developer reset: vòng 1, tối đa 2 vòng mới; mức 2 do rules/config, ép luồng nhẹ Primary → check cấu trúc → Reviewer chỉ đọc.
+- Lệnh từ root: `py -3.14 -X utf8 backend/build/agent-workflow-lean-followup/check.py` (Python 3.14.6/PowerShell).
+- Local PASS: 72 Markdown/228 link và anchor, 0 hỏng; 4 TOML đúng field, 33/33 ignore probes;
+  diff-check/whitelist frozen so main, bất biến root không trùng policy, trigger và human-only giữ nguyên.
+- Root <=3.900; bộ đọc mỗi component giảm >=40%. Số đo và bảng đối chiếu cập nhật chỉ tại PR, không commit bảng.
+- Reviewer so toàn diff follow-up từ 8022f59; finding/vòng/source tree cuối tại PR. Mọi writer/check dừng trước review.
+- Source CI/local, kết quả review và CI head mới tại PR; không dùng CI 8022f59 làm bằng chứng mới.
+- Native dispatch/full secret scan: NOT VERIFIED, chưa chạy được chứng minh role/scanner đầy đủ;
+  bước tiếp là phiên hỗ trợ role và scanner sẵn có được duyệt, không đổi máy/trust/cài global.
+- Giữ hai file ứng dụng local ngoài index, không đọc/hash; application tests local N/A (chỉ docs/config).
+- Open Questions: văn phong toàn tài liệu, ngôn ngữ, archive cũ, roadmap Active, thêm tool CI; chưa làm.
