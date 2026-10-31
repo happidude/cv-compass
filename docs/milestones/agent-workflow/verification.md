@@ -1,5 +1,10 @@
 # Agent workflow maintenance verification
 
+## Initial delivery evidence — historical
+
+The following initial-delivery evidence applies to f0c4049a28da23f79ffcd6c965b048dcba3cc8e3
+and its earlier review budget only. It is not verification of the follow-up below.
+
 ## Source and acceptance
 
 Approved [spec](spec.md), base 81a8a6220e34871ea9fc68aa8e65d19785d0eff9,
@@ -62,3 +67,63 @@ legacy POC contract/milestone/local handoff documents remain documented gaps;
 integration changes must reconcile approval/contracts before depending on them.
 Native custom-agent discovery requires a new trusted Codex session that loads
 the project definitions; this chat cannot claim it hot-reloaded them.
+
+
+## Follow-up evidence — 2026-10-31
+
+Fresh authorization and acceptance criteria: [spec follow-up](spec.md#follow-up-authorization--2026-10-31).
+Starting inspected local/PR head: f0c4049a28da23f79ffcd6c965b048dcba3cc8e3.
+PR base: 81a8a6220e34871ea9fc68aa8e65d19785d0eff9. This is a new maximum-three-cycle
+iteration; the initial delivery's three passes do not validate these edits.
+
+Implementation scope: synchronized test ownership and scoped CI/sensitive-operation
+authorization, canonical tracked .github PR template and active links. Implementer
+edits rules/docs/TOML only; primary assigns exclusive handoffs. No application,
+dependency, build/formatter, CI workflow, GitHub settings, production, release,
+merge, Ready transition, new archive or milestone-status changes are authorized.
+
+Fresh cycle 1 independent Tester, Windows/PowerShell, Python 3.14.6 stdlib and
+codex-cli 0.164.0; exclusive lease for temporary verification outputs and this
+follow-up section only. No application checks are applicable to docs/config edits.
+
+- Command: py -3.14 E:/cv-compass/backend/build/agent-workflow-followup/check.py.
+  PASS on the complete safe PR payload: 36 files, 31 Markdown files, 150 relative
+  links, zero missing targets/anchors/ignored targets, four TOML definitions and
+  31/31 ignore probes. The follow-up changes 17 paths. Initial temporary phrase
+  checking was line-wrap-sensitive; normalizing whitespace corrected the helper,
+  and the same acceptance assertions passed without production changes.
+- Independent ownership/authorization checks PASS: Implementer accompanying tests,
+  helpers and synthetic fixtures; independent Tester acceptance/missing tests with
+  no production fixes; read-only Reviewer; primary assigns one repair owner/write
+  lease; no weakened assertions/checks/coverage; explicitly scoped CI/hooks and
+  separately assigned/authorized sensitive operations. Historical/task-specific
+  restrictions were distinguished from current general rules.
+- Canonical .github/pull_request_template.md is trackable, with the former docs
+  form a single compatibility pointer. Private original M10.1 draft remains
+  ignored and absent from intended/index files; it was not read/scanned/copied/
+  hashed. Application/dependency/build/formatter/CI diff against PR base is empty.
+- Commands git diff --check and git diff --cached --check: PASS. At this check the
+  index is empty; untracked-template whitespace was separately checked and is
+  clean. Template staging/full staged-payload parity still require primary staging
+  and final read-only review; empty-index PASS is not staged-template evidence.
+- Native attempt: codex -a never exec --ephemeral --sandbox read-only --cd
+  E:/cv-compass --json <bounded custom-role smoke prompt>; exit 0 in 40.25 seconds.
+  Actual JSONL has three wait events with empty receiver identities and no spawn
+  event proving the project definitions. The final response is
+  NATIVE_DISPATCH_NOT_VERIFIED. Textual claims of role tokens are not dispatch
+  proof. No shell/file/application/publishing work was requested in that smoke.
+  Next action: a trusted supported session must expose actual named-role spawn
+  events for all three project definitions; no trust/model/settings bypass used.
+- Secret scanner: Get-Command gitleaks,trufflehog found neither; command-v probes
+  in existing WSL/default and CVCompass-Ubuntu-24.04 returned exit 1 with no scanner.
+  Full secret scan NOT VERIFIED; no tools installed. Next action: use an approved
+  existing/provisioned scanner on the safe Git payload, with redacted output.
+- Safe file SHA256 fingerprints and fresh results are in ignored
+  backend/build/agent-workflow-followup/results.json; bounded native JSONL/result
+  is retained alongside it. This record identifies the starting commit plus exact
+  current payload; it does not claim a future commit hash or old-delivery PASS.
+
+Cycle 1 independent read-only review and final staged verification are pending.
+CI for the new follow-up head is NOT VERIFIED until it is pushed and actual runs
+are inspected. Native dispatch/full secret scan remain NOT VERIFIED as above.
+Keep Draft; no completion/merge-readiness or application milestone claim.

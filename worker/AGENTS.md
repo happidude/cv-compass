@@ -24,3 +24,8 @@ Inherits [root rules](../AGENTS.md). Read [worker conventions](../docs/conventio
   baseline build/verifier and fresh `tests/run_checks.py --xml <fresh-path>`
   reports. Subset/syntax checks never establish full Docker PASS.
   Follow [verification](../docs/VERIFICATION.md) and preserve cleanup ownership.
+
+- Implementer may write accompanying tests, helpers and synthetic fixtures; prefer
+  test-first for behavior changes. Tester independently verifies acceptance criteria
+  and adds missing tests, never production code. Primary assigns each repair with
+  one writer at a time; no role may weaken assertions/checks or reduce coverage.

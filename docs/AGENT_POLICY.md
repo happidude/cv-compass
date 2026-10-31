@@ -4,23 +4,39 @@ Authority: [root rules](../AGENTS.md). This file retains repository-wide control
 from the former long root rules; component conventions retain implementation detail.
 Explicit developer approval for the current spec authorizes only the listed scope.
 
-## Level A — human-only / forbidden to agents
+## Level A — safety invariants
 
-Never read, print, edit or commit secrets (`.env*`, keys, keystores, credentials,
-private production configuration). Fake example files may be tracked but are not
-a reason to inspect private configuration. Never commit real CVs/personal data or
-send CV content to external AI/third parties or call services using real credentials.
+Secrets, private environment/production configuration and real CVs are confidential.
+Never print, log or commit secret values or real CV/personal data. Fake examples
+may be tracked but do not authorize reading private configuration. Ordinary
+development does not access private environments, production config or real CVs.
+Secret access/management requires a separately assigned, explicitly authorized
+task and an approved secure mechanism; authorization never permits disclosure.
+Never send CV content to external AI/third parties or call application services
+using real credentials as part of ordinary development.
 
-Never touch production databases/servers/deployments, releases/tags, CI/CD pipelines,
-branch protection/security hooks or GitHub settings. Never edit an applied Flyway
-migration. Never merge, force push, push main, rewrite history, delete remote branches,
-disable/bypass hooks, weaken checks, disable/skip tests, lower coverage, remove
-assertions or add blanket suppressions to obtain green results.
+Never weaken assertions, skip checks/tests, lower coverage, remove assertions or
+add blanket suppressions to obtain green results. Never bypass hooks, edit applied
+Flyway migrations, force push, push main, rewrite history, delete remote branches
+or run destructive filesystem/SQL/Git cleanup. No global tool installation,
+machine configuration changes or edits outside the repository. Rule-file edits
+require task authorization. Never automatically delete local branches/worktrees.
 
-No destructive filesystem/SQL/Git cleanup (recursive forced deletion, DROP/TRUNCATE,
-reset-hard, git clean). No edits outside the repository, global tools or machine
-configuration. No rule-file edits unless the task authorizes them.
-Never automatically delete local branches/worktrees.
+## CI and separately authorized sensitive operations
+
+CI workflows and security hooks may be changed only when an approved task
+explicitly covers those files and intended changes. Preserve required checks;
+approval is never permission to weaken checks to conceal defects. Without that
+scope, propose the change under PR Open Questions and continue independent work.
+
+GitHub settings, rulesets, repository secrets, production databases/servers/
+deployments, releases/tags and merge are outside the normal development workflow.
+Perform them only when the developer separately assigns the operation and grants
+explicit authorization for its target and scope. Existing implementation or
+commit/push/PR permission is not that authorization. A clearly approved task is
+actionable without asking again; do not interpret this policy as an every-task
+ban. This agent-workflow follow-up changes rules only and performs none of these
+sensitive operations or CI/security-hook edits.
 
 ## Level B — explicit scope approval required
 
@@ -42,6 +58,11 @@ as it does for the agent-workflow task; it does not authorize application change
 
 Implement scoped code/tests, run existing format/lint/test tools, update related
 docs, create a dedicated branch and commit/push/open a PR when authorized.
+Implementer may write accompanying tests, helpers and synthetic fixtures, preferring
+test-first for behavior changes. Tester independently verifies acceptance criteria
+and adds missing tests, never production code. Primary explicitly assigns the
+repair owner and an exclusive write lease. No role may weaken assertions/checks,
+skip verification or reduce coverage to conceal defects.
 Do not treat a milestone plan or existing implementation as permission.
 
 ## Architecture, data and privacy
@@ -72,5 +93,6 @@ recruitment/partner workflows, reporting and distributed processing require
 separate approval. Do not introduce Kafka, RabbitMQ, Redis or Kubernetes implicitly.
 
 Secret/dependency scanning in CI is a target, not a claim of existing coverage.
-Propose CI/security-hook changes in docs/PR for a human; do not edit those files.
+CI/security-hook edits require the explicit approved scope described above;
+otherwise record the proposal in docs/PR without performing it.
 Report any exposed secret immediately for human rotation, without reproducing it.

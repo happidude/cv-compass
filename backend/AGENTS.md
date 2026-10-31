@@ -21,3 +21,8 @@ Inherits [root rules](../AGENTS.md). Read [backend conventions](../docs/conventi
 - Backend source/test changes require affected tests then the full final local
   check with isolated PostgreSQL schema/storage. Follow [verification](../docs/VERIFICATION.md);
   inspect fresh XML counts and warnings. Never use development/runtime data.
+
+- Implementer may write accompanying tests, helpers and synthetic fixtures; prefer
+  test-first for behavior changes. Tester independently verifies acceptance criteria
+  and adds missing tests, never production code. Primary assigns each repair with
+  one writer at a time; no role may weaken assertions/checks or reduce coverage.

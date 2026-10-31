@@ -39,3 +39,38 @@ Check relative targets/anchors, TOML shape, role boundaries, reference migration
 ignore probes, unchanged CI/source/build/dependency artifacts and diff whitespace.
 Record unavailable native role discovery or CI as NOT VERIFIED. Use maximum three
 review cycles. Publish a draft if required verification remains blocked.
+
+## Follow-up authorization — 2026-10-31
+
+A new explicit developer request authorizes a fresh maximum of three fix–test–review
+cycles for Draft PR #20 on chore/agent-workflow. Inspected starting local/PR head:
+f0c4049a28da23f79ffcd6c965b048dcba3cc8e3; PR base:
+81a8a6220e34871ea9fc68aa8e65d19785d0eff9. Earlier checks/reviews remain historical
+evidence for the initial delivery, not checks of this follow-up.
+
+Acceptance criteria:
+1. Implementer may write accompanying tests/helpers/synthetic fixtures and prefers
+   test-first for behavior changes. Tester independently verifies acceptance and
+   adds missing tests, never production fixes. All roles preserve assertions/checks/
+   coverage. Primary assigns each repair with one writer at a time.
+2. CI/security-hook edits require an explicitly approved task scope; checks cannot
+   be weakened for green results. GitHub settings/rulesets/secrets, production,
+   release and merge require a separately assigned task and explicit authorization;
+   they are outside ordinary development. This follow-up performs none of them.
+3. Canonical PR template is .github/pull_request_template.md, tracked, with the old
+   docs template reduced to a pointer and relevant links updated.
+4. Synchronize active rules/policy/workflow/verification/templates/custom-agent
+   definitions. Do not rewrite historical evidence to imply fresh verification.
+5. Independently check links/anchors, TOML, ignores, staged/unstaged whitespace,
+   template tracking and private draft exclusion; review the entire PR diff.
+   Prove application/dependency/build/formatter/CI files unchanged against PR base.
+6. Attempt native role dispatch and an available secret scanner without global
+   installation or machine changes; missing support is NOT VERIFIED with next action.
+7. Conventional Commit, normal push to the same branch, update PR description with
+   final head and actual evidence. Keep Draft; no merge/force push/Ready/settings.
+
+Allowed paths: root/component AGENTS, .codex agent TOML, policy/workflow/verification,
+related templates/docs/links and .github/pull_request_template.md only. Application,
+dependency, build/formatter config and .github/workflows are frozen. No new archives,
+documentation deduplication sweep or Active milestone assignment. Primary coordinates
+→ Implementer edits → Tester verifies → Reviewer reads only, with exclusive handoffs.

@@ -13,7 +13,7 @@ stay ignored. Classification is by content; names alone never justify moving fil
 | Verification | [Procedure](VERIFICATION.md), backend *_REPORT / *_VERIFICATION and FOUNDATION_CONFIGURATION_REPORT; frontend VERIFICATION; worker M6_2_VERIFICATION/M6_2_REVIEW/M6_2_HARDENING_REPORT/M6_2_HARDENING_REVIEW and PR9 records; [format report](conventions/REFACTOR_REPORT.md) | Commit-scoped evidence, not current acceptance |
 | History | [History index](history/README.md); worker M6_1_REVIEW/M6_1_STACK_SPIKE/M6_2_GCC_INVESTIGATION/M6_2_HARDENING_DECISIONS and superseded banners; backend extracted historical evidence | Retained provenance, never current task permission |
 | Future/backlog | worker/design/OCR_QUALITY_BACKLOG.md, NATIVE_TEXT_QUALITY.md | Proposals requiring explicit scope |
-| Templates | [Spec](templates/spec.md), [verification](templates/verification.md), [PR](templates/PR.md) | Reusable starting points |
+| Templates | [Spec](templates/spec.md), [verification](templates/verification.md), [PR](../.github/pull_request_template.md) | Reusable starting points |
 
 Mixed documents are split by inspected sections when current guidance is changed:
 Git procedure loses the obsolete milestone/worktree plan; convention index loses

@@ -14,16 +14,19 @@ needed for scope already approved. Missing approval blocks dependent implementat
 Do not infer Active/completed milestone status; see [roadmap](roadmap.md).
 
 Primary coordinates spec → Implementer → Tester → Reviewer → PR, sequentially.
-For a behavior change, Tester first writes/runs a failing acceptance/regression
-test, hands off, then Implementer makes the minimum production change, then Tester
-verifies the final result. Docs/config-only work uses applicable structural checks;
-do not add artificial application tests or dependencies.
+Implementer may write or change the accompanying tests, helpers and synthetic
+fixtures; prefer a failing acceptance/regression test before changing behavior.
+Implementer then makes the minimum production change. Tester independently derives
+checks from the acceptance criteria, verifies the result and adds missing tests;
+Tester never fixes production code. No role may weaken assertions, skip checks
+or reduce coverage to hide defects. Docs/config-only work uses applicable structural
+checks; do not add artificial application tests or dependencies.
 
 | Role | Owns | Must not do |
 | --- | --- | --- |
 | Primary | Spec, scope, handoffs, evidence, bounded cycles, docs/config coordination, Git/PR delivery | Concurrent writes or self-accept unresolved blockers |
-| Implementer | Approved production code and scoped implementation docs | Modify tests/helpers/fixtures to mask failures; expand scope |
-| Tester | Verification, regression tests, test helpers/fixtures | Fix production code, weaken assertions or replace full checks with subsets |
+| Implementer | Approved production code, accompanying tests/helpers/synthetic fixtures and scoped docs | Weaken assertions/checks/coverage or expand scope |
+| Tester | Independent acceptance verification, missing tests and test helpers/synthetic fixtures | Fix production code, weaken assertions/checks/coverage or replace full checks with subsets |
 | Reviewer | Read-only complete diff/context review and findings | Edit any file, run write-producing tools, accept on behalf of developer |
 
 Only one writer per working tree, including primary, agents, formatters/builds and
@@ -52,9 +55,11 @@ explicitly assigns it. Primary remains responsible for scope and complete eviden
 4. Findings need stable ID, severity, exact file/line, impact, evidence or
    reproduction, recommended fix and disposition (open / fixed and verified /
    rejected with evidence). Missing checks are evidence gaps, not invented defects.
-5. Primary routes production fixes to Implementer and test/helper/fixture fixes
-   to Tester. Each repair is followed by affected verification, required full
-   gates on final source and another Reviewer pass.
+5. Primary assigns each repair explicitly: production fixes go to Implementer;
+   accompanying test/helper/synthetic-fixture fixes may go to Implementer or Tester.
+   Tester retains independent acceptance verification and cannot fix production
+   code. Grant only one writer at a time. Each repair is followed by affected
+   verification, required full gates on final source and another Reviewer pass.
 
 At most **three complete fix–test–review cycles**, counting initial review as
 cycle 1. Keep one counter for the task; fixes/agent replacement do not reset it.
@@ -74,13 +79,18 @@ Changes after review require a new pass within the budget. Local and CI evidence
 identify the same final source; report each separately, including path-filtered CI.
 Do not claim merge readiness until required CI is green.
 
-Use [verification template](templates/verification.md) and [PR template](templates/PR.md).
+Use [verification template](templates/verification.md) and [PR template](../.github/pull_request_template.md).
 Stage explicit paths, inspect staged diff, commit (Conventional Commits), push the
 approved branch and open PR. Existing commit/push authorization persists; do not
 ask again. If required verification is blocked, an explicitly requested source
 snapshot may be published as a **draft**, with blockers and NOT VERIFIED checks;
-it is not accepted/completed. Never merge, deploy, change GitHub settings or delete
-branches/worktrees. Stop at the assigned task.
+it is not accepted/completed. CI workflow/security-hook edits require explicitly
+approved task scope and cannot weaken checks for green results. GitHub settings,
+rulesets/secrets, production, releases and merge are outside normal development
+and require a separately assigned task and explicit authorization; ordinary
+commit/push/PR permission does not cover them. This workflow follow-up performs
+none of those operations. Never automatically delete branches/worktrees.
+Stop at the assigned task.
 
 ## Codex custom agents
 

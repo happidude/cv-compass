@@ -19,7 +19,11 @@
 
 ## Delivery and limitations
 - Local gate:
-- CI result and exact commit (separate from local):
+- CI result and exact new head (separate from local and prior deliveries):
+- Native custom-agent dispatch command/events/result (parser PASS is separate):
+- Secret scanner command/coverage/result or NOT VERIFIED with next action:
+- Canonical PR template tracked; private M10.1 draft ignored and absent from commit:
+- Application/dependency/build/formatter/CI unchanged against PR base where required:
 - Missing verification, reason and next action:
 - Production/accuracy/real-data acceptance (never implied by technical PASS):
 - PR/commit link:

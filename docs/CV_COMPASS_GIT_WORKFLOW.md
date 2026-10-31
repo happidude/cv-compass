@@ -56,11 +56,13 @@ Otherwise prepare the concrete reviewed result first. Never push failing checks
 as ready: a specifically authorized source snapshot may use a draft PR with
 explicit blockers/NOT VERIFIED evidence, per the agent workflow.
 
-PR targets main and uses [PR template](templates/PR.md), spec, verification,
-exact source, review findings/cycles and Open Questions. Human reviews/merges.
-Never merge, force push, push main, rewrite history, bypass hooks, change GitHub
-settings or delete remote branches. Do not automatically remove local branches
-or worktrees. Human cleanup is outside the agent task.
+PR targets main and uses [PR template](../.github/pull_request_template.md), spec, verification,
+exact source, review findings/cycles and Open Questions. Human review remains
+required. Merge, production/deploy, release and GitHub settings/rulesets/secrets
+are outside ordinary development and require a separately assigned task plus
+explicit authorization. Commit/push/PR permission does not include them.
+Never force push, push main, rewrite history, bypass hooks or delete remote
+branches. Do not automatically remove local branches/worktrees.
 
 ## Coordination
 
