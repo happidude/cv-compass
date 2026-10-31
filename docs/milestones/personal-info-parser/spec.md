@@ -5,21 +5,22 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 
 ## Phê duyệt
 
-- Nguồn: developer giao trong chat ngày `<YYYY-MM-DD>` (prompt "Triển khai parser thông tin cá nhân").
-  Trạng thái milestone: chưa Active cho đến khi developer xác nhận trong [roadmap](../../roadmap.md).
+- Nguồn: developer giao trong chat ngày 2026-10-31 (prompt "Triển khai parser thông tin cá nhân").
+  Trạng thái milestone: **Active**, theo xác nhận của developer trong chat ngày 2026-10-31 và [roadmap](../../roadmap.md).
 - Base SHA và nhánh: ghi khi bắt đầu từng lát cắt (main mới nhất; tên nhánh theo
   [Git workflow](../../CV_COMPASS_GIT_WORKFLOW.md)). Mỗi lát cắt một nhánh, một PR.
 - Quyền publish: commit, push nhánh được giao, mở PR Draft. Agent không bao giờ merge.
 - Thay đổi local của developer được giữ nguyên: không reset, stash, discard, stage ngoài phạm vi.
 - Database local là dữ liệu test nhưng không có quyền drop hay reset; kiểm thử dùng schema/storage cô lập.
 - **Dữ liệu CV thật — phương án (B) đã được developer chọn:**
-  Developer xác nhận có quyền dùng các CV mẫu tại `<D:\cv_compass\data\codex-test\: đường dẫn>`
-  (chủ CV và cơ sở cho phép: `<HoangNguyen: mô tả>`) và chấp nhận nội dung CV/raw OCR đi qua
-  nhà cung cấp mô hình của agent. Quyền này chỉ có hiệu lực từ lát cắt 1; agent chỉ đọc đúng
+  Thư mục private là `D:\cv_compass\data\codex-test\`; agent chỉ đọc thư mục này.
+  Chủ CV là HoangNguyen; cơ sở cho phép: `<ĐIỀN: mô tả cơ sở cho phép dùng CV>`.
+  Developer xác nhận có quyền dùng CV mẫu và chấp nhận nội dung CV/raw OCR đi qua nhà cung cấp
+  mô hình của agent. Quyền này chỉ có hiệu lực từ lát cắt 1; agent chỉ đọc đúng
   thư mục trên khi lát cắt 1, 3 hoặc 6 cần, không quét nơi khác, không gửi tới dịch vụ ngoài nào khác,
   không ghi PII/raw OCR/screenshot/report chứa PII vào Git. PR docs hiện tại vẫn không đọc CV.
 - **Gold và held-out:** gold do developer kiểm tra và xác nhận. Tập held-out tách theo document,
-  lưu ngoài Git và ngoài tầm đọc của agent; developer tự chạy script đo trên held-out.
+  nằm tại `D:\cv_compass\data\heldout\`, ngoài thư mục private trên, ngoài Git và ngoài tầm đọc của agent; developer tự chạy script đo trên held-out.
 
 ## Phạm vi
 
@@ -162,10 +163,7 @@ Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
 
 ## Open Questions
 
-Developer còn cần duyệt đúng một câu hỏi về Q2: khi các dấu hiệu hợp lệ, invalid và ambiguity
-cùng xuất hiện, parser phải áp dụng thứ tự ưu tiên tổng quát nào? Phụ lục trước chỉ nêu trường hợp
-một giá trị hợp lệ cùng alternatives invalid (chỉ chọn khi evidence đủ phân chủ thể, nếu không thì
-AMBIGUOUS), chưa nêu thứ tự tổng quát; agent không tự bổ sung thứ tự này.
+Không còn câu hỏi mở.
 
 ---
 
@@ -173,11 +171,11 @@ AMBIGUOUS), chưa nêu thứ tự tổng quát; agent không tự bổ sung th�
 
 Developer đã duyệt các quyết định Q1–Q5 trong chat tiếp nối PR #22; tài liệu ghi nhận bên dưới.
 AC-7 được cập nhật theo trình tự đã duyệt; các AC khác và R-1..R-6 được giữ nguyên.
-Nguồn giao task docs: chat ngày 2026-10-31; không điền ngày vào placeholder phê duyệt triển khai.
+Developer chốt spec và xác nhận milestone Active trong chat ngày 2026-10-31; task hiện tại chỉ docs.
 Base: `6c5d64198cd18a49dbdb6aa86593c5dbcf9dfe85` (`origin/main` sau fetch).
 Nhánh docs: `docs/personal-info-parser-plan`; working tree `E:/cv-compass`, cwd `backend`.
 Mức 2 do developer chỉ định cho docs; Primary viết → check cấu trúc → một Reviewer chỉ đọc,
-tối đa hai vòng mới cho lần ghi quyết định từ head `fc40ca4`. Agent không bắt đầu lát cắt triển khai; mỗi lát cắt sau cần phiên/nhánh/PR riêng.
+tối đa hai vòng mới cho lần chốt spec từ head `a5022d8`. Agent không bắt đầu lát cắt triển khai; mỗi lát cắt sau cần phiên/nhánh/PR riêng.
 
 ### Đối chiếu source tại base
 
@@ -201,10 +199,10 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 ### Lát cắt 0 — Kế hoạch docs
 
 - Đường dẫn: `docs/milestones/personal-info-parser/spec.md`, `verification.md` cùng thư mục và
-  `docs/milestones/README.md`; **0 file code**, 3 file docs.
+  `docs/milestones/README.md` và `docs/roadmap.md`; **0 file code**, 4 file docs.
 - Phụ thuộc: bản đính kèm và main đã fetch; quyền docs đã giao trong chat.
-- Rủi ro: nhầm quyết định với Active hoặc quyền triển khai. Agent chỉ ghi quyết định đã duyệt,
-  giữ câu hỏi precedence chưa quyết trong Open Questions, không sửa roadmap.
+- Rủi ro: nhầm trạng thái Active với hoàn thành hoặc bắt đầu lát cắt. Agent chỉ ghi quyết định
+  đã duyệt và xác nhận Active vào roadmap/danh mục, không bắt đầu lát cắt triển khai.
 
 ### Lát cắt 1 — Gold và công cụ đo
 
@@ -212,7 +210,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   `backend/tools/test_evaluate_personal_info.py`, `backend/tools/personal_info_gold.py` (mới).
   Fixture tổng hợp và schema annotation dưới `backend/src/test/resources/mapping/personal-info/`;
   hướng dẫn/metrics không PII dưới `docs/milestones/personal-info-parser/`.
-- Phụ thuộc: phương án B, state và bảng so sánh đã duyệt bên dưới; precedence còn chờ duyệt; developer
+- Phụ thuộc: phương án B, state và bảng so sánh đã duyệt bên dưới; precedence đã duyệt; developer
   xác nhận gold và tự giữ/chạy held-out ngoài tầm đọc agent. Dùng thư viện chuẩn, không thêm dependency.
 - Rủi ro: script đo khác normalization parser, lộ PII qua failure/report, denominator sai khi abstain.
   Test comparator bằng synthetic; output chỉ aggregate/count và label allowlist, không value/quote/path private.
@@ -231,7 +229,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   `backend/src/main/resources/mapping/personal-info-config-v3.json` (mới);
   một migration mới trong `backend/src/main/resources/db/migration/` để mở CHECK result v3
   (chốt số khi bắt đầu, không sửa V7/V9/V10).
-- Phụ thuộc: version/state/migration đã duyệt, precedence còn mở và lát cắt 1; agent đề xuất shape patch/no-op/provenance ở đầu lát cắt 2 trong Open Questions của PR để developer duyệt.
+- Phụ thuộc: version/state/migration/precedence đã duyệt và lát cắt 1; agent đề xuất shape patch/no-op/provenance ở đầu lát cắt 2 trong Open Questions của PR để developer duyệt.
   Kiểu v3 triển khai MappingConfig/MappingOutcome, tái dùng Evidence/Issue thay DTO trùng;
   labels/sections/exclusions/enabled/priority là dữ liệu hữu hạn, không regex/script/SQL tùy ý.
 - Rủi ro: reader mới không đủ bảo đảm process job mới. Theo trình tự đã duyệt, lát cắt 2 chỉ
@@ -248,7 +246,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   `backend/src/test/java/com/cvcompass/backend/mapping/service/PersonalInfoEngineTests.java` (mới);
   `backend/src/test/java/com/cvcompass/backend/MappingIntegrationTests.java`.
   Fixture synthetic dưới `backend/src/test/resources/mapping/personal-info/`.
-- Phụ thuộc: lát cắt 2 và quyết định state/version đã duyệt; precedence còn mở phải được duyệt trước code phụ thuộc. Sau tích hợp dispatch chỉ activate v3 trong test schema/storage cô lập;
+- Phụ thuộc: lát cắt 2 và quyết định state/version/precedence đã duyệt. Sau tích hợp dispatch chỉ activate v3 trong test schema/storage cô lập;
   v3 giữ kết quả experience tương đương engine v2. Chưa activate v3 trong luồng vận hành cho đến lát cắt 4: publication hiện tại chỉ nhận schema 2, sẽ ghi SKIPPED cho v3 và ledger chặn publish lại cùng result.
 - Rủi ro: sai chủ thể/multi-column, normalization làm mất raw, offsets UTF-16 nhầm code point,
   vượt length cột lõi. Giữ raw/evidence bất biến; giá trị không vừa giới hạn phải có issue,
@@ -311,11 +309,17 @@ hoặc shared schema, dừng phần phụ thuộc và đề xuất chia lại tr
 
 ### Quyết định đã duyệt
 
-Developer đã duyệt Q1–Q5 trong chat tiếp nối PR #22; các quyết định không đánh dấu Active hay bắt đầu lát cắt.
+Developer đã duyệt Q1–Q5 và xác nhận milestone Active trong chat ngày 2026-10-31 trên PR #22; agent không bắt đầu lát cắt.
 
 1. **Q1 — Dữ liệu:** Developer chọn B và xác nhận phạm vi/quyền tại mục Phê duyệt; quyền chỉ có hiệu lực từ lát cắt 1 và chỉ dùng khi lát cắt 1, 3, 6 cần. Agent không đọc CV trong PR docs này. Developer xác nhận gold; held-out vẫn ngoài tầm đọc của agent.
 2. **Q2 — State:** Developer tách parser state khỏi review state. Parser dùng PROPOSED cho một giá trị ứng viên hợp lệ, đủ evidence; NOT_FOUND khi không có candidate value thuộc ứng viên sau phân vùng; INVALID khi có candidate thuộc ứng viên nhưng tất cả đều không qua validation; AMBIGUOUS khi còn nhiều giá trị hợp lệ khác nhau hoặc chưa xác định chắc chủ thể/reading order.
-   Parser chỉ chọn một giá trị hợp lệ cùng alternatives invalid khi evidence đủ phân chủ thể; nếu không thì parser trả AMBIGUOUS. Thứ tự precedence tổng quát còn ở Open Questions.
+   Developer duyệt thứ tự ưu tiên tổng quát sau; parser áp dụng theo thứ tự này:
+   (1) Parser loại candidate không thuộc ứng viên (reference/recruiter/công ty) và vùng loại trừ; chúng không tham gia chọn.
+   (2) Parser không chọn candidate invalid nhưng giữ chúng làm alternative kèm lý do.
+   (3) Parser trả PROPOSED khi đúng một giá trị hợp lệ sau chuẩn hóa, đủ evidence chủ thể và không có cờ reading order không đáng tin.
+   (4) Parser trả AMBIGUOUS khi có từ hai giá trị hợp lệ khác nhau không có căn cứ phân biệt, hoặc chủ thể chưa chắc, hoặc có cờ reading order; parser giữ mọi alternative và không chọn.
+   (5) Parser trả INVALID khi không có giá trị hợp lệ nhưng có candidate thuộc ứng viên và invalid.
+   (6) Parser trả NOT_FOUND khi không có candidate nào thuộc ứng viên.
    Parser biểu diễn field bị tắt bằng NOT_FOUND + issue FIELD_DISABLED + enabled=false và không sinh deletion. Parser không thêm DISABLED vào enum, không dùng INVALID cho vùng reference bị loại bỏ.
    Parser giữ raw/alternatives/evidence, chỉ có normalized cho value hợp lệ và không có selected value khi AMBIGUOUS/INVALID/NOT_FOUND. Profile giữ review state UNVERIFIED/CONFIRMED/EDITED và origin MAPPING/USER; PROPOSED không tương đương CONFIRMED.
 3. **Q3 — Version:** Developer chọn config/result schemaVersion=3 và engineCompatibility/engineVersion `personal-info-mapping/3.0`, revision config bất biến riêng. Agent tái dùng experience v2 và Evidence/Issue, giữ reader/validation/dispatch/process v1/v2 cùng claim/enqueue theo config/engine cũ, không viết lại result/digest và không nâng job cũ. Job vẫn dùng ENGINE_VERSION/CONFIG_ID, không có schemaVersion riêng.
