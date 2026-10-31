@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "documentKey": "synthetic-1",
+      "fields": {
+        "fullName": {
+          "enabled": true,
+          "state": "PROPOSED",
+          "value": "Đào Mẫu",
+          "subject": "CANDIDATE",
+          "alternatives": [],
+          "issues": [],
+          "evidence": [
+            {
+              "extractionId": "extract-1",
+              "page": 1,
+              "start": 1,
+              "end": 8,
+              "text": "Đào Mẫu",
+              "subject": "CANDIDATE",
+              "supportsValue": true
+            }
+          ]
+        },
+        "email": {
+          "enabled": true,
+          "state": "NOT_FOUND",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [],
+          "issues": [],
+          "evidence": []
+        },
+        "phone": {
+          "enabled": true,
+          "state": "AMBIGUOUS",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [
+            {
+              "number": "+99 123456",
+              "extension": "02"
+            },
+            {
+              "number": "0123456",
+              "extension": null
+            }
+          ],
+          "issues": [],
+          "evidence": []
+        },
+        "location": {
+          "enabled": true,
+          "state": "INVALID",
+          "value": null,
+          "subject": "CANDIDATE",
+          "alternatives": [],
+          "issues": [
+            "INVALID_VALUE"
+          ],
+          "evidence": []
+        },
+        "summary": {
+          "enabled": false,
+          "state": "NOT_FOUND",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [],
+          "issues": [
+            "FIELD_DISABLED"
+          ],
+          "evidence": []
+        }
+      }
+    },
+    {
+      "documentKey": "synthetic-2",
+      "fields": {
+        "fullName": {
+          "enabled": true,
+          "state": "PROPOSED",
+          "value": "Tên Hai",
+          "subject": "REFERENCE",
+          "alternatives": [],
+          "issues": [],
+          "evidence": [
+            {
+              "extractionId": "extract-2",
+              "page": 1,
+              "start": 1,
+              "end": 8,
+              "text": "Tên Hai",
+              "subject": "REFERENCE",
+              "supportsValue": true
+            }
+          ]
+        },
+        "email": {
+          "enabled": true,
+          "state": "NOT_FOUND",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [],
+          "issues": [],
+          "evidence": []
+        },
+        "phone": {
+          "enabled": true,
+          "state": "AMBIGUOUS",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [
+            {
+              "number": "+99 123456",
+              "extension": "02"
+            },
+            {
+              "number": "0123456",
+              "extension": null
+            }
+          ],
+          "issues": [],
+          "evidence": []
+        },
+        "location": {
+          "enabled": true,
+          "state": "INVALID",
+          "value": null,
+          "subject": "CANDIDATE",
+          "alternatives": [],
+          "issues": [
+            "INVALID_VALUE"
+          ],
+          "evidence": []
+        },
+        "summary": {
+          "enabled": false,
+          "state": "NOT_FOUND",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [],
+          "issues": [
+            "FIELD_DISABLED"
+          ],
+          "evidence": []
+        }
+      }
+    }
+  ]
+}
