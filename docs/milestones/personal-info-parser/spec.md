@@ -5,6 +5,10 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 
 ## Phê duyệt
 
+- Bổ sung phạm vi `gender`: developer duyệt trong chat ngày 2026-11-01; chỉ cập nhật spec,
+  công cụ đo/test/fixture lát cắt 1 và gold nháp private. PR #23 đã merge vào main;
+  base `1f7e67b16f22dcf223de13fde97b95684c3a505f`, nhánh `feature/personal-info-gender`.
+  Mức 2, tối đa 2 vòng, PR Draft; không bắt đầu lát cắt 2 hoặc sửa code ứng dụng.
 - Nguồn: developer giao trong chat ngày 2026-10-31 (prompt "Triển khai parser thông tin cá nhân").
   Trạng thái milestone: **Active**, theo xác nhận của developer trong chat ngày 2026-10-31 và [roadmap](../../roadmap.md).
 - Base SHA và nhánh: ghi khi bắt đầu từng lát cắt (main mới nhất; tên nhánh theo
@@ -27,11 +31,11 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 Trong phạm vi: backend, test, JSON cấu hình, tài liệu vận hành, frontend tối thiểu cần để xem,
 sửa và đối chiếu thông tin mới. Pipeline: OCR → mapping → database → hồ sơ đối chiếu.
 
-Field: `fullName`, `email`, `phone`, `location`, `summary`. Đây là thông tin của ứng viên,
+Sáu field: `fullName`, `email`, `phone`, `location`, `summary`, `gender`. Đây là thông tin của ứng viên,
 không phải của người tham chiếu, recruiter, khách hàng hay công ty.
 
 Ngoài phạm vi: search, ranking, export, AI/LLM/NER/embedding, thay OCR engine, ngày sinh,
-giới tính, CCCD, tình trạng hôn nhân, đổi công nghệ persistence, refactor diện rộng.
+CCCD, tình trạng hôn nhân, đổi công nghệ persistence, refactor diện rộng.
 Mapper chuyển đổi DTO của candidate đặt tại candidate/mapping theo yêu cầu developer;
 không nhầm với module trích xuất OCR hiện có.
 
@@ -58,6 +62,12 @@ khi đủ bằng chứng, nếu không thì trạng thái NOT_FOUND/AMBIGUOUS/IN
   deduplicate và giữ evidence. Nhiều giá trị khác nhau phải giữ alternatives và lý do chọn/mơ hồ.
   Multi-column hoặc reading order không đáng tin phải được đánh dấu. Parser ưu tiên bỏ trống hoặc
   mơ hồ hơn gán thông tin sai người, và không diễn giải rule score thành xác suất.
+
+- **R-7 Giới tính:** chỉ trích từ nhãn rõ ràng (Gender, Sex, Giới tính, Phái) kèm giá trị;
+  không suy từ tên, ảnh, đại từ, danh xưng (Mr/Ms/Mrs/Ông/Bà/Anh/Chị) hay tên file.
+  Giữ nguyên raw; normalized chỉ MALE hoặc FEMALE cho giá trị nhận diện được
+  (Nam/Male/M; Nữ/Female/F), giá trị khác giữ raw với normalized null và issue.
+  Gender không được dùng để chấm điểm, lọc, xếp hạng hay gộp ứng viên và không được log.
 
 ## Mức workflow và lát cắt
 
@@ -144,6 +154,25 @@ Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
   local mode đã được phép và không bypass production gate.
 - **AC-23** Thiếu prerequisite (Docker/WSL, worker, mẫu): ghi NOT VERIFIED với lý do cụ thể.
 
+### Bổ sung gender — phê duyệt ngày 2026-11-01
+
+- **AC-24 (lát cắt 1)** Schema gold, công cụ đo và fixture tổng hợp hỗ trợ `gender`, báo riêng
+  TP/FP/FN, precision/recall, denominator và evidence theo cơ chế hiện có. Kiểm nhãn rõ,
+  không nhãn chỉ danh xưng, mâu thuẫn và giá trị ngoài danh sách; gold private giữ DRAFT.
+- **AC-25 (lát cắt 3)** Parser gender tuân thủ R-7; giữ raw, normalized/issue, alternatives,
+  evidence/page/offset và state theo quy tắc chung. Test nhãn Việt–Anh, trường hợp thiếu nhãn,
+  danh xưng/ảnh/đại từ/tên file không là bằng chứng; không tự chọn khi mâu thuẫn.
+- **AC-26 (lát cắt 4)** Publication gender có cùng bảo vệ USER/CONFIRMED/EDITED, proposal,
+  history và nguồn document/result; replay/remap không tạo trùng hoặc làm lùi dữ liệu.
+  Field vắng, invalid hoặc bị tắt không thành lệnh xóa. Shape lưu/API/migration/metadata và
+  tương thích hiện có chờ developer duyệt trong Open Questions trước code phụ thuộc.
+- **AC-27 (lát cắt 5)** UI hiện có cho xem/sửa/xác nhận gender, state/issues/alternatives và
+  nguồn đối chiếu; review proposal, giữ version conflict và bảo vệ dữ liệu như các field khác.
+  Không thêm gender vào chấm điểm, lọc, xếp hạng hay gộp ứng viên.
+- **AC-28 (lát cắt 6)** Báo cáo đánh giá gender riêng trên gold đã developer xác nhận;
+  công bố support/giới hạn và N/A khi không có dữ liệu rõ ràng, không suy từ danh xưng.
+  Không dùng metric chất lượng trích xuất để chấm điểm ứng viên, không log raw/normalized.
+
 ## Kiểm chứng
 
 - Test-first cho thay đổi hành vi; affected checks mỗi vòng; full gate trên source cuối hoặc CI theo
@@ -163,7 +192,24 @@ Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
 
 ## Open Questions
 
-Không còn câu hỏi mở.
+Các mục sau là đề xuất, chưa được quyết định; dừng code ứng dụng phụ thuộc, tiếp tục phần độc lập.
+
+1. **fullName và danh xưng:** R-1 chưa chốt Mr/Ms/Ông/Bà có thuộc tên không. Có thể giữ nguyên
+   hoặc tách danh xưng; khuyến nghị loại khỏi fullName và không bao giờ dùng làm bằng chứng
+   gender. Chưa đổi comparator fullName hay gold tên đã có, chờ developer duyệt.
+2. **Lưu trữ/API gender:** chưa có shape đã duyệt cho migration, metadata và tương thích API/UI.
+   Lựa chọn thêm basic string/null cùng metadata versioned hoặc field cấu trúc riêng;
+   khuyến nghị đặc tả rõ raw/normalized/state/evidence và tương thích dữ liệu/reader cũ trước
+   lát cắt 2/4/5, migration mới nếu cần, không sửa migration đã áp dụng. Dự toán lát cắt 4
+   có thể tăng từ 10 lên 11 nếu cần migration gender riêng; khuyến nghị chia lại trước khi code.
+3. **Giá trị ngoài nhị phân:** R-7 đã chốt giữ raw, normalized null và issue; chưa chốt state,
+   cách publication/UI xác nhận và cách trình bày. Có thể abstain kèm alternative hoặc cho
+   giá trị raw được người dùng xác nhận; khuyến nghị bảo toàn raw/issue, không ép thành
+   MALE/FEMALE và để developer chốt semantics. Công cụ offline chỉ so raw chính xác khi
+   normalized null; fixture INVALID chỉ minh họa một prediction, không quyết định parser/API.
+4. **Dấu câu cuối location:** Q5 hiện giữ dấu câu; có thể giữ chính xác hoặc bỏ dấu câu cuối
+   có kiểm soát. Khuyến nghị giữ comparator Q5 hiện tại tới khi developer duyệt quy ước khác;
+   không tự bỏ dấu chấm/phẩy hay sửa gold location trong thay đổi này.
 
 ---
 
@@ -199,16 +245,16 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 ### Lát cắt 0 — Kế hoạch docs
 
 - Đường dẫn: `docs/milestones/personal-info-parser/spec.md`, `verification.md` cùng thư mục và
-  `docs/milestones/README.md` và `docs/roadmap.md`; **0 file code**, 4 file docs.
+  `docs/milestones/README.md` và `docs/roadmap.md`; **0 file code**, 4 file docs (ước lượng giữ nguyên sau bổ sung gender).
 - Phụ thuộc: bản đính kèm và main đã fetch; quyền docs đã giao trong chat.
 - Rủi ro: nhầm trạng thái Active với hoàn thành hoặc bắt đầu lát cắt. Agent chỉ ghi quyết định
   đã duyệt và xác nhận Active vào roadmap/danh mục, không bắt đầu lát cắt triển khai.
 
 ### Lát cắt 1 — Gold và công cụ đo
 
-- Dự kiến **3 file code** (gồm test): `backend/tools/evaluate_personal_info.py`,
+- Ước lượng sau bổ sung gender: **3 file code** (gồm test, không tăng): `backend/tools/evaluate_personal_info.py`,
   `backend/tools/test_evaluate_personal_info.py`, `backend/tools/personal_info_gold.py` (mới).
-  Fixture tổng hợp và schema annotation dưới `backend/src/test/resources/mapping/personal-info/`;
+  4 file fixture tổng hợp/schema annotation (3 file hiện có và 1 fixture gender mới) dưới `backend/src/test/resources/mapping/personal-info/`;
   hướng dẫn/metrics không PII dưới `docs/milestones/personal-info-parser/`.
 - Phụ thuộc: phương án B, state và bảng so sánh đã duyệt bên dưới; precedence đã duyệt; developer
   xác nhận gold và tự giữ/chạy held-out ngoài tầm đọc agent. Dùng thư viện chuẩn, không thêm dependency.
@@ -218,7 +264,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 2 — Config và version
 
-- Dự kiến **10 file code/config/migration**:
+- Ước lượng sau bổ sung gender: **10 file code/config/migration** (chưa tăng; shape gender chờ duyệt):
   `backend/src/main/java/com/cvcompass/backend/mapping/dto/PersonalInfoDefinition.java` (mới),
   `PersonalInfoMappingResult.java` (mới), `MappingVersions.java` cùng thư mục;
   `backend/src/main/java/com/cvcompass/backend/mapping/service/MappingService.java`;
@@ -239,7 +285,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 3 — Parser
 
-- Dự kiến **7 file code**:
+- Ước lượng sau bổ sung gender: **7 file code** (không tăng; R-7 trong các helper/test đã dự kiến):
   `backend/src/main/java/com/cvcompass/backend/mapping/service/PersonalInfoEngine.java`,
   `PersonalInfoRegions.java`, `PersonalInfoCandidates.java`, `PersonalInfoValidation.java` (mới, cùng thư mục);
   `MappingService.java` cùng thư mục;
@@ -255,7 +301,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 4 — Publication và database
 
-- Dự kiến **10 file code/migration**:
+- Ước lượng sau bổ sung gender: **10–11 file code/migration** (phụ thuộc shape; xem Open Questions):
   `backend/src/main/java/com/cvcompass/backend/candidate/service/PublicationService.java`,
   `CandidateReviewService.java`, `CandidateService.java` cùng thư mục;
   `backend/src/main/java/com/cvcompass/backend/candidate/repository/PublicationRepository.java`,
@@ -279,19 +325,19 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 5 — UI tối thiểu
 
-- Dự kiến **7 file code**: `frontend/src/features/candidates/schema.ts`, `pages.tsx`, `pdf-pane.tsx`;
+- Ước lượng sau bổ sung gender: **7 file code** (không tăng; chờ API được duyệt): `frontend/src/features/candidates/schema.ts`, `pages.tsx`, `pdf-pane.tsx`;
   `personal-info.tsx` (mới, cùng thư mục); `frontend/tests/personal-info.test.tsx`,
   `frontend/tests/personal-info.browser.test.tsx` và `frontend/tests/personal-info-fixtures.ts` (mới).
 - Phụ thuộc: lát cắt 4 và public API/metadata/proposal KIND đã ổn định; agent đề xuất chi tiết shape patch/no-op/provenance ở đầu lát cắt 5 trong Open Questions của PR để developer duyệt.
   Đề xuất mức 3 vì boundary schema thay đổi; chỉ giữ mức 2 nếu developer xác nhận không đổi contract.
 - Rủi ro: Zod loại bỏ metadata, quote nhảy nhầm document, stale mutation tự retry, HTML injection.
-  Hiển thị năm field/state/alternatives/issues, sửa/confirm và proposal riêng; dùng document/page/quote
+  Hiển thị sáu field/state/alternatives/issues, sửa/confirm và proposal riêng; dùng document/page/quote
   hiện có, không giả highlight. Kiểm conflict không retry và payload text không render HTML;
   không redesign và không truyền dữ liệu ra ngoài.
 
 ### Lát cắt 6 — E2E và đánh giá
 
-- Dự kiến **5 file code/helper**:
+- Ước lượng sau bổ sung gender: **5 file code/helper** (không tăng; thêm đánh giá gender trong tool/test đã dự kiến):
   `backend/src/test/java/com/cvcompass/backend/PersonalInfoE2EIntegrationTests.java`,
   `PersonalInfoSyntheticPdf.java` cùng thư mục (mới);
   `frontend/tests/personal-info.e2e.test.tsx`, `frontend/tests/personal-info-e2e-fixtures.ts` (mới);
@@ -344,3 +390,21 @@ Developer đã duyệt Q1–Q5 và xác nhận milestone Active trong chat ngày
    Agent coi AMBIGUOUS/INVALID/NOT_FOUND là abstain, vẫn FN nếu gold có value; agent loại field tắt khỏi denominator chính và báo riêng enabled/disabled/support. Agent loại riêng gold chưa phân xử/thiếu annotation với count, không coi là gold rỗng.
    Agent tính precision=TP/(TP+FP), recall=TP/(TP+FN) theo field, báo N/A khi mẫu số 0 và không tự đặt pass threshold.
    Agent đo evidence validity riêng theo extraction/page/range/quote và đúng chủ thể; value trùng reference vẫn FP/FN nếu sai chủ thể. Agent báo nhầm reference/company riêng và không tính một lỗi thành nhiều FP.
+
+### File đo offline cho gender (AC-24)
+
+Đây là shape chỉ cho công cụ lát cắt 1, không quyết định DB/API/config/result của ứng dụng.
+Gold/prediction có đủ sáu field; gender dùng value `{raw, normalized}`; normalized là
+`MALE`, `FEMALE` hoặc null. Giữ raw byte-for-byte trong JSON value; so sánh nhận diện
+bằng NFC/trim/casefold của raw theo đúng danh sách R-7; gold yêu cầu normalized tương ứng.
+Hai raw thuộc cùng normalized được coi bằng nhau; normalized null chỉ so raw chính xác,
+không gom giá trị khác nhau. Prediction đúng shape nhưng normalized sai/null sai so với raw
+được đo thành FP (và FN nếu gold có value), không tự sửa thành TP hay từ chối cả báo cáo.
+Gold không chấp nhận normalized suy từ danh xưng hay giá trị lạ.
+Prediction có raw ngoài danh sách phải có issue `GENDER_UNRECOGNIZED`; alternatives vẫn
+không thành selected value. Công cụ không trích nhãn, không đọc PDF và không là parser;
+người annotation chịu trách nhiệm nhãn/chủ thể và audit supportsValue từng evidence span.
+SchemaVersion 1 là format đo offline đang mở rộng, yêu cầu thêm field gender ở input;
+input năm field cũ bị từ chối an toàn, không tự coi thiếu annotation là gold rỗng.
+Báo cáo chỉ xuất số đếm/ratio chất lượng trích xuất, không xuất raw/normalized/issue tự do
+hoặc dùng gender để đánh giá ứng viên. Gold DRAFT tiếp tục bị chặn trước mọi metric.

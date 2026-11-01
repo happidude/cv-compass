@@ -1,4 +1,71 @@
-# Kiểm chứng lát cắt 1 — Gold và công cụ đo
+# Kiểm chứng bổ sung gender — 2026-11-01
+
+- Nguồn: developer duyệt thay đổi phạm vi trong chat ngày 2026-11-01; [R-7 và AC-24..AC-28](spec.md#bổ-sung-gender--phê-duyệt-ngày-2026-11-01).
+  PR #23 đã merge vào main ngày 2026-11-01, merge SHA/base sau fetch
+  `1f7e67b16f22dcf223de13fde97b95684c3a505f`.
+- Nhánh `feature/personal-info-gender`; working tree `E:/cv-compass`, cwd backend.
+  Mức 2 do developer chỉ định; Primary kiêm Implementer là writer duy nhất → affected checks
+  → CI → Reviewer chỉ đọc, tối đa 2 vòng; không Tester riêng. Không bắt đầu lát cắt 2.
+- Payload: spec và verification; helper/test công cụ đo; schema, hai fixture hiện có và fixture
+  gender tổng hợp mới. `evaluate_personal_info.py` tự lấy danh sách FIELDS nên không cần sửa.
+  Không đổi parser/config/DB/UI/CI; giữ application.yaml modified và mapping/ untracked của developer.
+
+## Kiểm chứng hiện tại
+
+- Test-first: 3 test gender mới ban đầu FAIL vì thiếu field/fixture/implementation; 17 test cũ giữ nguyên; thêm regression GENDER-1 sau vòng 1.
+  Test CLI gặp quyền temp sandbox ở lượt đầu, đã chạy lại với quyền exec phù hợp, không đổi assertion.
+- Local: Python 3.14.6 hiện có (đúng dòng runtime repo); `python -B -m unittest discover -s tools -p test_evaluate_personal_info.py`:
+  **21 test PASS**, 0 failures/errors/skips. Chỉ synthetic; không đọc dữ liệu private trong suite.
+  Kiểm nhãn rõ và quy tắc so raw/normalized; prediction sai normalized/null sai tính FP/FN,
+  gold sai semantics vẫn bị từ chối, không tự sửa prediction; danh xưng không nhãn là FP khi prediction đoán;
+  mâu thuẫn DISPUTED bị loại denominator đến khi phân xử; AMBIGUOUS sau phân xử vẫn FN;
+  ngoài danh sách giữ raw/null/issue và abstain; missing/disabled/support, DRAFT và privacy.
+- Smoke CLI synthetic, AST/JSON syntax, frozen R-1..R-6/AC-1..AC-23, link/anchor toàn bộ hai docs,
+  diff-check/allowlist và fingerprint: kết quả source cuối trong PR.
+- Gold/prediction đo v1 nay cần sáu field. Gender value `{raw, normalized}` chỉ là input offline;
+  normalized null so raw chính xác; thiếu field bị từ chối an toàn. Các comparator Q5 cũ giữ nguyên.
+  [Shape gender](spec.md#file-đo-offline-cho-gender-ac-24) là bổ sung cho hướng dẫn năm field lịch sử
+  trong gold-tools.md; file hướng dẫn đó ngoài phạm vi sửa của task này.
+- Ruff NOT VERIFIED: không có trên PATH/Python 3.14/bundled/worker venv; không cài tool hay đổi formatter config.
+  JSON Schema validator bên thứ ba NOT VERIFIED: Python 3.14 và bundled thiếu jsonschema; chỉ kiểm syntax,
+  refs nội bộ, input validation stdlib và unit test, không tuyên bố full JSON Schema validation.
+- Backend full gate theo CI trên head mới sau push; pending không PASS. Local Java suite N/A vì
+  chỉ công cụ Python offline và docs; worker/frontend suite N/A vì không đổi các component đó.
+  Secret scanner native NOT VERIFIED nếu không có tool trong môi trường; kiểm payload không PII
+  chỉ là kiểm bổ sung, không thay secret scanning.
+
+## Gold private và support
+
+- Đối chiếu ảnh toàn bộ 4 tài liệu/29 trang trong annotations với PDF đúng codex-test; render mới
+  ba trang có nhãn để đối chiếu lại. Dùng skill PDF và Poppler offline; chỉ ghi ảnh trong annotations.
+  Không đọc heldout; không gọi OCR/network/DB hoặc gửi nội dung CV tới dịch vụ ngoài khác.
+- Thêm gender vào 4 annotation-draft.json hiện có và bundle personal-info-gold-draft.json;
+  có trang nhãn và danh sách trang đã đối chiếu trong fieldNotes private. Ba tài liệu có nhãn rõ;
+  tài liệu không nhãn là ANNOTATED với acceptedValues rỗng, không suy từ danh xưng.
+  Tất cả vẫn DRAFT; kiểm prior fields/status không đổi trước/sau ghi.
+- Bản annotation có documentKey `private-draft-03` **tồn tại** trong wrapper draft-03 và bundle;
+  không nhầm documentKey với tên thư mục. Không tạo bản gold được xác nhận.
+- Support tổng hợp không PII: **email 0/4, phone 0/4, gender có nhãn rõ 3/4**.
+  Đánh giá email/phone trên CV thật là **N/A** vì không có giá trị rõ trong tài liệu mẫu.
+  Gender có support nhưng accuracy vẫn **NOT VERIFIED**: gold chưa được developer xác nhận,
+  chưa có prediction/parser gender. Không chạy công cụ trên gold thật hoặc suy accuracy từ synthetic.
+- Raw OCR vẫn NOT VERIFIED: nguồn chỉ có PDF, text layer không là raw OCR hoặc ground truth.
+  Gold private/ảnh/text không vào Git; PR chỉ báo số đếm tổng hợp.
+
+## Review và bàn giao hiện tại
+
+Vòng 1 trên b4931f49: GENDER-1 Medium — prediction normalized sai làm reject toàn report.
+Primary sửa comparator để tính FP/FN, giữ validation gold và thêm regression; vòng 2 kiểm delta
+và finding trên head mới, kết quả tại PR.
+Reviewer chỉ đọc toàn diff/base, code/test/fixture/schema và docs liên quan sau writer/check dừng;
+không đọc dữ liệu private, không format/build/test/ghi Git/publish. Source, vòng và finding ghi trong PR.
+CI chờ đúng head mới; PR tiếng Việt Draft, không Ready, không merge. Open Questions tại spec/PR
+về danh xưng, lưu/API, giá trị ngoài nhị phân và dấu câu location chưa được agent quyết định.
+Ước lượng lát cắt 4 là 10–11 file tùy shape/migration gender; cần developer duyệt chia lại trước code.
+
+---
+
+# Lịch sử PR #23 — Gold và công cụ đo
 
 - Spec: [AC-1..AC-3](spec.md#lát-cắt-1--gold-và-công-cụ-đo), mục Phê duyệt và Q5; developer giao
   riêng lát cắt 1 trong chat. PR #22 đã merge; base main mới nhất sau fetch:
