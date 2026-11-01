@@ -548,5 +548,5 @@
       }
     }
   },
-  "$comment": "Python validation additionally enforces CONFIRMED gold for metrics, exact document joins, unique document/page keys, state/value and disabled consistency, and span bounds. DRAFT is a storage format, never a scoring authorization. Gender runtime checks R-7 raw/normalized consistency and GENDER_UNRECOGNIZED for unknown prediction values; only a human audits labels and subject. Unknown raw is compared exactly; this is no application API/storage contract."
+  "$comment": "Python validation additionally enforces CONFIRMED gold for metrics, exact document joins, unique document/page keys, state/value and disabled consistency, and span bounds. DRAFT is a storage format, never a scoring authorization. Gender runtime checks gold R-7 raw/normalized consistency; inconsistent prediction normalization remains measurable FP/FN and GENDER_UNRECOGNIZED for unknown prediction values; only a human audits labels and subject. Unknown raw is compared exactly; this is no application API/storage contract."
 }

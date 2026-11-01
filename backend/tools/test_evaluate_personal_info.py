@@ -30,16 +30,30 @@ class EvaluationTests(unittest.TestCase):
         for raw in ('Nữ', 'Female', 'F'):
             self.assertNotEqual(canonical('gender', {'raw': raw, 'normalized': 'FEMALE'}),
                                 canonical('gender', {'raw': 'Nam', 'normalized': 'MALE'}))
-        for value in ({'raw': 'Mr', 'normalized': 'MALE'},
-                      {'raw': 'Other', 'normalized': 'FEMALE'},
-                      {'raw': 'Nữ', 'normalized': 'MALE'},
-                      {'raw': 'Nam', 'normalized': None}, 'MALE'):
+        for value in ({'raw': 'Nam', 'normalized': 'OTHER'},
+                      {'raw': 'Nam', 'normalized': False}, 'MALE'):
             with self.assertRaises(InputError):
                 canonical('gender', value)
         unknown = {'raw': 'Non-binary', 'normalized': None}
         self.assertNotEqual(canonical('gender', unknown),
                             canonical('gender', {'raw': 'Other', 'normalized': None}))
         self.assertEqual(unknown, {'raw': 'Non-binary', 'normalized': None})
+
+    def test_gender_bad_prediction_normalization_counts_errors_without_repair(self) -> None:
+        gold, pred = inputs()
+        field = pred['documents'][0]['fields']['gender']
+        for raw, normalized in [('Nữ', 'MALE'), ('Nam', 'FEMALE'), ('Nam', None),
+                                ('Other', 'MALE'), ('Mr', 'MALE')]:
+            with self.subTest(raw=raw, normalized=normalized):
+                value = {'raw': raw, 'normalized': normalized}
+                field['value'] = value
+                result = evaluate(gold, pred)['fields']['gender']
+                self.assertEqual((result['tp'], result['fp'], result['fn']), (0, 1, 1))
+                self.assertEqual(field['value'], value)
+                bad_gold = copy.deepcopy(gold)
+                bad_gold['documents'][0]['fields']['gender']['acceptedValues'] = [value]
+                with self.assertRaises(InputError):
+                    evaluate(bad_gold, pred)
 
     def test_gender_synthetic_label_honorific_conflict_and_unknown(self) -> None:
         payload = json.loads((FIXTURES / 'synthetic-gender-cases.json').read_text(encoding='utf-8'))

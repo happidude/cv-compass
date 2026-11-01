@@ -12,11 +12,12 @@
 
 ## Kiểm chứng hiện tại
 
-- Test-first: 3 test gender mới ban đầu FAIL vì thiếu field/fixture/implementation; 17 test cũ giữ nguyên.
+- Test-first: 3 test gender mới ban đầu FAIL vì thiếu field/fixture/implementation; 17 test cũ giữ nguyên; thêm regression GENDER-1 sau vòng 1.
   Test CLI gặp quyền temp sandbox ở lượt đầu, đã chạy lại với quyền exec phù hợp, không đổi assertion.
 - Local: Python 3.14.6 hiện có (đúng dòng runtime repo); `python -B -m unittest discover -s tools -p test_evaluate_personal_info.py`:
-  **20 test PASS**, 0 failures/errors/skips. Chỉ synthetic; không đọc dữ liệu private trong suite.
-  Kiểm nhãn rõ và quy tắc so raw/normalized; danh xưng không nhãn là FP khi prediction đoán;
+  **21 test PASS**, 0 failures/errors/skips. Chỉ synthetic; không đọc dữ liệu private trong suite.
+  Kiểm nhãn rõ và quy tắc so raw/normalized; prediction sai normalized/null sai tính FP/FN,
+  gold sai semantics vẫn bị từ chối, không tự sửa prediction; danh xưng không nhãn là FP khi prediction đoán;
   mâu thuẫn DISPUTED bị loại denominator đến khi phân xử; AMBIGUOUS sau phân xử vẫn FN;
   ngoài danh sách giữ raw/null/issue và abstain; missing/disabled/support, DRAFT và privacy.
 - Smoke CLI synthetic, AST/JSON syntax, frozen R-1..R-6/AC-1..AC-23, link/anchor toàn bộ hai docs,
@@ -53,6 +54,9 @@
 
 ## Review và bàn giao hiện tại
 
+Vòng 1 trên b4931f49: GENDER-1 Medium — prediction normalized sai làm reject toàn report.
+Primary sửa comparator để tính FP/FN, giữ validation gold và thêm regression; vòng 2 kiểm delta
+và finding trên head mới, kết quả tại PR.
 Reviewer chỉ đọc toàn diff/base, code/test/fixture/schema và docs liên quan sau writer/check dừng;
 không đọc dữ liệu private, không format/build/test/ghi Git/publish. Source, vòng và finding ghi trong PR.
 CI chờ đúng head mới; PR tiếng Việt Draft, không Ready, không merge. Open Questions tại spec/PR

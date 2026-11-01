@@ -396,9 +396,11 @@ Developer đã duyệt Q1–Q5 và xác nhận milestone Active trong chat ngày
 Đây là shape chỉ cho công cụ lát cắt 1, không quyết định DB/API/config/result của ứng dụng.
 Gold/prediction có đủ sáu field; gender dùng value `{raw, normalized}`; normalized là
 `MALE`, `FEMALE` hoặc null. Giữ raw byte-for-byte trong JSON value; so sánh nhận diện
-bằng NFC/trim/casefold của raw theo đúng danh sách R-7, yêu cầu normalized tương ứng.
+bằng NFC/trim/casefold của raw theo đúng danh sách R-7; gold yêu cầu normalized tương ứng.
 Hai raw thuộc cùng normalized được coi bằng nhau; normalized null chỉ so raw chính xác,
-không gom giá trị khác nhau. Không chấp nhận normalized suy từ danh xưng hay giá trị lạ.
+không gom giá trị khác nhau. Prediction đúng shape nhưng normalized sai/null sai so với raw
+được đo thành FP (và FN nếu gold có value), không tự sửa thành TP hay từ chối cả báo cáo.
+Gold không chấp nhận normalized suy từ danh xưng hay giá trị lạ.
 Prediction có raw ngoài danh sách phải có issue `GENDER_UNRECOGNIZED`; alternatives vẫn
 không thành selected value. Công cụ không trích nhãn, không đọc PDF và không là parser;
 người annotation chịu trách nhiệm nhãn/chủ thể và audit supportsValue từng evidence span.

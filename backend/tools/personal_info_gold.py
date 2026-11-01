@@ -33,10 +33,14 @@ def canonical(field: str, value: object) -> str | tuple[str, str | None]:
         _keys(value, {'raw', 'normalized'})
         raw, normalized = value['raw'], value['normalized']
         require(isinstance(raw, str) and bool(raw.strip()))
+        require(normalized is None or isinstance(normalized, str)
+                and normalized in {'MALE', 'FEMALE'})
         recognized = {'nam': 'MALE', 'male': 'MALE', 'm': 'MALE',
                       'nữ': 'FEMALE', 'female': 'FEMALE', 'f': 'FEMALE'}
         expected = recognized.get(unicodedata.normalize('NFC', raw).strip().casefold())
-        require(normalized == expected)
+        # Malformed normalization in a prediction must count as an error, never a corrected TP.
+        if normalized != expected:
+            return 'invalid', raw
         # This compares annotated values only; label/ownership evidence is audited by a human.
         return ('normalized', normalized) if normalized is not None else ('raw', raw)
     if field == 'phone':
@@ -122,7 +126,9 @@ def validate(payload: object, gold: bool) -> dict[str, dict]:
                 require(isinstance(value['acceptedValues'], list))
                 require(value['status'] == 'ANNOTATED' or not value['acceptedValues'])
                 for alternative in value['acceptedValues']:
-                    canonical(field, alternative)
+                    compared = canonical(field, alternative)
+                    if field == 'gender':
+                        require(compared[0] != 'invalid')
             else:
                 _keys(value, {'enabled', 'state', 'value', 'subject', 'alternatives',
                               'issues', 'evidence'})
