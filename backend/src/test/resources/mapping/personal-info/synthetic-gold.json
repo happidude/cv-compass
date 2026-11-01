@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "confirmation": "CONFIRMED",
+  "documents": [
+    {
+      "documentKey": "synthetic-1",
+      "layout": "TABLE",
+      "language": "VI",
+      "fields": {
+        "fullName": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Đào Mẫu"
+          ]
+        },
+        "email": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Demo@example.invalid"
+          ]
+        },
+        "phone": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            {
+              "number": "+99 123-456",
+              "extension": "02"
+            }
+          ]
+        },
+        "location": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Vùng Mẫu"
+          ]
+        },
+        "summary": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Nội dung tổng hợp."
+          ]
+        }
+      },
+      "source": {
+        "extractionId": "extract-1",
+        "pages": [
+          {
+            "page": 1,
+            "rawText": "😀Đào Mẫu\nEmail: Demo@example.invalid\nCONTACT\nREFERENCE\nName: Người Mẫu Phụ\nLocation: Khu Mẫu Công Ty\nPROFILE\nNội dung tổng hợp.\nWORK HISTORY\nSynthetic Company\nCONTACT DETAILS | Label / Value\nEMPLOYER\nLocation: Khu Công Nghiệp Giả Lập\nSUMMARY OF EXPERIENCE\n2001 | Đơn Vị Giả Lập | Vai Trò Tổng Hợp"
+          },
+          {
+            "page": 2,
+            "rawText": "WORK HISTORY\nNội dung tổng hợp không chứa thông tin thật.\nRepeated footer"
+          },
+          {
+            "page": 3,
+            "rawText": "PERSONAL PROFILE\nNội dung tổng hợp.\nREFERENCES\nContact: other@example.invalid\nRepeated footer"
+          }
+        ]
+      }
+    },
+    {
+      "documentKey": "synthetic-2",
+      "layout": "TABLE",
+      "language": "VI",
+      "fields": {
+        "fullName": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Tên Hai"
+          ]
+        },
+        "email": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Demo@example.invalid"
+          ]
+        },
+        "phone": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            {
+              "number": "+99 123-456",
+              "extension": "02"
+            }
+          ]
+        },
+        "location": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Vùng Mẫu"
+          ]
+        },
+        "summary": {
+          "status": "ANNOTATED",
+          "acceptedValues": [
+            "Nội dung tổng hợp."
+          ]
+        }
+      },
+      "source": {
+        "extractionId": "extract-2",
+        "pages": [
+          {
+            "page": 1,
+            "rawText": "😀Tên Hai\nEmail: Demo@example.invalid\nCONTACT\nREFERENCE\nName: Người Mẫu Phụ\nLocation: Khu Mẫu Công Ty\nPROFILE\nNội dung tổng hợp.\nWORK HISTORY\nSynthetic Company\nCONTACT DETAILS | Label / Value\nEMPLOYER\nLocation: Khu Công Nghiệp Giả Lập\nSUMMARY OF EXPERIENCE\n2001 | Đơn Vị Giả Lập | Vai Trò Tổng Hợp"
+          },
+          {
+            "page": 2,
+            "rawText": "WORK HISTORY\nNội dung tổng hợp không chứa thông tin thật.\nRepeated footer"
+          },
+          {
+            "page": 3,
+            "rawText": "PERSONAL PROFILE\nNội dung tổng hợp.\nREFERENCES\nContact: other@example.invalid\nRepeated footer"
+          }
+        ]
+      }
+    }
+  ]
+}

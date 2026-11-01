@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Local personal information evaluation v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "confirmation",
+        "documents"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "confirmation": {
+          "enum": [
+            "DRAFT",
+            "CONFIRMED"
+          ]
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/goldDocument"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "documents"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/predictionDocument"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "phone": {
+      "type": "object",
+      "required": [
+        "number",
+        "extension"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extension": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "extractionId",
+        "page",
+        "start",
+        "end",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "extractionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "subject": {
+          "enum": [
+            "CANDIDATE",
+            "REFERENCE",
+            "RECRUITER",
+            "COMPANY",
+            "UNKNOWN"
+          ]
+        },
+        "supportsValue": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "textGold": {
+      "type": "object",
+      "required": [
+        "status",
+        "acceptedValues"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ANNOTATED",
+            "UNANNOTATED",
+            "DISPUTED"
+          ]
+        },
+        "acceptedValues": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "phoneGold": {
+      "type": "object",
+      "required": [
+        "status",
+        "acceptedValues"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ANNOTATED",
+            "UNANNOTATED",
+            "DISPUTED"
+          ]
+        },
+        "acceptedValues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/phone"
+          }
+        }
+      }
+    },
+    "textPrediction": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "state",
+        "value",
+        "subject",
+        "alternatives",
+        "issues",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "PROPOSED",
+            "NOT_FOUND",
+            "AMBIGUOUS",
+            "INVALID"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subject": {
+          "enum": [
+            "CANDIDATE",
+            "REFERENCE",
+            "RECRUITER",
+            "COMPANY",
+            "UNKNOWN"
+          ]
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "phonePrediction": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "state",
+        "value",
+        "subject",
+        "alternatives",
+        "issues",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "PROPOSED",
+            "NOT_FOUND",
+            "AMBIGUOUS",
+            "INVALID"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/phone"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subject": {
+          "enum": [
+            "CANDIDATE",
+            "REFERENCE",
+            "RECRUITER",
+            "COMPANY",
+            "UNKNOWN"
+          ]
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/phone"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "goldDocument": {
+      "type": "object",
+      "required": [
+        "documentKey",
+        "layout",
+        "language",
+        "fields"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "documentKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layout": {
+          "enum": [
+            "SINGLE_COLUMN",
+            "MULTI_COLUMN",
+            "TABLE",
+            "MIXED",
+            "UNKNOWN"
+          ]
+        },
+        "language": {
+          "enum": [
+            "VI",
+            "EN",
+            "MIXED",
+            "OTHER",
+            "UNKNOWN"
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "required": [
+            "fullName",
+            "email",
+            "phone",
+            "location",
+            "summary"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "fullName": {
+              "$ref": "#/$defs/textGold"
+            },
+            "email": {
+              "$ref": "#/$defs/textGold"
+            },
+            "phone": {
+              "$ref": "#/$defs/phoneGold"
+            },
+            "location": {
+              "$ref": "#/$defs/textGold"
+            },
+            "summary": {
+              "$ref": "#/$defs/textGold"
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "extractionId",
+            "pages"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "extractionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "page",
+                  "rawText"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "rawText": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "predictionDocument": {
+      "type": "object",
+      "required": [
+        "documentKey",
+        "fields"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "documentKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "object",
+          "required": [
+            "fullName",
+            "email",
+            "phone",
+            "location",
+            "summary"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "fullName": {
+              "$ref": "#/$defs/textPrediction"
+            },
+            "email": {
+              "$ref": "#/$defs/textPrediction"
+            },
+            "phone": {
+              "$ref": "#/$defs/phonePrediction"
+            },
+            "location": {
+              "$ref": "#/$defs/textPrediction"
+            },
+            "summary": {
+              "$ref": "#/$defs/textPrediction"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Python validation additionally enforces CONFIRMED gold for metrics, exact document joins, unique document/page keys, state/value and disabled consistency, and span bounds. DRAFT is a storage format, never a scoring authorization."
+}
