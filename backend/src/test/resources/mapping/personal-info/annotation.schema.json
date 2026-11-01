@@ -333,7 +333,8 @@
             "email",
             "phone",
             "location",
-            "summary"
+            "summary",
+            "gender"
           ],
           "additionalProperties": false,
           "properties": {
@@ -351,6 +352,9 @@
             },
             "summary": {
               "$ref": "#/$defs/textGold"
+            },
+            "gender": {
+              "$ref": "#/$defs/genderGold"
             }
           }
         },
@@ -409,7 +413,8 @@
             "email",
             "phone",
             "location",
-            "summary"
+            "summary",
+            "gender"
           ],
           "additionalProperties": false,
           "properties": {
@@ -427,11 +432,121 @@
             },
             "summary": {
               "$ref": "#/$defs/textPrediction"
+            },
+            "gender": {
+              "$ref": "#/$defs/genderPrediction"
             }
+          }
+        }
+      }
+    },
+    "gender": {
+      "type": "object",
+      "required": [
+        "raw",
+        "normalized"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "raw": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalized": {
+          "enum": [
+            "MALE",
+            "FEMALE",
+            null
+          ]
+        }
+      }
+    },
+    "genderGold": {
+      "type": "object",
+      "required": [
+        "status",
+        "acceptedValues"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ANNOTATED",
+            "UNANNOTATED",
+            "DISPUTED"
+          ]
+        },
+        "acceptedValues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gender"
+          }
+        }
+      }
+    },
+    "genderPrediction": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "state",
+        "value",
+        "subject",
+        "alternatives",
+        "issues",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "PROPOSED",
+            "NOT_FOUND",
+            "AMBIGUOUS",
+            "INVALID"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/gender"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subject": {
+          "enum": [
+            "CANDIDATE",
+            "REFERENCE",
+            "RECRUITER",
+            "COMPANY",
+            "UNKNOWN"
+          ]
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gender"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
           }
         }
       }
     }
   },
-  "$comment": "Python validation additionally enforces CONFIRMED gold for metrics, exact document joins, unique document/page keys, state/value and disabled consistency, and span bounds. DRAFT is a storage format, never a scoring authorization."
+  "$comment": "Python validation additionally enforces CONFIRMED gold for metrics, exact document joins, unique document/page keys, state/value and disabled consistency, and span bounds. DRAFT is a storage format, never a scoring authorization. Gender runtime checks R-7 raw/normalized consistency and GENDER_UNRECOGNIZED for unknown prediction values; only a human audits labels and subject. Unknown raw is compared exactly; this is no application API/storage contract."
 }

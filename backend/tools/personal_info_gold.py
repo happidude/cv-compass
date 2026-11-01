@@ -5,7 +5,7 @@ import re
 import unicodedata
 from pathlib import Path
 
-FIELDS = ('fullName', 'email', 'phone', 'location', 'summary')
+FIELDS = ('fullName', 'email', 'phone', 'location', 'summary', 'gender')
 STATES = {'PROPOSED', 'NOT_FOUND', 'AMBIGUOUS', 'INVALID'}
 SUBJECTS = {'CANDIDATE', 'REFERENCE', 'RECRUITER', 'COMPANY', 'UNKNOWN'}
 LABELS = {
@@ -29,6 +29,16 @@ def require(condition: bool) -> None:
 def canonical(field: str, value: object) -> str | tuple[str, str | None]:
     """Apply the approved measurement equivalences without modifying source or stored values."""
     require(field in FIELDS)
+    if field == 'gender':
+        _keys(value, {'raw', 'normalized'})
+        raw, normalized = value['raw'], value['normalized']
+        require(isinstance(raw, str) and bool(raw.strip()))
+        recognized = {'nam': 'MALE', 'male': 'MALE', 'm': 'MALE',
+                      'nữ': 'FEMALE', 'female': 'FEMALE', 'f': 'FEMALE'}
+        expected = recognized.get(unicodedata.normalize('NFC', raw).strip().casefold())
+        require(normalized == expected)
+        # This compares annotated values only; label/ownership evidence is audited by a human.
+        return ('normalized', normalized) if normalized is not None else ('raw', raw)
     if field == 'phone':
         require(isinstance(value, dict) and set(value) == {'number', 'extension'})
         number, extension = value['number'], value['extension']
@@ -123,6 +133,11 @@ def validate(payload: object, gold: bool) -> dict[str, dict]:
                     canonical(field, alternative)
                 require(isinstance(value['issues'], list)
                         and all(isinstance(issue, str) for issue in value['issues']))
+                if field == 'gender':
+                    candidates = value['alternatives'] + (
+                        [value['value']] if value['state'] == 'PROPOSED' else [])
+                    if any(canonical(field, candidate)[0] == 'raw' for candidate in candidates):
+                        require('GENDER_UNRECOGNIZED' in value['issues'])
                 _evidence(value['evidence'])
                 if value['state'] == 'PROPOSED':
                     canonical(field, value['value'])

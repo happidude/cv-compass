@@ -22,6 +22,62 @@ def inputs() -> tuple[dict, dict]:
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_gender_raw_and_normalized_comparisons(self) -> None:
+        self.assertIn('gender', FIELDS)
+        for raw in ('Nam', 'Male', 'M'):
+            self.assertEqual(canonical('gender', {'raw': raw, 'normalized': 'MALE'}),
+                             canonical('gender', {'raw': 'Nam', 'normalized': 'MALE'}))
+        for raw in ('Nữ', 'Female', 'F'):
+            self.assertNotEqual(canonical('gender', {'raw': raw, 'normalized': 'FEMALE'}),
+                                canonical('gender', {'raw': 'Nam', 'normalized': 'MALE'}))
+        for value in ({'raw': 'Mr', 'normalized': 'MALE'},
+                      {'raw': 'Other', 'normalized': 'FEMALE'},
+                      {'raw': 'Nữ', 'normalized': 'MALE'},
+                      {'raw': 'Nam', 'normalized': None}, 'MALE'):
+            with self.assertRaises(InputError):
+                canonical('gender', value)
+        unknown = {'raw': 'Non-binary', 'normalized': None}
+        self.assertNotEqual(canonical('gender', unknown),
+                            canonical('gender', {'raw': 'Other', 'normalized': None}))
+        self.assertEqual(unknown, {'raw': 'Non-binary', 'normalized': None})
+
+    def test_gender_synthetic_label_honorific_conflict_and_unknown(self) -> None:
+        payload = json.loads((FIXTURES / 'synthetic-gender-cases.json').read_text(encoding='utf-8'))
+        report = evaluate(payload['gold'], payload['predictions'])
+        gender = report['fields']['gender']
+        self.assertEqual((gender['documents'], gender['gold'], gender['predictions'],
+                          gender['tp'], gender['fp'], gender['fn']), (4, 2, 2, 1, 1, 1))
+        self.assertEqual((gender['ambiguous'], gender['invalid'], gender['excluded_gold']),
+                         (0, 1, 1))
+        self.assertEqual((gender['evidence_valid'], gender['evidence_invalid']), (2, 1))
+        self.assertEqual((gender['precision'], gender['recall']), (0.5, 0.5))
+        self.assertEqual(set(report['fields']), set(FIELDS))
+        self.assertNotIn('Non-binary', json.dumps(report))
+        adjudicated = copy.deepcopy(payload['gold'])
+        adjudicated['documents'][2]['fields']['gender'].update(
+            status='ANNOTATED', acceptedValues=[{'raw': 'F', 'normalized': 'FEMALE'}])
+        counts = evaluate(adjudicated, payload['predictions'])['fields']['gender']
+        self.assertEqual((counts['ambiguous'], counts['fn']), (1, 2))
+        pred = payload['predictions']['documents'][3]['fields']['gender']
+        pred['issues'] = []
+        with self.assertRaises(InputError):
+            evaluate(payload['gold'], payload['predictions'])
+
+    def test_gender_support_draft_missing_field_and_disabled(self) -> None:
+        gold, pred = inputs()
+        self.assertEqual(len(FIELDS), 6)
+        self.assertEqual(set(gold['documents'][0]['fields']), set(FIELDS))
+        result = evaluate(gold, pred)['fields']['gender']
+        self.assertEqual((result['gold'], result['tp'], result['missing']), (1, 1, 1))
+        field = pred['documents'][0]['fields']['gender']
+        field.update(enabled=False, state='NOT_FOUND', value=None, issues=['FIELD_DISABLED'])
+        result = evaluate(gold, pred)['fields']['gender']
+        self.assertEqual((result['disabled'], result['evaluated'], result['fn']), (1, 1, 0))
+        self.assertEqual((result['precision'], result['recall']), ('N/A', 'N/A'))
+        del gold['documents'][0]['fields']['gender']
+        with self.assertRaises(InputError):
+            evaluate(gold, pred)
+
     def test_field_comparisons_preserve_semantics(self) -> None:
         cases = [
             ('fullName', '  Đa\u0300o   Mẫu ', 'Đào Mẫu', True),

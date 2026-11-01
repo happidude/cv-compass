@@ -71,6 +71,18 @@
             "FIELD_DISABLED"
           ],
           "evidence": []
+        },
+        "gender": {
+          "enabled": true,
+          "state": "PROPOSED",
+          "value": {
+            "raw": "Male",
+            "normalized": "MALE"
+          },
+          "subject": "CANDIDATE",
+          "alternatives": [],
+          "issues": [],
+          "evidence": []
         }
       }
     },
@@ -143,6 +155,15 @@
           "issues": [
             "FIELD_DISABLED"
           ],
+          "evidence": []
+        },
+        "gender": {
+          "enabled": true,
+          "state": "NOT_FOUND",
+          "value": null,
+          "subject": "UNKNOWN",
+          "alternatives": [],
+          "issues": [],
           "evidence": []
         }
       }

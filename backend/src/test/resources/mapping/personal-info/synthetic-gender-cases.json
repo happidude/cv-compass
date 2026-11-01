@@ -1,0 +1,492 @@
+{
+  "gold": {
+    "schemaVersion": 1,
+    "confirmation": "CONFIRMED",
+    "documents": [
+      {
+        "documentKey": "gender-case-1",
+        "layout": "SINGLE_COLUMN",
+        "language": "MIXED",
+        "fields": {
+          "fullName": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "email": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "phone": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "location": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "summary": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "gender": {
+            "status": "ANNOTATED",
+            "acceptedValues": [
+              {
+                "raw": "Male",
+                "normalized": "MALE"
+              }
+            ]
+          }
+        },
+        "source": {
+          "extractionId": "gender-case-1",
+          "pages": [
+            {
+              "page": 1,
+              "rawText": "PERSONAL DETAILS\nGender: Male"
+            }
+          ]
+        }
+      },
+      {
+        "documentKey": "gender-case-2",
+        "layout": "SINGLE_COLUMN",
+        "language": "MIXED",
+        "fields": {
+          "fullName": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "email": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "phone": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "location": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "summary": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "gender": {
+            "status": "ANNOTATED",
+            "acceptedValues": []
+          }
+        },
+        "source": {
+          "extractionId": "gender-case-2",
+          "pages": [
+            {
+              "page": 1,
+              "rawText": "PERSONAL DETAILS\nMr Synthetic Person"
+            }
+          ]
+        }
+      },
+      {
+        "documentKey": "gender-case-3",
+        "layout": "SINGLE_COLUMN",
+        "language": "MIXED",
+        "fields": {
+          "fullName": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "email": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "phone": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "location": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "summary": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "gender": {
+            "status": "DISPUTED",
+            "acceptedValues": []
+          }
+        },
+        "source": {
+          "extractionId": "gender-case-3",
+          "pages": [
+            {
+              "page": 1,
+              "rawText": "PERSONAL DETAILS\nSex: M\nPhái: F"
+            }
+          ]
+        }
+      },
+      {
+        "documentKey": "gender-case-4",
+        "layout": "SINGLE_COLUMN",
+        "language": "MIXED",
+        "fields": {
+          "fullName": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "email": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "phone": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "location": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "summary": {
+            "status": "UNANNOTATED",
+            "acceptedValues": []
+          },
+          "gender": {
+            "status": "ANNOTATED",
+            "acceptedValues": [
+              {
+                "raw": "Non-binary",
+                "normalized": null
+              }
+            ]
+          }
+        },
+        "source": {
+          "extractionId": "gender-case-4",
+          "pages": [
+            {
+              "page": 1,
+              "rawText": "PERSONAL DETAILS\nGiới tính: Non-binary"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "predictions": {
+    "schemaVersion": 1,
+    "documents": [
+      {
+        "documentKey": "gender-case-1",
+        "fields": {
+          "fullName": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "email": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "phone": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "location": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "summary": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "gender": {
+            "enabled": true,
+            "state": "PROPOSED",
+            "value": {
+              "raw": "Male",
+              "normalized": "MALE"
+            },
+            "subject": "CANDIDATE",
+            "alternatives": [],
+            "issues": [],
+            "evidence": [
+              {
+                "extractionId": "gender-case-1",
+                "page": 1,
+                "start": 17,
+                "end": 29,
+                "text": "Gender: Male",
+                "subject": "CANDIDATE",
+                "supportsValue": true
+              }
+            ]
+          }
+        }
+      },
+      {
+        "documentKey": "gender-case-2",
+        "fields": {
+          "fullName": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "email": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "phone": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "location": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "summary": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "gender": {
+            "enabled": true,
+            "state": "PROPOSED",
+            "value": {
+              "raw": "Male",
+              "normalized": "MALE"
+            },
+            "subject": "CANDIDATE",
+            "alternatives": [],
+            "issues": [],
+            "evidence": [
+              {
+                "extractionId": "gender-case-2",
+                "page": 1,
+                "start": 17,
+                "end": 36,
+                "text": "Mr Synthetic Person",
+                "subject": "CANDIDATE",
+                "supportsValue": false
+              }
+            ]
+          }
+        }
+      },
+      {
+        "documentKey": "gender-case-3",
+        "fields": {
+          "fullName": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "email": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "phone": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "location": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "summary": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "gender": {
+            "enabled": true,
+            "state": "AMBIGUOUS",
+            "value": null,
+            "subject": "CANDIDATE",
+            "alternatives": [
+              {
+                "raw": "M",
+                "normalized": "MALE"
+              },
+              {
+                "raw": "F",
+                "normalized": "FEMALE"
+              }
+            ],
+            "issues": [
+              "CONFLICTING_VALUES"
+            ],
+            "evidence": [
+              {
+                "extractionId": "gender-case-3",
+                "page": 1,
+                "start": 17,
+                "end": 23,
+                "text": "Sex: M",
+                "subject": "CANDIDATE",
+                "supportsValue": true
+              },
+              {
+                "extractionId": "gender-case-3",
+                "page": 1,
+                "start": 24,
+                "end": 31,
+                "text": "Phái: F",
+                "subject": "CANDIDATE",
+                "supportsValue": true
+              }
+            ]
+          }
+        }
+      },
+      {
+        "documentKey": "gender-case-4",
+        "fields": {
+          "fullName": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "email": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "phone": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "location": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "summary": {
+            "enabled": true,
+            "state": "NOT_FOUND",
+            "value": null,
+            "subject": "UNKNOWN",
+            "alternatives": [],
+            "issues": [],
+            "evidence": []
+          },
+          "gender": {
+            "enabled": true,
+            "state": "INVALID",
+            "value": null,
+            "subject": "CANDIDATE",
+            "alternatives": [
+              {
+                "raw": "Non-binary",
+                "normalized": null
+              }
+            ],
+            "issues": [
+              "GENDER_UNRECOGNIZED"
+            ],
+            "evidence": [
+              {
+                "extractionId": "gender-case-4",
+                "page": 1,
+                "start": 17,
+                "end": 38,
+                "text": "Giới tính: Non-binary",
+                "subject": "CANDIDATE",
+                "supportsValue": true
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
