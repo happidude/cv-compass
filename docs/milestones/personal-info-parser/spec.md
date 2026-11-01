@@ -190,26 +190,34 @@ Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
 - Báo cáo ngắn gồm baseline/head/PR, quyết định và hạn chế, hướng dẫn JSON/properties/start/restart,
   local và CI đúng source (tách riêng), metrics, giới hạn mẫu, finding còn mở, NOT VERIFIED.
 
+## Quyết định bổ sung đã duyệt ngày 2026-11-01
+
+Developer duyệt bốn khuyến nghị trong chat giao lát cắt 2; các AC/R đã duyệt giữ nguyên.
+
+1. **fullName:** không gồm Mr/Ms/Mrs/Ông/Bà/Anh/Chị; danh xưng không bao giờ là bằng chứng gender.
+2. **Shape gender và tương thích:** result v3 có `personalInfo.gender` gồm `enabled`, `raw`,
+   `normalized`, `state`, `alternatives`, `evidence`, `issues`; tái dùng Evidence/Issue hiện có.
+   `normalized` chỉ MALE/FEMALE/null; raw và evidence bất biến; alternative giữ raw/normalized/evidence.
+   State parser dùng tập hiện có PROPOSED/NOT_FOUND/AMBIGUOUS/INVALID, không là trạng thái review.
+   Result/config v3 dùng reader riêng theo schemaVersion; reader v1/v2 giữ kiểu và nghĩa hiện có,
+   không viết lại result/digest hay nâng job cũ. Metadata lưu về sau có version trong EXTENSIONS;
+   basic API hiện có vẫn string/null, không ép client cũ đọc object mới hoặc thêm cột basic ở lát cắt này.
+   Lát cắt 2 chỉ thêm DTO/validation và migration mới mở CHECK SCHEMA_VERSION (1,2,3);
+   không sửa migration cũ. API trình bày/ghi/xác nhận và publication triển khai ở lát cắt 4-5.
+3. **Ngoài nhị phân:** giữ raw, normalized null và issue, không ép MALE/FEMALE; semantics trình bày
+   và xác nhận chốt ở lát cắt 4-5. Lát cắt này không quyết định publication/UI.
+4. **Location:** giữ comparator Q5 hiện tại, gồm dấu câu cuối như PDF; không tự bỏ dấu câu.
+
+Lát cắt 2 được giao riêng trong chat ngày 2026-11-01, sau PR #24 đã merge.
+Base main sau fetch: `940802c418f3072fcc274defc7e975f7752a85b0`;
+nhánh `feature/personal-info-config-version`, working tree `E:/cv-compass`.
+Mức 3 (version/contract/migration), tối đa 3 vòng; Implementer → Tester → Reviewer chỉ đọc.
+Không đọc dữ liệu CV; không triển khai parser/publication/UI hoặc bắt đầu lát cắt 3.
+
 ## Open Questions
 
-Các mục sau là đề xuất, chưa được quyết định; dừng code ứng dụng phụ thuộc, tiếp tục phần độc lập.
-
-1. **fullName và danh xưng:** R-1 chưa chốt Mr/Ms/Ông/Bà có thuộc tên không. Có thể giữ nguyên
-   hoặc tách danh xưng; khuyến nghị loại khỏi fullName và không bao giờ dùng làm bằng chứng
-   gender. Chưa đổi comparator fullName hay gold tên đã có, chờ developer duyệt.
-2. **Lưu trữ/API gender:** chưa có shape đã duyệt cho migration, metadata và tương thích API/UI.
-   Lựa chọn thêm basic string/null cùng metadata versioned hoặc field cấu trúc riêng;
-   khuyến nghị đặc tả rõ raw/normalized/state/evidence và tương thích dữ liệu/reader cũ trước
-   lát cắt 2/4/5, migration mới nếu cần, không sửa migration đã áp dụng. Dự toán lát cắt 4
-   có thể tăng từ 10 lên 11 nếu cần migration gender riêng; khuyến nghị chia lại trước khi code.
-3. **Giá trị ngoài nhị phân:** R-7 đã chốt giữ raw, normalized null và issue; chưa chốt state,
-   cách publication/UI xác nhận và cách trình bày. Có thể abstain kèm alternative hoặc cho
-   giá trị raw được người dùng xác nhận; khuyến nghị bảo toàn raw/issue, không ép thành
-   MALE/FEMALE và để developer chốt semantics. Công cụ offline chỉ so raw chính xác khi
-   normalized null; fixture INVALID chỉ minh họa một prediction, không quyết định parser/API.
-4. **Dấu câu cuối location:** Q5 hiện giữ dấu câu; có thể giữ chính xác hoặc bỏ dấu câu cuối
-   có kiểm soát. Khuyến nghị giữ comparator Q5 hiện tại tới khi developer duyệt quy ước khác;
-   không tự bỏ dấu chấm/phẩy hay sửa gold location trong thay đổi này.
+Không còn bốn câu hỏi gender trước đây; developer đã duyệt và ghi nhận ở mục trên.
+Quyết định mới ngoài phạm vi phải ghi Open Questions của PR trước phần code phụ thuộc.
 
 ---
 
