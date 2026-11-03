@@ -2,6 +2,7 @@ package com.cvcompass.backend.mapping.repository;
 
 import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingVersions;
+import com.cvcompass.backend.mapping.dto.PersonalInfoDefinition;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -67,6 +68,8 @@ public class MappingRepository {
     }
 
     public void activate(long id, String digest) {
+        if (json.readTree(definitionJson(id)).path("schemaVersion").asInt(-1) == 3)
+            throw new IllegalStateException("MAPPING_V3_ACTIVATION_NOT_AVAILABLE");
         jdbc.update(
                 """
                 UPDATE "CV_MAPPING_CONFIGS" SET "ACTIVATED_AT"=clock_timestamp(),
@@ -92,6 +95,9 @@ public class MappingRepository {
     }
 
     public void enqueue(long extractionId, long configId, String engine, int maxAttempts) {
+        if (PersonalInfoDefinition.ENGINE_VERSION.equals(engine)
+                || json.readTree(definitionJson(configId)).path("schemaVersion").asInt(-1) == 3)
+            throw new IllegalStateException("MAPPING_V3_ENQUEUE_NOT_AVAILABLE");
         jdbc.update(
                 """
                 INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")

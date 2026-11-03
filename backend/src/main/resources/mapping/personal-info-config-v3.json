@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 3,
+  "engineCompatibility": "personal-info-mapping/3.0",
+  "revision": "personal-info-synthetic-v3",
+  "experience": {
+    "schemaVersion": 2,
+    "engineCompatibility": "experience-mapping/2.0",
+    "rulesRevision": "synthetic-rules-v1",
+    "taxonomyRevision": "synthetic-taxonomy-v1",
+    "rules": {
+      "experienceHeadings": [
+        "Experience",
+        "Kinh nghiệm"
+      ],
+      "summaryHeadings": [
+        "Summary",
+        "Tóm tắt"
+      ],
+      "stopHeadings": [
+        "Education",
+        "Học vấn"
+      ],
+      "employerLabels": [
+        "Company",
+        "Công ty"
+      ],
+      "titleLabels": [
+        "Title",
+        "Chức danh"
+      ],
+      "periodLabels": [
+        "Period",
+        "Thời gian"
+      ],
+      "continuationMarkers": [
+        "continued",
+        "tiếp theo"
+      ]
+    },
+    "titles": [],
+    "companies": []
+  },
+  "personalFields": {
+    "fullName": {
+      "enabled": true,
+      "labels": [
+        "Full name",
+        "Họ tên"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "email": {
+      "enabled": true,
+      "labels": [
+        "Email",
+        "Thư điện tử"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "phone": {
+      "enabled": true,
+      "labels": [
+        "Phone",
+        "Điện thoại"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "location": {
+      "enabled": true,
+      "labels": [
+        "Address",
+        "Địa chỉ"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "summary": {
+      "enabled": true,
+      "labels": [
+        "Summary",
+        "Tóm tắt"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "gender": {
+      "enabled": true,
+      "labels": [
+        "Gender",
+        "Sex",
+        "Giới tính",
+        "Phái"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL"
+      ]
+    }
+  },
+  "sectionHeadings": {
+    "PERSONAL": [
+      "Personal information",
+      "Thông tin cá nhân"
+    ],
+    "CONTACT": [
+      "Contact",
+      "Liên hệ"
+    ],
+    "SUMMARY": [
+      "Profile",
+      "Giới thiệu"
+    ],
+    "EXPERIENCE": [
+      "Work history",
+      "Kinh nghiệm làm việc"
+    ],
+    "EDUCATION": [
+      "Education",
+      "Học vấn"
+    ],
+    "REFERENCE": [
+      "References",
+      "Người tham chiếu"
+    ]
+  },
+  "excludedRegions": [
+    "REFERENCE",
+    "RECRUITER",
+    "COMPANY"
+  ]
+}
