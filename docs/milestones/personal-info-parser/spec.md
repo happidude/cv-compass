@@ -4,6 +4,16 @@
 và đúng mục acceptance của lát cắt được giao. Không đọc các lát cắt khác.
 
 ## Phê duyệt
+- Developer duyệt ngoại lệ trong chat ngày 2026-11-03: tiếp tục lát cắt 4 và 5 trên cùng
+  nhánh `feature/personal-info-parser` và PR Draft #26 của lát cắt 3, không chờ merge #26.
+  Base main giữ `69930b951659c56e709a5f24757c2012de5f3731`; mốc bắt đầu phần 4–5 là
+  `edd6d95a262df29359de535cb86705d4a8143ac4`. Vẫn triển khai tuần tự 4 → 5, mức 3,
+  Implementer → Tester → Reviewer, tối đa 3 vòng cho mỗi phần; không agent merge/Ready.
+- Developer duyệt semantics ngày 2026-11-03: field vắng/disabled/invalid/ambiguous không
+  tạo lệnh xóa; chỉ PROPOSED hợp lệ được đề xuất. Không đổi theo comparator đã duyệt là no-op,
+  không tạo proposal/history. Provenance MAPPING theo field gồm documentId/resultId/configRevision/evidence;
+  bảo vệ USER/CONFIRMED/EDITED theo nhóm bảo thủ. Xóa thủ công là thao tác người dùng rõ ràng,
+  không suy từ payload thiếu field. Đối chiếu API hiện có trước code phụ thuộc; không đổi AC/R.
 
 - Bổ sung phạm vi `gender`: developer duyệt trong chat ngày 2026-11-01; chỉ cập nhật spec,
   công cụ đo/test/fixture lát cắt 1 và gold nháp private. PR #23 đã merge vào main;
