@@ -6,6 +6,7 @@ import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingConfig;
 import com.cvcompass.backend.mapping.dto.MappingOutcome;
 import com.cvcompass.backend.mapping.dto.MappingVersions;
+import com.cvcompass.backend.mapping.dto.PersonalInfoDefinition;
 import com.cvcompass.backend.mapping.repository.MappingRepository;
 import com.cvcompass.backend.web.OperationalLog;
 import java.nio.charset.StandardCharsets;
@@ -49,6 +50,9 @@ public class MappingService {
             throw new IllegalArgumentException("Invalid mapping revision");
         }
         definition.validate();
+        if (definition instanceof PersonalInfoDefinition personal
+                && !revision.equals(personal.revision()))
+            throw new IllegalArgumentException("MAPPING_REVISION_MISMATCH");
         if (MappingDigests.canonical(definition).getBytes(StandardCharsets.UTF_8).length > 65536)
             throw new IllegalArgumentException("Mapping definition exceeds limit");
         return tx.execute(
@@ -65,6 +69,8 @@ public class MappingService {
                     repository.lockSettings();
                     var definition = MappingVersions.config(repository.definitionJson(id), json);
                     definition.validate();
+                    if (definition.schemaVersion() == 3)
+                        throw new IllegalStateException("MAPPING_V3_ACTIVATION_NOT_AVAILABLE");
                     repository.activate(
                             id, MappingDigests.sha256(MappingDigests.canonical(definition)));
                 });
@@ -77,12 +83,21 @@ public class MappingService {
         return tx.execute(
                 status -> {
                     long[] settings = repository.lockSettings();
-                    if (settings[0] == 0) return 0;
+                    if (settings[0] == 0) {
+                        OperationalLog.write(
+                                Level.WARN,
+                                OperationalLog.Event.MAPPING_SCHEDULER_FAILED,
+                                "MAPPING_ACTIVE_CONFIG_REQUIRED",
+                                Map.of());
+                        throw new IllegalStateException("MAPPING_ACTIVE_CONFIG_REQUIRED");
+                    }
                     long upperId = settings[2] == 0 ? inputs.upperId() : settings[2];
                     var ids = inputs.scanAfter(settings[1], upperId, limit);
                     String selectedEngine =
                             MappingVersions.config(repository.definitionJson(settings[0]), json)
                                     .engineCompatibility();
+                    if (PersonalInfoDefinition.ENGINE_VERSION.equals(selectedEngine))
+                        throw new IllegalStateException("MAPPING_V3_ENQUEUE_NOT_AVAILABLE");
                     for (long id : ids)
                         repository.enqueue(
                                 id, settings[0], selectedEngine, properties.getMaxAttempts());

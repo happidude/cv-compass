@@ -272,7 +272,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 2 — Config và version
 
-- Ước lượng sau bổ sung gender: **10 file code/config/migration** (chưa tăng; shape gender chờ duyệt):
+- Ước lượng sau bổ sung gender: **12 file code/config/migration** (developer duyệt điều chỉnh trong chat ngày 2026-11-01):
   `backend/src/main/java/com/cvcompass/backend/mapping/dto/PersonalInfoDefinition.java` (mới),
   `PersonalInfoMappingResult.java` (mới), `MappingVersions.java` cùng thư mục;
   `backend/src/main/java/com/cvcompass/backend/mapping/service/MappingService.java`;
@@ -280,6 +280,9 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   `backend/src/main/java/com/cvcompass/backend/mapping/config/MappingBootstrap.java`;
   `backend/src/test/java/com/cvcompass/backend/mapping/dto/MappingVersionsTests.java` (mới);
   `backend/src/test/java/com/cvcompass/backend/MappingIntegrationTests.java`;
+  `backend/src/test/java/com/cvcompass/backend/BackendApplicationTests.java` và
+  `backend/src/test/java/com/cvcompass/backend/OcrMigrationIntegrationTests.java`
+  (cập nhật kỳ vọng version/count migration khi thêm V11, giữ đầy đủ assertion);
   `backend/src/main/resources/mapping/personal-info-config-v3.json` (mới);
   một migration mới trong `backend/src/main/resources/db/migration/` để mở CHECK result v3
   (chốt số khi bắt đầu, không sửa V7/V9/V10).
@@ -289,7 +292,8 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 - Rủi ro: reader mới không đủ bảo đảm process job mới. Theo trình tự đã duyệt, lát cắt 2 chỉ
   đọc/validate v3 và chặn activate/enqueue v3 bằng diagnostic an toàn; v1/v2 vẫn process được.
   Lát cắt 3 chỉ thử v3 trong schema/storage cô lập; activate vận hành chờ lát cắt 4 theo AC-7.
-  Giới hạn 10 gồm test/config/SQL; vượt dự toán phải xin chia lại, không bỏ test.
+  Dự toán 12 đã được developer duyệt để thêm hai test migration nói trên;
+  nếu vượt tiếp phải xin điều chỉnh, không bỏ test hay giảm assertion.
 
 ### Lát cắt 3 — Parser
 

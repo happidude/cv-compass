@@ -13,9 +13,15 @@ public final class MappingVersions {
                 || !root.path("engineCompatibility").isString()) throw invalid();
         int version = root.path("schemaVersion").asInt(-1);
         if (version == 2) validateV2(root);
+        if (version == 3) validateV3(root);
         return switch (version) {
             case 1 -> json.readValue(body, MappingDefinition.class);
             case 2 -> json.readValue(body, ExperienceDefinition.class);
+            case 3 -> {
+                var definition = json.readValue(body, PersonalInfoDefinition.class);
+                definition.validate();
+                yield definition;
+            }
             default -> throw new IllegalArgumentException("Unsupported mapping config schema");
         };
     }
@@ -76,6 +82,41 @@ public final class MappingVersions {
         }
     }
 
+    private static void validateV3(JsonNode root) {
+        keys(
+                root,
+                java.util.Set.of(
+                        "schemaVersion",
+                        "engineCompatibility",
+                        "revision",
+                        "experience",
+                        "personalFields",
+                        "sectionHeadings",
+                        "excludedRegions"));
+        if (!root.path("revision").isString()) throw invalid();
+        JsonNode experience = root.path("experience");
+        if (!experience.isObject()
+                || !experience.path("schemaVersion").isIntegralNumber()
+                || !experience.path("engineCompatibility").isString()) throw invalid();
+        validateV2(experience);
+        JsonNode fields = root.path("personalFields");
+        if (!fields.isObject()
+                || !fields.propertyNames().equals(PersonalInfoDefinition.FIELD_NAMES))
+            throw invalid();
+        for (JsonNode field : fields) {
+            if (!field.isObject() || !field.path("enabled").isBoolean()) throw invalid();
+            keys(field, java.util.Set.of("enabled", "labels", "priorities"));
+            strings(field.path("labels"));
+            strings(field.path("priorities"));
+        }
+        JsonNode sections = root.path("sectionHeadings");
+        if (!sections.isObject()
+                || !sections.propertyNames().equals(PersonalInfoDefinition.SECTIONS))
+            throw invalid();
+        for (JsonNode headings : sections) strings(headings);
+        strings(root.path("excludedRegions"));
+    }
+
     private static void keys(JsonNode node, java.util.Set<String> allowed) {
         if (!allowed.containsAll(node.propertyNames())) throw invalid();
     }
@@ -93,6 +134,7 @@ public final class MappingVersions {
         return switch (json.readTree(body).path("schemaVersion").asInt(-1)) {
             case 1 -> json.readValue(body, MappingResult.class);
             case 2 -> json.readValue(body, ExperienceMappingResult.class);
+            case 3 -> json.readValue(body, PersonalInfoMappingResult.class);
             default -> throw new IllegalArgumentException("Unsupported mapping result schema");
         };
     }

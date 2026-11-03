@@ -1,3 +1,78 @@
+# Kiểm chứng lát cắt 2 - Config và version
+
+- Developer giao ngày 2026-11-01; chỉ [AC-4..AC-7](spec.md#lát-cắt-2--config-và-version),
+  Q3/Q4, R-7 và quyết định bổ sung đã duyệt. PR #24 đã merge; base main sau fetch
+  `940802c418f3072fcc274defc7e975f7752a85b0`, nhánh `feature/personal-info-config-version`.
+- Commit đầu `458bfc5` ghi bốn quyết định và shape gender, không đổi AC/R. Developer duyệt
+  tăng từ 10 lên **12 file code/test/config/migration** để cập nhật hai test migration ghim version/count.
+  Thêm spec/verification; giữ application.yaml modified và experience-config-v2.json untracked của developer.
+- Mức 3 (version/contract/migration), tối đa 3 vòng: Implementer → Tester → Reviewer chỉ đọc.
+  Chưa nghiệm thu thay con người; source/vòng/finding và CI head cuối ghi trong PR.
+  Không đổi parser/publication/UI/proposal, DTO experience v2, CI, formatter/dependency hoặc Flyway cũ;
+  không đọc thư mục dữ liệu/CV, private env hay file import local. Không bắt đầu lát cắt 3.
+
+## Validate, restart và giới hạn v3
+
+[JSON mẫu v3 tổng hợp](../../../backend/src/main/resources/mapping/personal-info-config-v3.json)
+đủ sáu field, labels Việt-Anh, sectionHeadings, excludedRegions và priority hữu hạn; nhúng
+ExperienceDefinition v2. Gender chỉ dùng bốn nhãn R-7 và EXPLICIT_LABEL. Không có regex/script/SQL
+thực thi. Revision JSON phải khớp revision register và không tái dùng cho nội dung khác.
+
+Từ backend với Java 25, validate mẫu qua unit test:
+
+```powershell
+.\gradlew.bat test --tests com.cvcompass.backend.mapping.dto.MappingVersionsTests
+```
+
+File operator riêng được trusted Java/test harness gọi
+`MappingVersions.config(Files.readString(path), objectMapper).validate()`; không có endpoint/CLI admin mới.
+V3 chỉ đọc/validate/register; activate báo MAPPING_V3_ACTIVATION_NOT_AVAILABLE, enqueue báo
+MAPPING_V3_ENQUEUE_NOT_AVAILABLE ở service/repository, không đổi active config hoặc tạo job v3.
+Không trỏ bootstrap vận hành vào v3. Khi lát cắt 3 được giao mới thử process/activate trong schema/storage
+cô lập; activate vận hành chờ lát cắt 4. Chốt chặn của lát cắt này chưa mở cho cả test lẫn vận hành.
+
+Restart v1/v2 giữ config ID khi cùng revision/nội dung; thay nội dung cần revision mới. Reader/claim/process
+v1/v2 không đổi, không viết lại result/digest hoặc nâng job cũ. Map v3 sắp thứ tự ổn định qua restart.
+Bật mapping thiếu definition/revision báo MAPPING_DEFINITION_REQUIRED/MAPPING_REVISION_REQUIRED;
+scan thiếu active config báo MAPPING_ACTIVE_CONFIG_REQUIRED. Lỗi cấu hình chung giữ message legacy
+an toàn, log chỉ code MAPPING_CONFIG_INVALID, không cause/body/path/exception message tự do.
+
+## Local trên payload cuối
+
+- Test-first compile FAIL đúng vì thiếu DTO/constructor mới. Affected cuối **72 test PASS**;
+  full gate **440 test, 58 lớp, 0 failure/error/skip**, gồm Modulith; Java 25.0.4.1/PostgreSQL 17.
+  `spotlessApply` rồi `check --rerun-tasks --console=plain --warning-mode=all`: 7 task thực chạy,
+  2m15s; không compile warning. Gradle chỉ gợi ý configuration cache, không đổi config để che.
+- DB dùng một lần riêng cổng 15439; mỗi lớp sở hữu schema/storage test. Không dùng DB dev/default URL,
+  không reset/drop DB có sẵn. Docker ban đầu chưa sẵn, đã khởi động bản cài hiện có và provision test.
+- Runtime cuối dùng application.yaml từ Git base làm fixture trong build ignored, bỏ duy nhất optional
+  spring.config.import; mọi dòng khác giữ nguyên byte, không đọc import target. Giữ mặc định feature
+  và cấu hình riêng từng test, không dùng blanket feature overrides làm vô hiệu hóa test explicit true.
+  JAVA_HOME/PATH/socket/UTC/config location chỉ đặt trong tiến trình kiểm thử.
+- CFG-T1: Bootstrap đổi thông báo legacy; Implementer khôi phục message cố định, giữ diagnostic mới.
+  CFG-T2: Tester cập nhật hai test migration theo phạm vi 12 đã được duyệt; giữ toàn bộ assertion khác.
+  Hai finding đã kiểm chứng bằng affected/full gate; Reviewer kiểm độc lập trên source cuối.
+- Các lần full gate lỗi trước được giữ riêng: runtime kế thừa bật OCR; lần blanket override sau đó
+  ảnh hưởng fixture M11/OCR. Đã thay bằng fixture Git base và chạy lại toàn bộ, không skip/giảm assertion.
+  Một lỗi CK_OCR_ATTEMPT_TIMES ban đầu không tái diễn ở affected 72/full 440; không sửa M11 ngoài phạm vi.
+- Log/XML/fingerprint mới: backend/build/reports/personal-info-config-version/ (ignored), gồm
+  tester-full-baseline.log, tester-spotless-baseline-final.log, tester-full-baseline-xml/,
+  tester-final-summary.json, runtime-fixture-audit.json, tester-final-code-sha256.txt.
+  Hash 12 file code không đổi sau full gate; manifest SHA256
+  `406f2025f91a35b3f25a3c9d2a6bf689020c5c89cf829e77a3272447fcc75b7b`.
+- Link/anchor, frozen 35 khối AC/R, diff/stage/fingerprint docs, CI đúng head và Reviewer ghi ở PR.
+  CI pending không PASS; PR Draft, không Ready/merge. Worker/frontend N/A vì không đổi component.
+  Secret scanner NOT VERIFIED: gitleaks/detect-secrets/trufflehog không có trong môi trường; không cài mới.
+
+## Open Questions của PR
+
+- Đề xuất thêm bước CI chạy unittest backend/tools vì Persistence CI chưa chạy suite đó;
+  khuyến nghị task riêng duyệt chính xác workflow path/ý định trước khi sửa. PR này không sửa CI.
+- Patch/no-op/provenance khi mutation/publication vẫn chờ quyết định ở phần phụ thuộc về sau;
+  lát cắt này chỉ config/result reader, không triển khai mutation/publication.
+
+---
+
 # Kiểm chứng bổ sung gender — 2026-11-01
 
 - Nguồn: developer duyệt thay đổi phạm vi trong chat ngày 2026-11-01; [R-7 và AC-24..AC-28](spec.md#bổ-sung-gender--phê-duyệt-ngày-2026-11-01).
