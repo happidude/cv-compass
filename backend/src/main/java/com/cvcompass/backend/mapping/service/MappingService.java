@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.event.Level;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -27,6 +28,7 @@ public class MappingService {
     private final TransactionTemplate tx;
     private final MappingProperties properties;
     private final ExperienceEngine experienceEngine;
+    private final PersonalInfoEngine personalInfoEngine;
 
     public MappingService(
             MappingRepository repository,
@@ -36,6 +38,27 @@ public class MappingService {
             PlatformTransactionManager transactions,
             MappingProperties properties,
             ExperienceEngine experienceEngine) {
+        this(
+                repository,
+                inputs,
+                engine,
+                json,
+                transactions,
+                properties,
+                experienceEngine,
+                new PersonalInfoEngine(experienceEngine));
+    }
+
+    @Autowired
+    public MappingService(
+            MappingRepository repository,
+            OcrExtractionReader inputs,
+            MappingEngine engine,
+            ObjectMapper json,
+            PlatformTransactionManager transactions,
+            MappingProperties properties,
+            ExperienceEngine experienceEngine,
+            PersonalInfoEngine personalInfoEngine) {
         this.repository = repository;
         this.inputs = inputs;
         this.engine = engine;
@@ -43,6 +66,7 @@ public class MappingService {
         this.tx = new TransactionTemplate(transactions);
         this.properties = properties;
         this.experienceEngine = experienceEngine;
+        this.personalInfoEngine = personalInfoEngine;
     }
 
     public long register(String revision, MappingConfig definition) {
@@ -154,6 +178,7 @@ public class MappingService {
         return switch (current.engineVersion()) {
             case MappingEngine.VERSION -> engine.map(current, input);
             case ExperienceEngine.VERSION -> experienceEngine.map(current, input);
+            case PersonalInfoEngine.VERSION -> personalInfoEngine.map(current, input);
             default -> throw new IllegalArgumentException("Unsupported mapping engine");
         };
     }

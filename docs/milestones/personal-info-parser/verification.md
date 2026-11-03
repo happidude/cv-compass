@@ -1,3 +1,39 @@
+# Kiểm chứng lát cắt 3 - Parser
+
+- Developer giao tiếp tục trong chat ngày 2026-11-03; PR #25 đã merge trước khi bắt đầu.
+  Base main `69930b951659c56e709a5f24757c2012de5f3731`, nhánh `feature/personal-info-parser`.
+  Mức 3: Implementer → Tester → Reviewer chỉ đọc, tối đa 3 vòng; mỗi lát cắt một PR.
+- Phạm vi AC-8..AC-12, AC-25, R-1..R-7 và Q2/Q3; 7 file Java, một fixture tổng hợp.
+  Không đọc CV/data, không sửa publication/UI/config/migration; giữ hai file riêng của developer.
+- Parser phân vùng, thu candidates/evidence, validate và chọn hoặc abstain cho sáu field.
+  Evidence code-point offsets kiểm được với raw OCR; không sửa raw nguồn. Gender chỉ từ nhãn R-7;
+  giá trị ngoài danh sách giữ trong alternatives với normalized null và issue, không selected khi INVALID.
+  fullName bỏ danh xưng. Location giữ dấu câu. Summary qua trang chưa chắc thì AMBIGUOUS.
+- Experience v3 tái dùng engine v2; integration đối chiếu kết quả và bất biến raw OCR.
+  Test đăng ký và tạo job v3 bằng fixture SQL trong schema riêng để process/complete/replay;
+  activate/enqueue/claim vận hành vẫn chặn v3, chưa mở publication trước lát cắt 4.
+- Test-first FAIL đúng vì thiếu engine. Tester phát hiện PIP-T1 (chức vụ thành tên) và
+  PIP-T2 (khoảng năm thành phone); Implementer sửa validation, giữ nguyên hai regression, đã PASS.
+- Affected cuối Implementer 58 PASS. Tester bổ sung acceptance: 6 field tắt, invalid alternative,
+  bảy danh xưng, evidence CRLF/astral Unicode. Parser 30, experience 13, mapping integration 24 PASS.
+- Full gate cuối: `spotlessApply` rồi `check --rerun-tasks --console=plain --warning-mode=all`:
+  **471 test, 59 lớp, 0 failure/error/skip**, gồm Modulith; 0 compile warning, 7 task thực chạy, 1m46s.
+  Java 25/PostgreSQL 17 cổng15439, schema/storage cô lập; không DB dev/drop/reset.
+  Runtime dùng baseline YAML sanitized và process-only import/UTC/socket như lát cắt 2.
+  Integration đầu lỗi vì container dừng; đã start đúng container test rồi chạy lại; log lỗi đầu đã bị
+  ghi đè, chỉ transcript còn bằng chứng, không khẳng định có artifact lỗi đó.
+- Bằng chứng ignored dưới backend/build/reports/: personal-info-parser-test-first.log,
+  personal-info-parser-tester-regression.log, personal-info-parser-tester-r2-full.log,
+  personal-info-parser-tester-r2-spotless.log, personal-info-parser-tester-r2-full-xml/,
+  personal-info-parser-tester-r2-final-summary.json, personal-info-parser-tester-r2-final-sha256.txt.
+  Fingerprint 8 file không đổi sau full gate; manifest SHA256
+  `d56912142620291eedfd5f6420acfa341c68d77342a2d9dd1814ef010be38fae`.
+- Reviewer vòng 1: PIP-R1 heading thành tên, PIP-R2 inline summary bị cắt, PIP-R3 phone mở ngoặc bị bỏ qua. Ba regression FAIL trước sửa, sau sửa PASS; Tester thêm kiểm ownership reference/recruiter/company và NFD/fullwidth colon. Full gate 466 cũ giữ riêng; gate 471 là source cuối.
+- Reviewer/vòng/source, link/anchor và CI head cuối ghi trong PR; pending không PASS.
+  Secret scanner NOT VERIFIED do thiếu công cụ; accuracy trên CV thật NOT VERIFIED, không báo accuracy.
+  Worker/frontend N/A vì không đổi. PR Draft, con người nghiệm thu; không agent merge/Ready.
+
+---
 # Kiểm chứng lát cắt 2 - Config và version
 
 - Developer giao ngày 2026-11-01; chỉ [AC-4..AC-7](spec.md#lát-cắt-2--config-và-version),
