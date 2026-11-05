@@ -4,6 +4,7 @@
 và đúng mục acceptance của lát cắt được giao. Không đọc các lát cắt khác.
 
 ## Phê duyệt
+
 - Developer duyệt ngoại lệ trong chat ngày 2026-11-03: tiếp tục lát cắt 4 và 5 trên cùng
   nhánh `feature/personal-info-parser` và PR Draft #26 của lát cắt 3, không chờ merge #26.
   Base main giữ `69930b951659c56e709a5f24757c2012de5f3731`; mốc bắt đầu phần 4–5 là
@@ -323,7 +324,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 4 — Publication và database
 
-- Ước lượng sau bổ sung gender: **10–11 file code/migration** (phụ thuộc shape; xem Open Questions):
+- Developer duyệt điều chỉnh ngày 2026-11-03: **18 file code/test/migration** cho lát cắt 4, 7 file UI cho lát cắt 5; docs kê riêng.
   `backend/src/main/java/com/cvcompass/backend/candidate/service/PublicationService.java`,
   `CandidateReviewService.java`, `CandidateService.java` cùng thư mục;
   `backend/src/main/java/com/cvcompass/backend/candidate/repository/PublicationRepository.java`,
@@ -345,6 +346,15 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   remap bằng/khác nội dung, bảo vệ state/origin, late result, rollback/conflict, edit bỏ evidence,
   confirm giữ evidence và audit đúng actor/version. Không unique hay gộp định danh cá nhân.
 
+- Bổ sung đã duyệt cho lát cắt 4: `backend/src/main/java/com/cvcompass/backend/candidate/service/CandidateValidator.java`;
+  `backend/src/main/java/com/cvcompass/backend/mapping/config/MappingBootstrap.java`;
+  `backend/src/main/java/com/cvcompass/backend/mapping/service/MappingService.java`;
+  `backend/src/main/java/com/cvcompass/backend/mapping/repository/MappingRepository.java`;
+  `backend/src/test/java/com/cvcompass/backend/MappingIntegrationTests.java`,
+  `BackendApplicationTests.java`, `OcrMigrationIntegrationTests.java` cùng thư mục.
+  Giữ đủ regression v1/v2, mở lifecycle v3 sau publication và cập nhật pin migration, không sửa Flyway cũ.
+- Developer duyệt bổ sung `backend/src/test/java/com/cvcompass/backend/CandidateIdentityArchitectureTests.java`
+  ngày 2026-11-03: hỗ trợ đúng package candidate.mapping đã duyệt, giữ kiểm tra mapper cũ và ranh giới dependency.
 ### Lát cắt 5 — UI tối thiểu
 
 - Ước lượng sau bổ sung gender: **7 file code** (không tăng; chờ API được duyệt): `frontend/src/features/candidates/schema.ts`, `pages.tsx`, `pdf-pane.tsx`;

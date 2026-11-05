@@ -2,6 +2,8 @@ package com.cvcompass.backend.candidate.service;
 
 import com.cvcompass.backend.candidate.dto.Profile;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
+import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
+import com.cvcompass.backend.candidate.mapping.PersonalInfoMapper;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +49,25 @@ public class CandidateReviewService {
         var proposal = rows.getFirst();
         if (!List.of("ACCEPT", "EDIT", "REJECT").contains(decision))
             throw new CandidateFailure(400, "VALIDATION_ERROR");
-        if (!"REJECT".equals(decision)) {
+        if ("PERSONAL_INFO".equals(proposal.kind())) {
+            if (target != null) throw new CandidateFailure(400, "VALIDATION_ERROR");
+            if (!"REJECT".equals(decision)) {
+                var patch = "EDIT".equals(decision) ? edited : proposal.data().path("patch");
+                validator.validateBasic(patch);
+                var merged = PersonalInfoMapper.merge(before.basic(), patch);
+                repository.mappedBasic(
+                        id,
+                        merged,
+                        new CandidateValueMapper().basic(merged),
+                        "EDIT".equals(decision) ? "EDITED" : "CONFIRMED",
+                        "EDIT".equals(decision) ? "USER" : "MAPPING",
+                        PersonalInfoMapper.extensions(
+                                before.extensions(),
+                                proposal.data().path("metadata"),
+                                patch.propertyNames(),
+                                "EDIT".equals(decision)));
+            }
+        } else if (!"REJECT".equals(decision)) {
             var old =
                     target == null
                             ? null

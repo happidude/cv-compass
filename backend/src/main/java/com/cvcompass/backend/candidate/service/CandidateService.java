@@ -3,6 +3,7 @@ package com.cvcompass.backend.candidate.service;
 import com.cvcompass.backend.candidate.dto.Profile;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
+import com.cvcompass.backend.candidate.mapping.PersonalInfoMapper;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
 import java.util.UUID;
@@ -55,8 +56,37 @@ public class CandidateService {
         Profile before = queries.detail(id);
         if (!confirm) {
             validator.validateBasic(value);
-            repository.basic(id, value, mapper.basic(value));
-        } else repository.confirmBasic(id);
+            var actual = (tools.jackson.databind.node.ObjectNode) value.deepCopy();
+            var changed = new java.util.HashSet<String>();
+            for (String field : value.propertyNames()) {
+                boolean equal =
+                        value.get(field).isNull()
+                                ? before.basic().path(field).isMissingNode()
+                                        || before.basic().path(field).isNull()
+                                : PersonalInfoMapper.same(
+                                        field,
+                                        before.basic().path(field),
+                                        value.get(field).asString());
+                if (equal) actual.remove(field);
+                else changed.add(field);
+            }
+            if (changed.isEmpty()) return before;
+            var merged = PersonalInfoMapper.merge(before.basic(), actual);
+            repository.mappedBasic(
+                    id,
+                    merged,
+                    mapper.basic(merged),
+                    "EDITED",
+                    "USER",
+                    PersonalInfoMapper.extensions(
+                            before.extensions(),
+                            before.extensions().path("personalInfo"),
+                            changed,
+                            true));
+        } else {
+            if ("CONFIRMED".equals(before.basicState())) return before;
+            repository.confirmBasic(id);
+        }
         revisions.revision(
                 id,
                 version,

@@ -93,8 +93,6 @@ public class MappingService {
                     repository.lockSettings();
                     var definition = MappingVersions.config(repository.definitionJson(id), json);
                     definition.validate();
-                    if (definition.schemaVersion() == 3)
-                        throw new IllegalStateException("MAPPING_V3_ACTIVATION_NOT_AVAILABLE");
                     repository.activate(
                             id, MappingDigests.sha256(MappingDigests.canonical(definition)));
                 });
@@ -120,8 +118,6 @@ public class MappingService {
                     String selectedEngine =
                             MappingVersions.config(repository.definitionJson(settings[0]), json)
                                     .engineCompatibility();
-                    if (PersonalInfoDefinition.ENGINE_VERSION.equals(selectedEngine))
-                        throw new IllegalStateException("MAPPING_V3_ENQUEUE_NOT_AVAILABLE");
                     for (long id : ids)
                         repository.enqueue(
                                 id, settings[0], selectedEngine, properties.getMaxAttempts());
@@ -139,6 +135,7 @@ public class MappingService {
                             repository.claim(
                                     MappingEngine.VERSION,
                                     ExperienceEngine.VERSION,
+                                    PersonalInfoEngine.VERSION,
                                     properties.getLeaseDuration(),
                                     properties.getHardDeadline());
                     claim.ifPresent(

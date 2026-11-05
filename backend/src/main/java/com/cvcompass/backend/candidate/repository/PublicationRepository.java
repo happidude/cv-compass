@@ -53,22 +53,67 @@ public class PublicationRepository {
                 experience.toString());
     }
 
+    public boolean proposePersonal(long id, CompletedMappings.Result result, JsonNode data) {
+        var existing =
+                jdbc.queryForList(
+                        "SELECT \"DATA\"->'patch' AS patch FROM \"CANDIDATE_PROPOSALS\" WHERE \"CANDIDATE_ID\"=? AND \"KIND\"='PERSONAL_INFO' AND \"STATUS\"='OPEN'",
+                        String.class,
+                        id);
+        var json = new tools.jackson.databind.ObjectMapper();
+        for (String value : existing) {
+            var previous = json.readTree(value);
+            var patch = data.path("patch");
+            if (!new java.util.HashSet<>(previous.propertyNames())
+                    .equals(new java.util.HashSet<>(patch.propertyNames()))) continue;
+            boolean equal = true;
+            for (String field : patch.propertyNames())
+                equal &=
+                        patch.path(field).isString()
+                                && com.cvcompass.backend.candidate.mapping.PersonalInfoMapper.same(
+                                        field, previous.path(field), patch.path(field).asString());
+            if (equal) return false;
+        }
+        jdbc.update(
+                "INSERT INTO \"CANDIDATE_PROPOSALS\" (\"ID\",\"CANDIDATE_ID\",\"RESULT_ID\",\"DOCUMENT_ID\",\"DATA\",\"KIND\") VALUES (?,?,?,?,?::jsonb,'PERSONAL_INFO')",
+                UUID.randomUUID(),
+                id,
+                result.id(),
+                result.documentId(),
+                data.toString());
+        return true;
+    }
+
     public void extensions(long id, String value) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"EXTENSIONS\"=?::jsonb WHERE \"CANDIDATE_ID\"=?",
+                "UPDATE \"CANDIDATE_PROFILES\" SET \"EXTENSIONS\"=\"EXTENSIONS\" || ?::jsonb WHERE \"CANDIDATE_ID\"=?",
                 value,
                 id);
     }
 
     public void ledger(CompletedMappings.Result result, Long candidate, String status) {
+        ledger(result, candidate, status, null);
+    }
+
+    public void ledger(
+            CompletedMappings.Result result, Long candidate, String status, String reason) {
+        var reasons =
+                java.util.Set.of(
+                        "UNSUPPORTED_MAPPING_VERSION",
+                        "UNSUPPORTED_MAPPING_QUALITY",
+                        "MAPPING_SOURCE_MISMATCH",
+                        "INVALID_MAPPING_ENVELOPE",
+                        "NO_USABLE_FIELDS");
+        if ("SKIPPED".equals(status) ? reason == null || !reasons.contains(reason) : reason != null)
+            throw new IllegalArgumentException("Invalid publication reason");
         jdbc.update(
-                "INSERT INTO \"CANDIDATE_PUBLICATIONS\" (\"RESULT_ID\",\"CANDIDATE_ID\",\"DOCUMENT_ID\",\"EXTRACTION_ID\",\"CONFIG_ID\",\"STATUS\") VALUES (?,?,?,?,?,?)",
+                "INSERT INTO \"CANDIDATE_PUBLICATIONS\" (\"RESULT_ID\",\"CANDIDATE_ID\",\"DOCUMENT_ID\",\"EXTRACTION_ID\",\"CONFIG_ID\",\"STATUS\",\"REASON_CODE\") VALUES (?,?,?,?,?,?,?)",
                 result.id(),
                 candidate,
                 result.documentId(),
                 result.extractionId(),
                 result.configId(),
-                status);
+                status,
+                reason);
     }
 
     public PublicationCursor lockCursor() {

@@ -37,19 +37,23 @@ class CandidateIdentityArchitectureTests {
             }
             String pkg = actual.getPackageName();
             String layer = pkg.substring(pkg.lastIndexOf('.') + 1);
-            assertThat(
-                            Set.of(
-                                    "controller",
-                                    "service",
-                                    "repository",
-                                    "dto",
-                                    "config",
-                                    "exception",
-                                    "mapper"))
-                    .as(type.getName())
-                    .contains(layer);
+            if (layer.equals("mapping"))
+                assertThat(pkg).as(type.getName()).isEqualTo(BASE + "candidate.mapping");
+            else
+                assertThat(
+                                Set.of(
+                                        "controller",
+                                        "service",
+                                        "repository",
+                                        "dto",
+                                        "config",
+                                        "exception",
+                                        "mapper"))
+                        .as(type.getName())
+                        .contains(layer);
             if (actual.isRecord()) assertLayer(actual, "dto");
-            if (actual.getSimpleName().endsWith("Mapper")) assertLayer(actual, "mapper");
+            if (actual.getSimpleName().endsWith("Mapper"))
+                assertLayer(actual, pkg.equals(BASE + "candidate.mapping") ? "mapping" : "mapper");
             if (actual.isAnnotationPresent(RestController.class)) assertLayer(actual, "controller");
             if (actual.isAnnotationPresent(RestControllerAdvice.class)
                     || RuntimeException.class.isAssignableFrom(actual))
@@ -72,6 +76,7 @@ class CandidateIdentityArchitectureTests {
                         "..candidate.controller..",
                         "..identity.controller..",
                         "..candidate.mapper..",
+                        BASE + "candidate.mapping",
                         "..identity.mapper..",
                         "..identity.config..")
                 .should()
@@ -95,7 +100,8 @@ class CandidateIdentityArchitectureTests {
     void repositoriesAndDtosDoNotDependOnApplicationOrHttpLayers() {
         noClasses()
                 .that()
-                .resideInAnyPackage("..candidate.mapper..", "..identity.mapper..")
+                .resideInAnyPackage(
+                        "..candidate.mapper..", BASE + "candidate.mapping", "..identity.mapper..")
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..service..", "..repository..", "..controller..", "..config..")

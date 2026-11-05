@@ -1,3 +1,46 @@
+# Kiểm chứng lát cắt 4 - Publication và database
+
+- Developer giao ngày 2026-11-03, duyệt dùng chung branch/PR #26 và điều chỉnh 18 file code/test/migration.
+  Main base `69930b951659c56e709a5f24757c2012de5f3731`; phần 4 dựa trên parser `edd6d95` và docs `30cbf7a`.
+  Mức 3, tối đa 3 vòng Reviewer; Implementer → Tester → Reviewer chỉ đọc; chưa bắt đầu lát cắt 5.
+- Publication result v3, personal-only/mixed, bảo vệ basic USER/CONFIRMED/EDITED theo nhóm;
+  field vắng/invalid/ambiguous/disabled không xóa; comparator không đổi là no-op.
+  V12 thêm proposal KIND CHECK/default EXPERIENCE; không sửa Flyway cũ, không thêm cột basic gender.
+- Reviewer vòng 1: PIP4-R1 comparator summary làm mất ngắt dòng; PIP4-R2 SKIPPED thiếu reason.
+  Hai regression FAIL trước sửa, affected Implementer 74 PASS sau sửa. Summary comparator giữ nội bộ,
+  chỉ NFC/CRLF-CR sang LF/strip biên. V12 thêm REASON_CODE nullable cho legacy, CHECK hữu hạn và chỉ SKIPPED.
+  Mã mới: UNSUPPORTED_MAPPING_VERSION, UNSUPPORTED_MAPPING_QUALITY, MAPPING_SOURCE_MISMATCH,
+  INVALID_MAPPING_ENVELOPE, NO_USABLE_FIELDS. Cần ledger query theo resultId khi không tạo profile;
+  không ghi mapping result bất biến hoặc bịa reason cho legacy. Không tăng file ngoài 18 đã duyệt.
+- Ngày 2026-11-05: Tester thêm kiểm legacy NULL reason/repository allowlist/replay; formatter/compile PASS,
+  không compile warning. Affected 17 test lỗi runtime vì PostgreSQL15439 từ chối kết nối; Docker CLI treo,
+  Desktop không có targetable window sau khởi động. Đã dừng tiến trình kiểm tra thuộc lượt này.
+  Full gate local source sau sửa NOT VERIFIED, cần CI PostgreSQL source cuối; không dùng DB dev.
+  Artifact personal-info-publication-tester-r3-* và manifest18 SHA256 c0d2081c8e4cbb22856d09265d8fd99d8416f4e93246c820827d8ec6e04246a2.
+- Basic giữ string/null, gender MALE/FEMALE khi tự publish; raw/normalized và alternatives/issues/evidence
+  trong extensions.personalInfo schemaVersion 1, fields theo sáu field, có documentId/resultId/configRevision.
+  EXTENSIONS merge. Unknown gender không tự publish basic, metadata giữ khi có profile từ field khác.
+- Proposal top-level kind EXPERIENCE/PERSONAL_INFO; personal data gồm patch và metadata tương ứng.
+  BasicEdit/Decision và endpoint giữ nguyên; manual data là patch, thiếu key giữ nguyên, null hiện diện xóa rõ ràng.
+  Personal targetExperienceId phải null. EDIT dùng edited basic patch; ACCEPT data.patch; REJECT không đổi basic.
+  Manual sửa field bỏ evidence cũ, confirm giữ evidence. V3 operational bootstrap/activate/enqueue/claim mở;
+  enqueue mismatch engine/config bị chặn, legacy v1/v2 không nâng job/result.
+- Test-first FAIL đúng thiếu Proposal.kind. Affected Implementer 69 PASS. Tester bổ sung mixed rollback
+  basic/experience/ledger/identity/history, proposal no-op bảo vệ CONFIRMED/extensions, sai target rollback.
+- Full gate đầu 484 test chỉ lỗi kiến trúc package mapper. Developer duyệt bổ sung architecture test;
+  PIP4-T1 sửa chính xác candidate.mapping, giữ mapper cũ, kiểm không JDBC/application dependency/cycle.
+- Full gate cuối: spotlessApply rồi check --rerun-tasks --console=plain --warning-mode=all:
+  **484 test, 60 lớp, 0 failure/error/skip**, gồm Modulith; 0 compile warning, 7 task thực chạy, 1m34s.
+  Publication suite 12 PASS. PostgreSQL 17/schema/storage cô lập cổng15439, Java25 và baseline YAML sanitized.
+  Không CV/data/private env/DB dev/reset. Giữ hai file developer ngoài phạm vi. Một lượt affected lỗi
+  CK_OCR_ATTEMPT_TIMES được giữ artifact affected-5, chạy lại đủ PASS; không sửa OCR hay giảm assertion.
+- Bằng chứng ignored backend/build/reports/personal-info-publication-tester-r2-* gồm logs/XML/summary/manifest.
+  18 fingerprint không đổi sau gate; manifest SHA256 a254fa57031852b669ab0058297ff76082cb785055d180f9a1506231f9fffa73.
+  Artifact full gate FAIL trước giữ riêng. Reviewer/vòng/source và CI head cuối ghi ở PR, pending không PASS.
+- NOT VERIFIED: secret scanner thiếu công cụ, accuracy CV thật chưa đo. UI hiện chưa cập nhật kind mới,
+  nên chưa bàn giao tổng hợp 3–5 cho tới khi hoàn tất lát cắt 5. Không agent merge/Ready.
+
+---
 # Kiểm chứng lát cắt 3 - Parser
 
 - Developer giao tiếp tục trong chat ngày 2026-11-03; PR #25 đã merge trước khi bắt đầu.
