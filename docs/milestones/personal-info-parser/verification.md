@@ -1,3 +1,27 @@
+# Kiểm chứng lát cắt 5 - UI thông tin cá nhân
+
+- Developer duyệt cùng branch/PR #26, mức 3, tối đa 3 vòng; source backend publication
+  `9e7595425c4d187942cd5acb754d208c64b4dbc9` và payload UI 7 file. Không bắt đầu lát cắt 6.
+- AC-19/AC-20/AC-27: hiển thị sáu field, state/alternatives/issues, nguồn đúng document/page/quote;
+  sửa basic patch chỉ field đổi, null là xóa rõ ràng; confirm không gửi patch.
+  Personal proposal accept/edit/reject riêng, targetExperienceId null; thiếu field giữ nguyên.
+  Summary textarea giữ ngắt dòng; gender ngoài danh sách giữ text người dùng; không render OCR như HTML.
+- Schema giữ gender/metadata versioned, proposal phân biệt kind; legacy thiếu kind đọc như EXPERIENCE.
+  Không đổi endpoint, retry policy, config/discovery/dependency; không đọc CV/private env hay hai file developer.
+- Test-first 3/3 FAIL trước sửa. Implementer 15 affected PASS, typecheck/lint PASS.
+  Tester thêm summary newline/patch sparse và proposal conflict không retry: affected 17 PASS.
+- Full npm run check PASS: **39 unit test / 7 file**, typecheck/lint/format/production build PASS.
+  Suite Playwright hiện có **40 PASS**, 0 failure/skip, 1.6 phút. Warning NO_COLOR bị FORCE_COLOR
+  override từ runner được giữ nguyên; không sửa config để che. Các subprocess đã dừng trước Reviewer.
+- Developer chọn giữ 7 file, chỉ thêm unit/jsdom: personal-info.browser.test.tsx vẫn là jsdom,
+  PdfPane được stub. Không tuyên bố luồng personal mới đã kiểm bằng browser/PDF thật.
+- Bằng chứng ignored backend/build/reports/personal-info-ui-tester-* gồm affected/check/browser logs,
+  final-summary.json và final-sha256.txt; 7 hash không đổi qua full gate. Manifest SHA256
+  f850192bf5d5e044b2589a56cc827eccf79d7160b4852c2f9d71a0e000b65192.
+  Reviewer/vòng/source và CI head cuối ghi ở PR; pending không PASS. Secret scanner/accuracy CV thật
+  NOT VERIFIED như các phần trước; PR Draft, không agent merge/Ready.
+
+---
 # Kiểm chứng lát cắt 4 - Publication và database
 
 - Developer giao ngày 2026-11-03, duyệt dùng chung branch/PR #26 và điều chỉnh 18 file code/test/migration.
@@ -29,7 +53,7 @@
   basic/experience/ledger/identity/history, proposal no-op bảo vệ CONFIRMED/extensions, sai target rollback.
 - Full gate đầu 484 test chỉ lỗi kiến trúc package mapper. Developer duyệt bổ sung architecture test;
   PIP4-T1 sửa chính xác candidate.mapping, giữ mapper cũ, kiểm không JDBC/application dependency/cycle.
-- Full gate cuối: spotlessApply rồi check --rerun-tasks --console=plain --warning-mode=all:
+- Full gate trước hai sửa Reviewer: spotlessApply rồi check --rerun-tasks --console=plain --warning-mode=all:
   **484 test, 60 lớp, 0 failure/error/skip**, gồm Modulith; 0 compile warning, 7 task thực chạy, 1m34s.
   Publication suite 12 PASS. PostgreSQL 17/schema/storage cô lập cổng15439, Java25 và baseline YAML sanitized.
   Không CV/data/private env/DB dev/reset. Giữ hai file developer ngoài phạm vi. Một lượt affected lỗi
@@ -37,7 +61,10 @@
 - Bằng chứng ignored backend/build/reports/personal-info-publication-tester-r2-* gồm logs/XML/summary/manifest.
   18 fingerprint không đổi sau gate; manifest SHA256 a254fa57031852b669ab0058297ff76082cb785055d180f9a1506231f9fffa73.
   Artifact full gate FAIL trước giữ riêng. Reviewer/vòng/source và CI head cuối ghi ở PR, pending không PASS.
-- NOT VERIFIED: secret scanner thiếu công cụ, accuracy CV thật chưa đo. UI hiện chưa cập nhật kind mới,
+- Reviewer vòng 2 xác nhận PIP4-R1/R2 đã sửa ở source, không finding mới; 18 hash khớp Tester r3.
+  CI PostgreSQL PASS source publication 9e7595425c4d187942cd5acb754d208c64b4dbc9:
+  https://github.com/hoangnguyen229/cv-compass/actions/runs/42035235987 . Full local sau sửa vẫn NOT VERIFIED.
+- NOT VERIFIED: secret scanner thiếu công cụ, accuracy CV thật chưa đo. Khi bàn giao phần 4 UI chưa cập nhật kind mới,
   nên chưa bàn giao tổng hợp 3–5 cho tới khi hoàn tất lát cắt 5. Không agent merge/Ready.
 
 ---

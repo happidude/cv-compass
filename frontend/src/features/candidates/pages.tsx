@@ -10,10 +10,14 @@ import {
   proposalsSchema,
   historySchema,
   type ExperienceData,
-  type Profile,
 } from "./schema";
 import { PdfPane } from "./pdf-pane";
 import { ExperienceForm } from "./experience-form";
+import {
+  PersonalFields,
+  PersonalForm,
+  PersonalProposal,
+} from "./personal-info";
 
 const stateLabel = (state: string) =>
   state === "CONFIRMED"
@@ -158,59 +162,6 @@ function Values({
     </div>
   );
 }
-function BasicForm({
-  profile,
-  onSave,
-  onCancel,
-}: {
-  profile: Profile;
-  onSave: (data: unknown) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [data, setData] = useState(profile.basic);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-  return (
-    <form
-      className="panel edit-form"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        setBusy(true);
-        try {
-          await onSave(data);
-        } catch {
-          setError(true);
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {(["fullName", "email", "phone", "location", "summary"] as const).map(
-        (key, index) => (
-          <label key={key}>
-            {["Họ tên", "Email", "Điện thoại", "Địa điểm", "Tóm tắt"][index]}
-            <input
-              value={data[key] ?? ""}
-              maxLength={key === "summary" ? 10000 : key === "phone" ? 50 : 255}
-              onChange={(e) => setData({ ...data, [key]: e.target.value })}
-            />
-          </label>
-        ),
-      )}
-      {error && (
-        <p role="alert">
-          Chưa lưu được thông tin. Kiểm tra dữ liệu hoặc tải lại khi xung đột.
-        </p>
-      )}
-      <button disabled={busy} type="submit">
-        Lưu thông tin cơ bản
-      </button>{" "}
-      <button type="button" onClick={onCancel}>
-        Hủy
-      </button>
-    </form>
-  );
-}
 export function CandidatePage() {
   const { id = "" } = useParams();
   return validRouteId(id) ? (
@@ -288,6 +239,7 @@ function CandidateContent({ id }: { id: string }) {
     void act(path, method, data).catch(() => {});
   };
   const selectEvidence = (doc: string, evidence: Evidence) => {
+    if (!query.data?.documents.some((source) => source.id === doc)) return;
     setDocument(doc);
     setPage(evidence.page);
     setQuote(evidence.text);
@@ -336,14 +288,12 @@ function CandidateContent({ id }: { id: string }) {
             <p>
               {stateLabel(p.basicState)} · Nguồn {p.basicOrigin}
             </p>
-            <p>
-              Họ tên: {p.basic.fullName || "Chưa có"} · Email:{" "}
-              {p.basic.email || "Chưa có"} · Điện thoại:{" "}
-              {p.basic.phone || "Chưa có"}
-            </p>
-            <p>
-              {p.basic.location} {p.basic.summary}
-            </p>
+            <PersonalFields
+              basic={p.basic}
+              metadata={p.extensions.personalInfo}
+              documents={p.documents}
+              onEvidence={selectEvidence}
+            />
             <button onClick={() => setBasicEdit(true)}>
               Sửa thông tin cơ bản
             </button>{" "}
@@ -354,9 +304,9 @@ function CandidateContent({ id }: { id: string }) {
               Xác nhận thông tin cơ bản
             </button>
             {basicEdit && (
-              <BasicForm
+              <PersonalForm
                 key={p.version}
-                profile={p}
+                initial={p.basic}
                 onSave={(data) =>
                   act("/basic", "PUT", { data, confirm: false })
                 }
@@ -454,96 +404,114 @@ function CandidateContent({ id }: { id: string }) {
             ) : proposals.data.length === 0 ? (
               <p>Không có đề xuất đang mở.</p>
             ) : (
-              proposals.data.map((proposal) => (
-                <article key={proposal.id} className="panel">
-                  <h3>Đề xuất từ tài liệu #{proposal.documentId}</h3>
-                  <Values
-                    data={proposal.data}
-                    documentId={proposal.documentId}
+              proposals.data.map((proposal) =>
+                proposal.kind === "PERSONAL_INFO" ? (
+                  <PersonalProposal
+                    key={proposal.id}
+                    proposal={proposal}
+                    basic={p.basic}
+                    documents={p.documents}
+                    saving={saving}
                     onEvidence={selectEvidence}
+                    onDecision={(decision, edited) =>
+                      act("/proposals/" + proposal.id, "POST", {
+                        decision,
+                        targetExperienceId: null,
+                        ...(edited ? { data: edited } : {}),
+                      })
+                    }
                   />
-                  <label>
-                    Đối sánh do người dùng chọn
-                    <select
-                      value={targets[proposal.id] ?? ""}
-                      onChange={(e) =>
-                        setTargets({
-                          ...targets,
-                          [proposal.id]: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Chọn thêm mới hoặc thay thế</option>
-                      <option value="ADD">Thêm kinh nghiệm mới</option>
-                      {p.experiences.map((exp) => (
-                        <option key={exp.id} value={exp.id}>
-                          Thay: {exp.data.company.raw} — {exp.data.title.raw}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {targets[proposal.id] && targets[proposal.id] !== "ADD" && (
-                    <>
-                      <h4>Giá trị hiện hành</h4>
-                      <pre className="raw-text">
-                        {JSON.stringify(
-                          p.experiences.find(
-                            (exp) => exp.id === targets[proposal.id],
-                          )?.data,
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </>
-                  )}
-                  <button
-                    disabled={saving || !targets[proposal.id]}
-                    onClick={() =>
-                      run("/proposals/" + proposal.id, "POST", {
-                        decision: "ACCEPT",
-                        targetExperienceId:
-                          targets[proposal.id] === "ADD"
-                            ? null
-                            : targets[proposal.id],
-                      })
-                    }
-                  >
-                    Chấp nhận đề xuất
-                  </button>{" "}
-                  <button
-                    disabled={!targets[proposal.id]}
-                    onClick={() => setProposalEditing(proposal.id)}
-                  >
-                    Sửa đề xuất rồi lưu
-                  </button>{" "}
-                  <button
-                    disabled={saving}
-                    onClick={() =>
-                      run("/proposals/" + proposal.id, "POST", {
-                        decision: "REJECT",
-                      })
-                    }
-                  >
-                    Từ chối đề xuất
-                  </button>
-                  {proposalEditing === proposal.id && (
-                    <ExperienceForm
-                      initial={proposal.data}
-                      onSave={(data) =>
-                        act("/proposals/" + proposal.id, "POST", {
-                          decision: "EDIT",
+                ) : (
+                  <article key={proposal.id} className="panel">
+                    <h3>Đề xuất từ tài liệu #{proposal.documentId}</h3>
+                    <Values
+                      data={proposal.data}
+                      documentId={proposal.documentId}
+                      onEvidence={selectEvidence}
+                    />
+                    <label>
+                      Đối sánh do người dùng chọn
+                      <select
+                        value={targets[proposal.id] ?? ""}
+                        onChange={(e) =>
+                          setTargets({
+                            ...targets,
+                            [proposal.id]: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">Chọn thêm mới hoặc thay thế</option>
+                        <option value="ADD">Thêm kinh nghiệm mới</option>
+                        {p.experiences.map((exp) => (
+                          <option key={exp.id} value={exp.id}>
+                            Thay: {exp.data.company.raw} — {exp.data.title.raw}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {targets[proposal.id] && targets[proposal.id] !== "ADD" && (
+                      <>
+                        <h4>Giá trị hiện hành</h4>
+                        <pre className="raw-text">
+                          {JSON.stringify(
+                            p.experiences.find(
+                              (exp) => exp.id === targets[proposal.id],
+                            )?.data,
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </>
+                    )}
+                    <button
+                      disabled={saving || !targets[proposal.id]}
+                      onClick={() =>
+                        run("/proposals/" + proposal.id, "POST", {
+                          decision: "ACCEPT",
                           targetExperienceId:
                             targets[proposal.id] === "ADD"
                               ? null
                               : targets[proposal.id],
-                          data,
                         })
                       }
-                      onCancel={() => setProposalEditing(undefined)}
-                    />
-                  )}
-                </article>
-              ))
+                    >
+                      Chấp nhận đề xuất
+                    </button>{" "}
+                    <button
+                      disabled={!targets[proposal.id]}
+                      onClick={() => setProposalEditing(proposal.id)}
+                    >
+                      Sửa đề xuất rồi lưu
+                    </button>{" "}
+                    <button
+                      disabled={saving}
+                      onClick={() =>
+                        run("/proposals/" + proposal.id, "POST", {
+                          decision: "REJECT",
+                        })
+                      }
+                    >
+                      Từ chối đề xuất
+                    </button>
+                    {proposalEditing === proposal.id && (
+                      <ExperienceForm
+                        initial={proposal.data}
+                        onSave={(data) =>
+                          act("/proposals/" + proposal.id, "POST", {
+                            decision: "EDIT",
+                            targetExperienceId:
+                              targets[proposal.id] === "ADD"
+                                ? null
+                                : targets[proposal.id],
+                            data,
+                          })
+                        }
+                        onCancel={() => setProposalEditing(undefined)}
+                      />
+                    )}
+                  </article>
+                ),
+              )
             )}
             <p className="footnote">
               Danh sách đề xuất có giới hạn mỗi lượt; sau xử lý, các đề xuất kế
@@ -646,14 +614,12 @@ function CandidateContent({ id }: { id: string }) {
             ))}
           </select>
           <p>Ngày nhận CV và ngày nội dung cập nhật: chưa có nguồn xác định.</p>
-          {quote && (
-            <blockquote aria-label="Quote evidence">{quote}</blockquote>
-          )}
           {selected ? (
             <PdfPane
               key={selected.id}
               documentId={selected.id}
               page={page}
+              quote={quote}
               onPage={(next) => {
                 setPage(next);
                 setQuote("");

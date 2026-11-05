@@ -357,6 +357,10 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   ngày 2026-11-03: hỗ trợ đúng package candidate.mapping đã duyệt, giữ kiểm tra mapper cũ và ranh giới dependency.
 ### Lát cắt 5 — UI tối thiểu
 
+- Developer quyết định ngày 2026-11-05: giữ đúng 7 file UI; chỉ thêm coverage unit/jsdom,
+  không thêm tests/browser/m11.spec.ts hoặc đổi Playwright discovery/config. Suite browser hiện có vẫn chạy;
+  personal-info.browser.test.tsx là jsdom, không coi là browser/PDF thật cho luồng mới.
+
 - Ước lượng sau bổ sung gender: **7 file code** (không tăng; chờ API được duyệt): `frontend/src/features/candidates/schema.ts`, `pages.tsx`, `pdf-pane.tsx`;
   `personal-info.tsx` (mới, cùng thư mục); `frontend/tests/personal-info.test.tsx`,
   `frontend/tests/personal-info.browser.test.tsx` và `frontend/tests/personal-info-fixtures.ts` (mới).
