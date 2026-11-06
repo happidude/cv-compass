@@ -29,6 +29,7 @@ public class MappingService {
     private final MappingProperties properties;
     private final ExperienceEngine experienceEngine;
     private final PersonalInfoEngine personalInfoEngine;
+    private final PersonalInfoEngineV31 grammarEngine;
 
     public MappingService(
             MappingRepository repository,
@@ -49,7 +50,6 @@ public class MappingService {
                 new PersonalInfoEngine(experienceEngine));
     }
 
-    @Autowired
     public MappingService(
             MappingRepository repository,
             OcrExtractionReader inputs,
@@ -59,6 +59,29 @@ public class MappingService {
             MappingProperties properties,
             ExperienceEngine experienceEngine,
             PersonalInfoEngine personalInfoEngine) {
+        this(
+                repository,
+                inputs,
+                engine,
+                json,
+                transactions,
+                properties,
+                experienceEngine,
+                personalInfoEngine,
+                new PersonalInfoEngineV31());
+    }
+
+    @Autowired
+    public MappingService(
+            MappingRepository repository,
+            OcrExtractionReader inputs,
+            MappingEngine engine,
+            ObjectMapper json,
+            PlatformTransactionManager transactions,
+            MappingProperties properties,
+            ExperienceEngine experienceEngine,
+            PersonalInfoEngine personalInfoEngine,
+            PersonalInfoEngineV31 grammarEngine) {
         this.repository = repository;
         this.inputs = inputs;
         this.engine = engine;
@@ -67,6 +90,7 @@ public class MappingService {
         this.properties = properties;
         this.experienceEngine = experienceEngine;
         this.personalInfoEngine = personalInfoEngine;
+        this.grammarEngine = grammarEngine;
     }
 
     public long register(String revision, MappingConfig definition) {
@@ -136,6 +160,7 @@ public class MappingService {
                                     MappingEngine.VERSION,
                                     ExperienceEngine.VERSION,
                                     PersonalInfoEngine.VERSION,
+                                    PersonalInfoEngineV31.VERSION,
                                     properties.getLeaseDuration(),
                                     properties.getHardDeadline());
                     claim.ifPresent(
@@ -176,6 +201,7 @@ public class MappingService {
             case MappingEngine.VERSION -> engine.map(current, input);
             case ExperienceEngine.VERSION -> experienceEngine.map(current, input);
             case PersonalInfoEngine.VERSION -> personalInfoEngine.map(current, input);
+            case PersonalInfoEngineV31.VERSION -> grammarEngine.map(current, input);
             default -> throw new IllegalArgumentException("Unsupported mapping engine");
         };
     }

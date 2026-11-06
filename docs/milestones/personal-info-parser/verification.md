@@ -1,3 +1,14 @@
+# Kiểm chứng mở rộng grammar 3.1
+
+Developer đổi ưu tiên ngày 2026-11-05; xem [checklist, khảo sát và grammar](grammar-expansion.md).
+Base f95affd939a29202d2ac429a01498299b23ae5f1, cùng branch feature/personal-info-parser/PR Draft #26.
+Mức 3, tối đa 3 vòng; Implementer → Tester → Reviewer chỉ đọc. Source cuối sau sửa Reviewer: 97 test/7 lớp (gồm legacy và architecture/Modulith) PASS,
+0 failure/error/skip, 0 compile warning; full local PostgreSQL NOT VERIFIED (port15439 không kết nối).
+CI đúng source cuối/Reviewer ghi ở PR. Không nâng job/result, không sửa legacy helpers, không bắt đầu search
+hoặc lát cắt 6/E2E đánh giá. Không accuracy/gold/corpus report; sample inspection là PDF extraction,
+không worker OCR (không có raw OCR trong thư mục được phép). Không PII/raw/render thật vào Git.
+
+---
 # Kiểm chứng lát cắt 5 - UI thông tin cá nhân
 
 - Developer duyệt cùng branch/PR #26, mức 3, tối đa 3 vòng; source backend publication

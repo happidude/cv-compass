@@ -1013,6 +1013,78 @@ class MappingIntegrationTests {
     }
 
     @Test
+    void optInGrammarJobsKeepTheirEngineAcrossActivationAndReplay() throws Exception {
+        com.cvcompass.backend.mapping.dto.PersonalInfoDefinition legacy;
+        com.cvcompass.backend.mapping.dto.PersonalInfoDefinition grammar;
+        try (var input = getClass().getResourceAsStream("/mapping/personal-info-config-v3.json")) {
+            legacy =
+                    (com.cvcompass.backend.mapping.dto.PersonalInfoDefinition)
+                            com.cvcompass.backend.mapping.dto.MappingVersions.config(
+                                    new String(
+                                            input.readAllBytes(),
+                                            java.nio.charset.StandardCharsets.UTF_8),
+                                    json);
+        }
+        try (var input =
+                getClass().getResourceAsStream("/mapping/personal-info-config-v3.1.json")) {
+            grammar =
+                    (com.cvcompass.backend.mapping.dto.PersonalInfoDefinition)
+                            com.cvcompass.backend.mapping.dto.MappingVersions.config(
+                                    new String(
+                                            input.readAllBytes(),
+                                            java.nio.charset.StandardCharsets.UTF_8),
+                                    json);
+        }
+        long oldId = mapping.register(legacy.revision(), legacy);
+        long nextId = mapping.register(grammar.revision(), grammar);
+        var repository = new com.cvcompass.backend.mapping.repository.MappingRepository(jdbc, json);
+        long first = seed("success", null, "Full name: Legacy Example\nGender: M");
+        repository.enqueue(first, oldId, "personal-info-mapping/3.0", 3);
+        mapping.activate(nextId);
+        var oldClaim = mapping.claim().orElseThrow();
+        assertThat(oldClaim.engineVersion()).isEqualTo("personal-info-mapping/3.0");
+        assertThat(oldClaim.configId()).isEqualTo(oldId);
+        var oldResult = mapping.process(oldClaim);
+        mapping.complete(oldClaim, oldResult);
+        var oldRow =
+                jdbc.queryForMap(
+                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        oldClaim.jobId());
+        long second = seed("success", null, "Full name: Grammar Example\nGender: F");
+        assertThatThrownBy(() -> repository.enqueue(second, nextId, "personal-info-mapping/3.0", 3))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("MAPPING_ENGINE_CONFIG_MISMATCH");
+        repository.enqueue(second, nextId, "personal-info-mapping/3.1", 3);
+        var nextClaim = mapping.claim().orElseThrow();
+        assertThat(nextClaim.engineVersion()).isEqualTo("personal-info-mapping/3.1");
+        assertThat(nextClaim.configId()).isEqualTo(nextId);
+        var result =
+                (com.cvcompass.backend.mapping.dto.PersonalInfoMappingResult)
+                        mapping.process(nextClaim);
+        assertThat(result.engineVersion()).isEqualTo("personal-info-mapping/3.1");
+        assertThat(result.configRevision()).isEqualTo(grammar.revision());
+        assertThat(result.personalInfo().get("gender").normalized()).isEqualTo("FEMALE");
+        mapping.complete(nextClaim, result);
+        var row =
+                jdbc.queryForMap(
+                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        nextClaim.jobId());
+        mapping.complete(nextClaim, result);
+        assertThat(mapping.result(nextClaim.jobId())).contains(result);
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                nextClaim.jobId()))
+                .isEqualTo(row);
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                oldClaim.jobId()))
+                .isEqualTo(oldRow);
+        assertThat(mapping.claim()).isEmpty();
+    }
+
+    @Test
     void personalV3RegistersActivatesAndEnqueuesWithImmutableRevision() throws Exception {
         com.cvcompass.backend.mapping.dto.PersonalInfoDefinition config;
         try (var stream = getClass().getResourceAsStream("/mapping/personal-info-config-v3.json")) {

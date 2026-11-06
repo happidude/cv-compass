@@ -51,8 +51,10 @@ public class PublicationService {
         boolean v3 =
                 result.schemaVersion() == 3
                         && body.path("schemaVersion").asInt() == 3
-                        && "personal-info-mapping/3.0"
-                                .equals(body.path("engineVersion").asString());
+                        && ("personal-info-mapping/3.0"
+                                        .equals(body.path("engineVersion").asString())
+                                || "personal-info-mapping/3.1"
+                                        .equals(body.path("engineVersion").asString()));
         var personal = PersonalInfoMapper.patch(body, json.createObjectNode());
         boolean usable =
                 (result.schemaVersion() == 2 || v3)

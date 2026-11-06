@@ -91,6 +91,10 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     long result(CvDocument doc, String raw, boolean v1) throws Exception {
+        return result(doc, raw, v1, "personal-info-mapping/3.0");
+    }
+
+    long result(CvDocument doc, String raw, boolean v1, String engine) throws Exception {
         var job = new CvProcessingJob();
         job.setDocument(doc);
         job.setStatus(JobStatus.PENDING);
@@ -130,6 +134,7 @@ class PersonalInfoPublicationIntegrationTests {
                                                 "/mapping/personal-info-config-v3.json")
                                         .readAllBytes());
         tree.put("revision", "personal-" + UUID.randomUUID());
+        tree.put("engineCompatibility", engine);
         var parsed =
                 json.treeToValue(
                         tree, com.cvcompass.backend.mapping.dto.PersonalInfoDefinition.class);
@@ -138,7 +143,7 @@ class PersonalInfoPublicationIntegrationTests {
                 "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
                 extraction,
                 config,
-                "personal-info-mapping/3.0");
+                engine);
         var mappingClaim = mapping.claim().orElseThrow();
         mapping.complete(mappingClaim, mapping.process(mappingClaim));
         return jdbc.queryForObject(
@@ -178,6 +183,33 @@ class PersonalInfoPublicationIntegrationTests {
                 .isFalse();
         assertThat(publication.publish(r)).isFalse();
         assertThat(queries.detail(p.id())).isEqualTo(p);
+    }
+
+    @Test
+    void optInGrammarPublicationPreservesProvenanceAndReplay() throws Exception {
+        var doc = document();
+        long id =
+                result(
+                        doc,
+                        "Full name: Grammar Example\nGender: F",
+                        false,
+                        "personal-info-mapping/3.1");
+        assertThat(publication.publish(id)).isTrue();
+        var profile = queries.detail(candidate(doc));
+        assertThat(profile.basic().path("fullName").asString()).isEqualTo("Grammar Example");
+        assertThat(profile.basic().path("gender").asString()).isEqualTo("FEMALE");
+        assertThat(profile.extensions().path("mapping").path("engineVersion").asString())
+                .isEqualTo("personal-info-mapping/3.1");
+        assertThat(
+                        profile.extensions()
+                                .path("personalInfo")
+                                .path("fields")
+                                .path("gender")
+                                .path("resultId")
+                                .asLong())
+                .isEqualTo(id);
+        assertThat(publication.publish(id)).isFalse();
+        assertThat(queries.detail(profile.id())).isEqualTo(profile);
     }
 
     @Test

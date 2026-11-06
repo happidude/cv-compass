@@ -5,6 +5,9 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 
 ## Phê duyệt
 
+- Developer đổi ưu tiên ngày 2026-11-05: [mở rộng grammar và clean code có mục tiêu](grammar-expansion.md).
+  Chưa làm chương trình đánh giá/search hoặc hoàn thành lát cắt 6; các AC/R cũ giữ nguyên.
+
 - Developer duyệt ngoại lệ trong chat ngày 2026-11-03: tiếp tục lát cắt 4 và 5 trên cùng
   nhánh `feature/personal-info-parser` và PR Draft #26 của lát cắt 3, không chờ merge #26.
   Base main giữ `69930b951659c56e709a5f24757c2012de5f3731`; mốc bắt đầu phần 4–5 là

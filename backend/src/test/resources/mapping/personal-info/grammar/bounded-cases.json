@@ -1,0 +1,266 @@
+[
+  {
+    "id": "email-space-alias",
+    "raw": "E-mail  Alex@EXAMPLE.TEST",
+    "field": "email",
+    "state": "PROPOSED",
+    "normalized": "Alex@example.test",
+    "issue": null
+  },
+  {
+    "id": "email-wrapped-domain",
+    "raw": "Email: alex@\n\nexample.test",
+    "field": "email",
+    "state": "PROPOSED",
+    "normalized": "alex@example.test",
+    "issue": null
+  },
+  {
+    "id": "email-no-ocr-repair",
+    "raw": "Email: alex at example.test",
+    "field": "email",
+    "state": "INVALID",
+    "normalized": null,
+    "issue": "INVALID_EMAIL"
+  },
+  {
+    "id": "email-no-invented-at",
+    "raw": "Email: alex\nexample.test",
+    "field": "email",
+    "state": "INVALID",
+    "normalized": null,
+    "issue": "INVALID_EMAIL"
+  },
+  {
+    "id": "intl-extension",
+    "raw": "Telephone: +44 (20) 1234-5678 ext. 27",
+    "field": "phone",
+    "state": "PROPOSED",
+    "normalized": "+442012345678x27",
+    "issue": null
+  },
+  {
+    "id": "anonymous-parentheses",
+    "raw": "Contact\n(020) 1234 5678",
+    "field": "phone",
+    "state": "PROPOSED",
+    "normalized": "02012345678",
+    "issue": null
+  },
+  {
+    "id": "domestic-no-country-inference",
+    "raw": "Mobile 0912.345.678",
+    "field": "phone",
+    "state": "PROPOSED",
+    "normalized": "0912345678",
+    "issue": null
+  },
+  {
+    "id": "year-range-not-phone",
+    "raw": "Contact\n2024-2025",
+    "field": "phone",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "dob-not-phone",
+    "raw": "Contact\nDOB: 02/03/1990",
+    "field": "phone",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "budget-not-phone",
+    "raw": "Contact\nBudget: 250000000",
+    "field": "phone",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "id-not-phone",
+    "raw": "Contact\nEmployee ID: 123456789",
+    "field": "phone",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "wrapped-phone",
+    "raw": "Phone: +44 20 1234-\n5678",
+    "field": "phone",
+    "state": "PROPOSED",
+    "normalized": "+442012345678",
+    "issue": null
+  },
+  {
+    "id": "trunk-notation",
+    "raw": "Phone: +84 (0) 912 345 678",
+    "field": "phone",
+    "state": "INVALID",
+    "normalized": null,
+    "issue": "PHONE_TRUNK_NOTATION_AMBIGUOUS"
+  },
+  {
+    "id": "header-multiline-name",
+    "raw": "Personal Profile\nAlex\nExample\nContact\nalex@example.test",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "Alex Example",
+    "issue": null
+  },
+  {
+    "id": "three-fragment-name",
+    "raw": "Full name:\nAlex\nMorgan\nExample\nGender: F",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "Alex Morgan Example",
+    "issue": null
+  },
+  {
+    "id": "prefix-honorific",
+    "raw": "Full name: Mrs. Alex Example",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "Alex Example",
+    "issue": null
+  },
+  {
+    "id": "name-not-gender",
+    "raw": "Full name: Mrs. Alex Example",
+    "field": "gender",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "job-title-not-name",
+    "raw": "Product Owner\nContact\nalex@example.test",
+    "field": "fullName",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "company-not-name",
+    "raw": "Example Corporation\nContact\nadmin@example.test",
+    "field": "fullName",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "no-legal-name-choice",
+    "raw": "Full name: ALEX (ALEXANDER EXAMPLE)",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "ALEX (ALEXANDER EXAMPLE)",
+    "issue": null
+  },
+  {
+    "id": "two-name-values",
+    "raw": "Name:\nAlex Example\nMorgan Sample\nEmail: alex@example.test",
+    "field": "fullName",
+    "state": "AMBIGUOUS",
+    "normalized": null,
+    "issue": "LABEL_VALUE_UNRESOLVED"
+  },
+  {
+    "id": "reference-contact-stays-reference",
+    "raw": "Professional References\nContact\nEmail: referee@example.test",
+    "field": "email",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "company-contact-stays-company",
+    "raw": "Company Contact\nContact\nEmail: company@example.test",
+    "field": "email",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "relocation-not-address",
+    "raw": "Desired location: Example City\nOpen to relocate: Other City",
+    "field": "location",
+    "state": "NOT_FOUND",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "intro-without-heading",
+    "raw": "Personal Profile\nI have practical experience in building reliable synthetic systems.\nEmail: alex@example.test",
+    "field": "summary",
+    "state": "PROPOSED",
+    "normalized": "I have practical experience in building reliable synthetic systems.",
+    "issue": null
+  },
+  {
+    "id": "mixed-overview-abstains",
+    "raw": "Overview\nI have practical experience in building reliable synthetic systems.\n- SQL\n- Java",
+    "field": "summary",
+    "state": "AMBIGUOUS",
+    "normalized": null,
+    "issue": null
+  },
+  {
+    "id": "unknown-gender",
+    "raw": "Gender: Non-binary",
+    "field": "gender",
+    "state": "INVALID",
+    "normalized": null,
+    "issue": "UNRECOGNIZED_GENDER"
+  },
+  {
+    "id": "gender-conflict",
+    "raw": "Gender: Male\nSex: Female",
+    "field": "gender",
+    "state": "AMBIGUOUS",
+    "normalized": null,
+    "issue": "CONFLICTING_VALUES"
+  },
+  {
+    "id": "duplicate-email",
+    "raw": "Email: Alex@example.test\nEmail: Alex@EXAMPLE.TEST",
+    "field": "email",
+    "state": "PROPOSED",
+    "normalized": "Alex@example.test",
+    "issue": null
+  },
+  {
+    "id": "different-email",
+    "raw": "Email: alex@example.test\nEmail: morgan@example.test",
+    "field": "email",
+    "state": "AMBIGUOUS",
+    "normalized": null,
+    "issue": "CONFLICTING_VALUES"
+  },
+  {
+    "id": "vietnamese-name-token-prefix",
+    "raw": "Full name: Anh Nguyễn Example",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "Anh Nguyễn Example",
+    "issue": null
+  },
+  {
+    "id": "separated-vietnamese-honorific-prefix",
+    "raw": "Full name: Anh: Alex Example",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "Alex Example",
+    "issue": null
+  },
+  {
+    "id": "separated-vietnamese-honorific-suffix",
+    "raw": "Full name: Alex Example - Anh",
+    "field": "fullName",
+    "state": "PROPOSED",
+    "normalized": "Alex Example",
+    "issue": null
+  }
+]

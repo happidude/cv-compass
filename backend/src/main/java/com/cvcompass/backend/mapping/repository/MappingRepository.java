@@ -118,17 +118,28 @@ public class MappingRepository {
             String personalEngine,
             Duration lease,
             Duration deadline) {
+        return claim(engine, otherEngine, personalEngine, personalEngine, lease, deadline);
+    }
+
+    public Optional<MappingClaim> claim(
+            String engine,
+            String otherEngine,
+            String personalEngine,
+            String grammarEngine,
+            Duration lease,
+            Duration deadline) {
         var ids =
                 jdbc.query(
                         """
                 SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "STATUS"='PENDING'
-                AND "ENGINE_VERSION" IN (?,?,?) AND ("ENGINE_VERSION"<>'personal-info-mapping/3.0' OR EXISTS(SELECT 1 FROM "CV_MAPPING_CONFIGS" c WHERE c."ID"="CV_MAPPING_JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="CV_MAPPING_JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
+                AND "ENGINE_VERSION" IN (?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1') OR EXISTS(SELECT 1 FROM "CV_MAPPING_CONFIGS" c WHERE c."ID"="CV_MAPPING_JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="CV_MAPPING_JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
                         engine,
                         otherEngine,
-                        personalEngine);
+                        personalEngine,
+                        grammarEngine);
         if (ids.isEmpty()) return Optional.empty();
         long id = ids.getFirst();
         UUID token = UUID.randomUUID();

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "missing-employer",
+    "raw": "Work Experience\nEngineer\n2019 - 2021",
+    "count": 0,
+    "sourceIssue": "UNRESOLVED_EXPERIENCE_BLOCK"
+  },
+  {
+    "id": "unknown-company-relation",
+    "raw": "Work Experience\n2019 - 2021\nExample Workshop\nEngineer",
+    "count": 0,
+    "sourceIssue": "UNRESOLVED_EXPERIENCE_BLOCK"
+  },
+  {
+    "id": "two-employers-inline",
+    "raw": "Work Experience\nExample Systems Ltd | Another Systems Ltd | 2019 - 2021",
+    "count": 0,
+    "sourceIssue": "AMBIGUOUS_EXPERIENCE_ROW"
+  },
+  {
+    "id": "orphan-marker",
+    "raw": "Work Experience\nEmployer: Example Systems Ltd (continued)\nUnverified task.",
+    "count": 0,
+    "sourceIssue": "ORPHAN_CONTINUATION"
+  },
+  {
+    "id": "projects-are-context",
+    "raw": "Projects\nCompany: Example Systems Ltd\nTitle: Engineer\nPeriod: 2019 - 2021",
+    "count": 0,
+    "sourceIssue": "UNCLASSIFIED_EXPERIENCE_CONTEXT"
+  },
+  {
+    "id": "advisory-not-forced-employment",
+    "raw": "Advisory\nExample Systems Ltd\nEngineer\n2019 - 2021",
+    "count": 0,
+    "sourceIssue": "UNCLASSIFIED_EXPERIENCE_CONTEXT"
+  },
+  {
+    "id": "date-conflict-before-employer",
+    "raw": "Work Experience\n2019 - 2021\n2020 - 2022\nExample Systems Ltd\nEngineer",
+    "count": 1,
+    "company": "Example Systems Ltd",
+    "title": "Engineer",
+    "period": "AMBIGUOUS",
+    "rowIssue": "PERIOD_CONFLICT"
+  },
+  {
+    "id": "unknown-period-retained",
+    "raw": "Work Experience\nEmployer: Example Systems Ltd\nPosition: Engineer\nPeriod: unclear",
+    "count": 1,
+    "company": "Example Systems Ltd",
+    "title": "Engineer",
+    "period": "INVALID",
+    "rowIssue": "INVALID_PERIOD"
+  },
+  {
+    "id": "no-period-is-not-present",
+    "raw": "Work Experience\nEmployer: Example Systems Ltd\nPosition: Engineer",
+    "count": 1,
+    "company": "Example Systems Ltd",
+    "title": "Engineer",
+    "period": "NOT_FOUND",
+    "rowIssue": "PERIOD_NOT_FOUND"
+  },
+  {
+    "id": "cofounder-context-kept",
+    "raw": "Work Experience\nEmployer: Example Systems Ltd\nPosition: Co-founder\nPeriod: 2020 - Present",
+    "count": 1,
+    "company": "Example Systems Ltd",
+    "title": "Co-founder",
+    "period": "PROPOSED",
+    "rowIssue": "ROLE_CONTEXT_UNCLASSIFIED"
+  },
+  {
+    "id": "brand-parenthetical-kept",
+    "raw": "Work Experience\nEmployer: Example Systems Ltd (Example Brand)\nPosition: Engineer\nPeriod: 2019 - 2021",
+    "count": 1,
+    "company": "Example Systems Ltd (Example Brand)",
+    "title": "Engineer",
+    "period": "PROPOSED"
+  },
+  {
+    "id": "education-not-company",
+    "raw": "Education\nEngineer\nExample Systems Ltd\n2019 - 2021",
+    "count": 0
+  },
+  {
+    "id": "ceo-course-not-experience",
+    "raw": "Work Experience\nCEO Training Program\nClient: Example Systems Ltd\nPeriod: 2019 - 2021",
+    "count": 0
+  },
+  {
+    "id": "simple-parenthesis-company-date",
+    "raw": "Work Experience\nExample Systems Ltd (2019 - 2021).\nEngineer",
+    "count": 1,
+    "company": "Example Systems Ltd",
+    "title": "Engineer",
+    "period": "PROPOSED"
+  }
+]
