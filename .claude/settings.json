@@ -5,7 +5,14 @@
       "Bash(git status)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push -u origin:*)",
+      "Bash(git push origin:*)",
+      "Bash(gh pr create --draft:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr edit:*)"
     ],
     "deny": [
       "Read(./.env)",
@@ -29,7 +36,11 @@
       "Bash(gh release:*)",
       "Bash(gh secret:*)",
       "Bash(gh repo edit:*)",
-      "Bash(gh api -X DELETE:*)"
+      "Bash(gh api -X DELETE:*)",
+      "Bash(git push origin HEAD:main:*)",
+      "Bash(git push origin +*:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(git push --force-with-lease:*)"
     ]
   }
 }

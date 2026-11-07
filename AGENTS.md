@@ -51,5 +51,6 @@ Mức và ngoại lệ tối thiểu theo workflow.
   Primary giao chủ sửa; handoff/vòng/gate theo workflow, không tự chấp nhận blocker.
 - Dùng formatter hiện có. Tài liệu/AGENTS/template/PR description tiếng Việt;
   code/comment/identifier/commit message tiếng Anh; comment nêu lý do không hiển nhiên.
-- Check/bằng chứng theo kiểm chứng; push feature branch/PR chỉ khi được phép.
+- Check/bằng chứng theo kiểm chứng. Quyền thường trực (chủ dự án duyệt 08/11/2026): writer được commit,
+  push feature branch và mở/cập nhật **Draft PR**; không chuyển Ready, không merge, không push main.
   Dừng ở task được giao.

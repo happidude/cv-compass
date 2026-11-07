@@ -15,11 +15,16 @@ trong path được sửa và file chúng gọi trực tiếp.
 - Chạy formatter của component và đúng lệnh "Check affected" trong brief. Ghi log ra
   `<component>/build/agent-logs/`, chỉ đọc số test/lỗi và đuôi log, không dán log dài.
 - Cùng một lỗi thử 2 hướng vẫn hỏng: dừng và báo lại, không đoán tiếp.
-- Không commit/push/PR, không delegate.
+- Xong và check affected PASS: commit + push feature branch theo `docs/CV_COMPASS_GIT_WORKFLOW.md`
+  (stage path cụ thể, Conventional Commits tiếng Anh). Không bao giờ commit lên `main`, không force push.
+- Lần push đầu của slice: `gh pr create --draft --base main` với template `.github/pull_request_template.md`
+  (mô tả tiếng Việt, CI bị chặn ghi NOT VERIFIED). Lần sau chỉ push. Không `gh pr ready`, không merge.
+- Không delegate.
 
 Đầu ra (≤ 20 dòng):
 
 ```text
+Commit/PR: <SHA, link Draft PR>
 Files: <danh sách>
 Test thêm/sửa: <...>
 Check: <lệnh> → PASS/FAIL (số test, số lỗi)

@@ -35,7 +35,8 @@ Ngữ cảnh đã biết: <file/hàm/contract chính Primary đã đọc, để 
 Check affected: <lệnh cụ thể>
 ```
 
-Primary chịu trách nhiệm bằng chứng; subagent không tự delegate/publish/mở task mới.
+Primary chịu trách nhiệm bằng chứng; subagent không tự delegate/mở task mới.
+Publish: writer commit + push feature branch; implementer mở Draft PR một lần, cập nhật mô tả khi gate xong.
 Một writer tại một thời điểm: chờ writer/check dừng hẳn, đọc status/diff rồi mới giao tiếp.
 
 ## Review và vòng sửa

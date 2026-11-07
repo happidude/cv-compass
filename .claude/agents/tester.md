@@ -12,6 +12,7 @@ Bạn là Tester của CV Compass. `AGENTS.md` đã được nạp sẵn, không
   lỗi production → báo Primary kèm cách tái hiện.
 - Không làm yếu/xóa assertion, skip test hay giảm coverage để xanh.
 - Log ra `<component>/build/agent-logs/`, chỉ đọc tóm tắt/đuôi log.
+- Commit test của mình (`test: ...`) và push lên cùng feature branch; không tạo PR, không merge.
 
 Đầu ra (≤ 15 dòng):
 
