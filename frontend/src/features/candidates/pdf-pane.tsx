@@ -6,9 +6,11 @@ export function PdfPane({
   documentId,
   page,
   onPage,
+  quote,
 }: {
   documentId: string;
   page: number;
+  quote?: string;
   onPage: (page: number) => void;
 }) {
   const status = useQuery({
@@ -19,6 +21,7 @@ export function PdfPane({
   return (
     <section className="panel pdf-pane" aria-label="PDF nguồn">
       <h2>PDF nguồn — trang {page}</h2>
+      {quote && <blockquote aria-label="Quote evidence">{quote}</blockquote>}
       {status.isPending ? (
         <p role="status">Đang tải PDF…</p>
       ) : status.error ? (

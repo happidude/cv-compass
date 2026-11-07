@@ -20,7 +20,7 @@ public class CandidateValidator {
     public void validateBasic(JsonNode value) {
         if (value == null
                 || !value.isObject()
-                || !Set.of("fullName", "email", "phone", "location", "summary")
+                || !Set.of("fullName", "email", "phone", "location", "summary", "gender")
                         .containsAll(value.propertyNames())) invalid();
         for (String field : value.propertyNames())
             if (!value.get(field).isNull()

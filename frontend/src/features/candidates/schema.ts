@@ -48,20 +48,68 @@ export const experienceDataSchema = z
   })
   .passthrough();
 export type ExperienceData = z.infer<typeof experienceDataSchema>;
-const basicSchema = z.object({
+export const basicSchema = z.object({
   fullName: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   summary: z.string().nullable().optional(),
+  gender: z.string().nullable().optional(),
 });
+export const personalFieldSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    raw: z.string().nullable().optional(),
+    normalized: z.string().nullable().optional(),
+    state: z.enum(["PROPOSED", "NOT_FOUND", "INVALID", "AMBIGUOUS"]).optional(),
+    alternatives: z
+      .array(
+        z.object({
+          raw: z.string(),
+          normalized: z.string().nullable(),
+          evidence: z.array(evidenceSchema),
+        }),
+      )
+      .optional(),
+    evidence: z.array(evidenceSchema).optional(),
+    issues: z
+      .array(
+        z.object({
+          code: z.string(),
+          field: z.string(),
+          evidence: z.array(evidenceSchema).optional(),
+        }),
+      )
+      .optional(),
+    documentId: idSchema.nullable().optional(),
+    resultId: idSchema.nullable().optional(),
+    configRevision: z.string().optional(),
+    origin: z.string().optional(),
+    reviewState: z.string().optional(),
+  })
+  .passthrough();
+export const personalInfoSchema = z.object({
+  schemaVersion: z.literal(1),
+  fields: z.object({
+    fullName: personalFieldSchema.optional(),
+    email: personalFieldSchema.optional(),
+    phone: personalFieldSchema.optional(),
+    location: personalFieldSchema.optional(),
+    summary: personalFieldSchema.optional(),
+    gender: personalFieldSchema.optional(),
+  }),
+});
+export type PersonalInfo = z.infer<typeof personalInfoSchema>;
+export type Basic = z.infer<typeof basicSchema>;
 export const profileSchema = z.object({
   id: idSchema,
   version: countSchema,
   basic: basicSchema,
   basicState: z.string(),
   basicOrigin: z.string(),
-  extensions: z.record(z.string(), z.unknown()),
+  extensions: z
+    .object({ personalInfo: personalInfoSchema.optional() })
+    .catchall(z.unknown()),
   experiences: z.array(
     z.object({
       id: z.uuid(),
@@ -89,14 +137,24 @@ export const pageSchema = z.object({
   hasNext: z.boolean(),
   nextBeforeId: idSchema.nullable(),
 });
+const proposalBase = z.object({
+  id: z.uuid(),
+  documentId: idSchema,
+  resultId: idSchema,
+});
 export const proposalsSchema = z.array(
-  z.object({
-    id: z.uuid(),
-    documentId: idSchema,
-    resultId: idSchema,
-    data: experienceDataSchema,
-  }),
+  z.union([
+    proposalBase.extend({
+      kind: z.literal("EXPERIENCE").default("EXPERIENCE"),
+      data: experienceDataSchema,
+    }),
+    proposalBase.extend({
+      kind: z.literal("PERSONAL_INFO"),
+      data: z.object({ patch: basicSchema, metadata: personalInfoSchema }),
+    }),
+  ]),
 );
+export type Proposal = z.infer<typeof proposalsSchema>[number];
 export const historySchema = z.array(
   z.object({
     id: idSchema,

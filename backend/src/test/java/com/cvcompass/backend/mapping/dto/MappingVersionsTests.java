@@ -20,6 +20,48 @@ class MappingVersionsTests {
     }
 
     @Test
+    void readsOptInV31WithoutChangingLegacyConfigurationBytes() throws Exception {
+        String legacy = sample();
+        String before = MappingDigests.canonical(MappingVersions.config(legacy, json));
+        var current = (ObjectNode) json.readTree(legacy);
+        current.put("engineCompatibility", "personal-info-mapping/3.1");
+        current.put("revision", "synthetic-personal-v31");
+        var config = MappingVersions.config(json.writeValueAsString(current), json);
+        config.validate();
+        assertThat(config.engineCompatibility()).isEqualTo("personal-info-mapping/3.1");
+        assertThat(MappingVersions.config(MappingDigests.canonical(config), json))
+                .isEqualTo(config);
+        current.put("engineCompatibility", "personal-info-mapping/3.2");
+        assertThatThrownBy(() -> MappingVersions.config(json.writeValueAsString(current), json))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(MappingDigests.canonical(MappingVersions.config(legacy, json)))
+                .isEqualTo(before);
+    }
+
+    @Test
+    void completeOptInSampleHasItsOwnRevisionAndLiteralAliases() throws Exception {
+        try (var input =
+                getClass().getResourceAsStream("/mapping/personal-info-config-v3.1.json")) {
+            var config =
+                    (PersonalInfoDefinition)
+                            MappingVersions.config(
+                                    new String(input.readAllBytes(), StandardCharsets.UTF_8), json);
+            config.validate();
+            assertThat(config.engineCompatibility()).isEqualTo("personal-info-mapping/3.1");
+            assertThat(config.revision()).isEqualTo("personal-info-grammar-v31-r1");
+            assertThat(config.experience().rulesRevision()).isEqualTo("synthetic-grammar-v31-r1");
+            assertThat(config.personalFields().get("phone").labels())
+                    .contains("Mobile", "Telephone", "Tel.", "Số điện thoại");
+            assertThat(config.personalFields().get("gender").labels())
+                    .containsExactly("Gender", "Sex", "Giới tính", "Phái");
+            assertThat(config.sectionHeadings().get("REFERENCE"))
+                    .contains("Professional References", "Referees", "Kiểm tra thông tin");
+            assertThat(config.experience().engineCompatibility())
+                    .isEqualTo(ExperienceDefinition.ENGINE_VERSION);
+        }
+    }
+
+    @Test
     void readsCompleteSixFieldConfigurationAndKeepsDisabledGender() throws Exception {
         var config = (PersonalInfoDefinition) MappingVersions.config(sample(), json);
         config.validate();
@@ -160,6 +202,18 @@ class MappingVersionsTests {
                         fields);
         String body = MappingDigests.canonical(v3);
         assertThat(MappingVersions.result(body, json)).isEqualTo(v3);
+        String nextBody = body.replace("personal-info-mapping/3.0", "personal-info-mapping/3.1");
+        assertThat(MappingDigests.canonical(MappingVersions.result(nextBody, json)))
+                .isEqualTo(nextBody);
+        assertThatThrownBy(
+                        () ->
+                                MappingVersions.result(
+                                        body.replace(
+                                                "personal-info-mapping/3.0",
+                                                "personal-info-mapping/3.2"),
+                                        json))
+                .isInstanceOf(RuntimeException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class);
         assertThat(body).contains("MALE");
         fields.put(
                 "gender",

@@ -57,8 +57,6 @@ public class MappingBootstrap implements ApplicationRunner {
             var definition =
                     MappingVersions.config(new String(bytes, StandardCharsets.UTF_8), json);
             definition.validate();
-            if (definition.schemaVersion() == 3)
-                throw failure("MAPPING_V3_ACTIVATION_NOT_AVAILABLE");
             mapping.activate(mapping.register(revision, definition));
         } catch (IllegalStateException rejected) {
             if ("MAPPING_V3_ACTIVATION_NOT_AVAILABLE".equals(rejected.getMessage())) throw rejected;

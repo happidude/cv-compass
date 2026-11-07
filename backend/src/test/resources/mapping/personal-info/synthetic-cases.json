@@ -1,0 +1,10 @@
+[
+  {"id":"vi-owner","raw":"Họ tên: Ông Nguyễn Văn Mẫu\nThư điện tử: Mau@example.test\nĐiện thoại: +84 912 345 678\nĐịa chỉ: Thành phố Mẫu.\nGiới tính: Nam","field":"fullName","state":"PROPOSED","normalized":"Nguyễn Văn Mẫu"},
+  {"id":"title-not-gender","raw":"Mrs. Synthetic Person\nShe is an engineer.","field":"gender","state":"NOT_FOUND","normalized":null},
+  {"id":"nonbinary","raw":"Gender: Nonbinary","field":"gender","state":"INVALID","normalized":null},
+  {"id":"phone-ocr-error","raw":"Phone: +44 20 I234 5678","field":"phone","state":"INVALID","normalized":null},
+  {"id":"contact-sidebar","raw":"Contact\nEmail: side@example.test   Phone: +44 20 1234 5678","field":"email","state":"AMBIGUOUS","normalized":null},
+  {"id":"reference-only","raw":"References\nFull name: Someone Else\nEmail: else@example.test","field":"email","state":"NOT_FOUND","normalized":null},
+  {"id":"same-normalized-gender","raw":"Gender: F\nSex: Female","field":"gender","state":"PROPOSED","normalized":"FEMALE"},
+  {"id":"different-phone-values","raw":"Phone: 0912 345 678\nPhone: 0987 654 321","field":"phone","state":"AMBIGUOUS","normalized":null}
+]

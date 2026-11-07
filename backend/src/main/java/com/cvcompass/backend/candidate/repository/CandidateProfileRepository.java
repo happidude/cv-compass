@@ -79,7 +79,7 @@ public class CandidateProfileRepository {
     public List<Proposal> proposals(long id, int size) {
         return jdbc.query(
                 """
-   SELECT "ID","DOCUMENT_ID","RESULT_ID","DATA"::text FROM "CANDIDATE_PROPOSALS"
+   SELECT "ID","DOCUMENT_ID","RESULT_ID","DATA"::text,"KIND" FROM "CANDIDATE_PROPOSALS"
    WHERE "CANDIDATE_ID"=? AND "STATUS"='OPEN' ORDER BY "RESULT_ID","ID" LIMIT ?
    """,
                 (rs, n) ->
@@ -87,7 +87,8 @@ public class CandidateProfileRepository {
                                 rs.getObject(1, UUID.class),
                                 rs.getLong(2),
                                 rs.getLong(3),
-                                parse(rs.getString(4))),
+                                parse(rs.getString(4)),
+                                rs.getString(5)),
                 id,
                 size);
     }
@@ -156,6 +157,22 @@ public class CandidateProfileRepository {
                 id);
     }
 
+    public void mappedBasic(
+            long id,
+            JsonNode value,
+            BasicValues fields,
+            String state,
+            String origin,
+            JsonNode extensions) {
+        basic(id, value, fields);
+        jdbc.update(
+                "UPDATE \"CANDIDATE_PROFILES\" SET \"BASIC_STATE\"=?,\"BASIC_ORIGIN\"=?,\"EXTENSIONS\"=?::jsonb WHERE \"CANDIDATE_ID\"=?",
+                state,
+                origin,
+                extensions.toString(),
+                id);
+    }
+
     public void confirmBasic(long id) {
         jdbc.update(
                 "UPDATE \"CANDIDATE_PROFILES\" SET \"BASIC_STATE\"='CONFIRMED' WHERE \"CANDIDATE_ID\"=?",
@@ -177,12 +194,16 @@ public class CandidateProfileRepository {
     public List<Proposal> lockProposal(long id, UUID proposalId) {
         return jdbc.query(
                 """
-   SELECT "DOCUMENT_ID","RESULT_ID","DATA"::text FROM "CANDIDATE_PROPOSALS"
+   SELECT "DOCUMENT_ID","RESULT_ID","DATA"::text,"KIND" FROM "CANDIDATE_PROPOSALS"
    WHERE "ID"=? AND "CANDIDATE_ID"=? AND "STATUS"='OPEN' FOR UPDATE
    """,
                 (rs, n) ->
                         new Proposal(
-                                proposalId, rs.getLong(1), rs.getLong(2), parse(rs.getString(3))),
+                                proposalId,
+                                rs.getLong(1),
+                                rs.getLong(2),
+                                parse(rs.getString(3)),
+                                rs.getString(4)),
                 proposalId,
                 id);
     }

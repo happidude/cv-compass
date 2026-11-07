@@ -1,3 +1,120 @@
+# Kiểm chứng mở rộng grammar 3.1
+
+Developer đổi ưu tiên ngày 2026-11-05; xem [checklist, khảo sát và grammar](grammar-expansion.md).
+Base f95affd939a29202d2ac429a01498299b23ae5f1, cùng branch feature/personal-info-parser/PR Draft #26.
+Mức 3, tối đa 3 vòng; Implementer → Tester → Reviewer chỉ đọc. Source cuối sau sửa Reviewer: 97 test/7 lớp (gồm legacy và architecture/Modulith) PASS,
+0 failure/error/skip, 0 compile warning; full local PostgreSQL NOT VERIFIED (port15439 không kết nối).
+CI đúng source cuối/Reviewer ghi ở PR. Không nâng job/result, không sửa legacy helpers, không bắt đầu search
+hoặc lát cắt 6/E2E đánh giá. Không accuracy/gold/corpus report; sample inspection là PDF extraction,
+không worker OCR (không có raw OCR trong thư mục được phép). Không PII/raw/render thật vào Git.
+
+---
+# Kiểm chứng lát cắt 5 - UI thông tin cá nhân
+
+- Developer duyệt cùng branch/PR #26, mức 3, tối đa 3 vòng; source backend publication
+  `9e7595425c4d187942cd5acb754d208c64b4dbc9` và payload UI 7 file. Không bắt đầu lát cắt 6.
+- AC-19/AC-20/AC-27: hiển thị sáu field, state/alternatives/issues, nguồn đúng document/page/quote;
+  sửa basic patch chỉ field đổi, null là xóa rõ ràng; confirm không gửi patch.
+  Personal proposal accept/edit/reject riêng, targetExperienceId null; thiếu field giữ nguyên.
+  Summary textarea giữ ngắt dòng; gender ngoài danh sách giữ text người dùng; không render OCR như HTML.
+- Schema giữ gender/metadata versioned, proposal phân biệt kind; legacy thiếu kind đọc như EXPERIENCE.
+  Không đổi endpoint, retry policy, config/discovery/dependency; không đọc CV/private env hay hai file developer.
+- Test-first 3/3 FAIL trước sửa. Implementer 15 affected PASS, typecheck/lint PASS.
+  Tester thêm summary newline/patch sparse và proposal conflict không retry: affected 17 PASS.
+- Full npm run check PASS: **39 unit test / 7 file**, typecheck/lint/format/production build PASS.
+  Suite Playwright hiện có **40 PASS**, 0 failure/skip, 1.6 phút. Warning NO_COLOR bị FORCE_COLOR
+  override từ runner được giữ nguyên; không sửa config để che. Các subprocess đã dừng trước Reviewer.
+- Developer chọn giữ 7 file, chỉ thêm unit/jsdom: personal-info.browser.test.tsx vẫn là jsdom,
+  PdfPane được stub. Không tuyên bố luồng personal mới đã kiểm bằng browser/PDF thật.
+- Bằng chứng ignored backend/build/reports/personal-info-ui-tester-* gồm affected/check/browser logs,
+  final-summary.json và final-sha256.txt; 7 hash không đổi qua full gate. Manifest SHA256
+  f850192bf5d5e044b2589a56cc827eccf79d7160b4852c2f9d71a0e000b65192.
+  Reviewer/vòng/source và CI head cuối ghi ở PR; pending không PASS. Secret scanner/accuracy CV thật
+  NOT VERIFIED như các phần trước; PR Draft, không agent merge/Ready.
+
+---
+# Kiểm chứng lát cắt 4 - Publication và database
+
+- Developer giao ngày 2026-11-03, duyệt dùng chung branch/PR #26 và điều chỉnh 18 file code/test/migration.
+  Main base `69930b951659c56e709a5f24757c2012de5f3731`; phần 4 dựa trên parser `edd6d95` và docs `30cbf7a`.
+  Mức 3, tối đa 3 vòng Reviewer; Implementer → Tester → Reviewer chỉ đọc; chưa bắt đầu lát cắt 5.
+- Publication result v3, personal-only/mixed, bảo vệ basic USER/CONFIRMED/EDITED theo nhóm;
+  field vắng/invalid/ambiguous/disabled không xóa; comparator không đổi là no-op.
+  V12 thêm proposal KIND CHECK/default EXPERIENCE; không sửa Flyway cũ, không thêm cột basic gender.
+- Reviewer vòng 1: PIP4-R1 comparator summary làm mất ngắt dòng; PIP4-R2 SKIPPED thiếu reason.
+  Hai regression FAIL trước sửa, affected Implementer 74 PASS sau sửa. Summary comparator giữ nội bộ,
+  chỉ NFC/CRLF-CR sang LF/strip biên. V12 thêm REASON_CODE nullable cho legacy, CHECK hữu hạn và chỉ SKIPPED.
+  Mã mới: UNSUPPORTED_MAPPING_VERSION, UNSUPPORTED_MAPPING_QUALITY, MAPPING_SOURCE_MISMATCH,
+  INVALID_MAPPING_ENVELOPE, NO_USABLE_FIELDS. Cần ledger query theo resultId khi không tạo profile;
+  không ghi mapping result bất biến hoặc bịa reason cho legacy. Không tăng file ngoài 18 đã duyệt.
+- Ngày 2026-11-05: Tester thêm kiểm legacy NULL reason/repository allowlist/replay; formatter/compile PASS,
+  không compile warning. Affected 17 test lỗi runtime vì PostgreSQL15439 từ chối kết nối; Docker CLI treo,
+  Desktop không có targetable window sau khởi động. Đã dừng tiến trình kiểm tra thuộc lượt này.
+  Full gate local source sau sửa NOT VERIFIED, cần CI PostgreSQL source cuối; không dùng DB dev.
+  Artifact personal-info-publication-tester-r3-* và manifest18 SHA256 c0d2081c8e4cbb22856d09265d8fd99d8416f4e93246c820827d8ec6e04246a2.
+- Basic giữ string/null, gender MALE/FEMALE khi tự publish; raw/normalized và alternatives/issues/evidence
+  trong extensions.personalInfo schemaVersion 1, fields theo sáu field, có documentId/resultId/configRevision.
+  EXTENSIONS merge. Unknown gender không tự publish basic, metadata giữ khi có profile từ field khác.
+- Proposal top-level kind EXPERIENCE/PERSONAL_INFO; personal data gồm patch và metadata tương ứng.
+  BasicEdit/Decision và endpoint giữ nguyên; manual data là patch, thiếu key giữ nguyên, null hiện diện xóa rõ ràng.
+  Personal targetExperienceId phải null. EDIT dùng edited basic patch; ACCEPT data.patch; REJECT không đổi basic.
+  Manual sửa field bỏ evidence cũ, confirm giữ evidence. V3 operational bootstrap/activate/enqueue/claim mở;
+  enqueue mismatch engine/config bị chặn, legacy v1/v2 không nâng job/result.
+- Test-first FAIL đúng thiếu Proposal.kind. Affected Implementer 69 PASS. Tester bổ sung mixed rollback
+  basic/experience/ledger/identity/history, proposal no-op bảo vệ CONFIRMED/extensions, sai target rollback.
+- Full gate đầu 484 test chỉ lỗi kiến trúc package mapper. Developer duyệt bổ sung architecture test;
+  PIP4-T1 sửa chính xác candidate.mapping, giữ mapper cũ, kiểm không JDBC/application dependency/cycle.
+- Full gate trước hai sửa Reviewer: spotlessApply rồi check --rerun-tasks --console=plain --warning-mode=all:
+  **484 test, 60 lớp, 0 failure/error/skip**, gồm Modulith; 0 compile warning, 7 task thực chạy, 1m34s.
+  Publication suite 12 PASS. PostgreSQL 17/schema/storage cô lập cổng15439, Java25 và baseline YAML sanitized.
+  Không CV/data/private env/DB dev/reset. Giữ hai file developer ngoài phạm vi. Một lượt affected lỗi
+  CK_OCR_ATTEMPT_TIMES được giữ artifact affected-5, chạy lại đủ PASS; không sửa OCR hay giảm assertion.
+- Bằng chứng ignored backend/build/reports/personal-info-publication-tester-r2-* gồm logs/XML/summary/manifest.
+  18 fingerprint không đổi sau gate; manifest SHA256 a254fa57031852b669ab0058297ff76082cb785055d180f9a1506231f9fffa73.
+  Artifact full gate FAIL trước giữ riêng. Reviewer/vòng/source và CI head cuối ghi ở PR, pending không PASS.
+- Reviewer vòng 2 xác nhận PIP4-R1/R2 đã sửa ở source, không finding mới; 18 hash khớp Tester r3.
+  CI PostgreSQL PASS source publication 9e7595425c4d187942cd5acb754d208c64b4dbc9:
+  https://github.com/hoangnguyen229/cv-compass/actions/runs/42035235987 . Full local sau sửa vẫn NOT VERIFIED.
+- NOT VERIFIED: secret scanner thiếu công cụ, accuracy CV thật chưa đo. Khi bàn giao phần 4 UI chưa cập nhật kind mới,
+  nên chưa bàn giao tổng hợp 3–5 cho tới khi hoàn tất lát cắt 5. Không agent merge/Ready.
+
+---
+# Kiểm chứng lát cắt 3 - Parser
+
+- Developer giao tiếp tục trong chat ngày 2026-11-03; PR #25 đã merge trước khi bắt đầu.
+  Base main `69930b951659c56e709a5f24757c2012de5f3731`, nhánh `feature/personal-info-parser`.
+  Mức 3: Implementer → Tester → Reviewer chỉ đọc, tối đa 3 vòng; mỗi lát cắt một PR.
+- Phạm vi AC-8..AC-12, AC-25, R-1..R-7 và Q2/Q3; 7 file Java, một fixture tổng hợp.
+  Không đọc CV/data, không sửa publication/UI/config/migration; giữ hai file riêng của developer.
+- Parser phân vùng, thu candidates/evidence, validate và chọn hoặc abstain cho sáu field.
+  Evidence code-point offsets kiểm được với raw OCR; không sửa raw nguồn. Gender chỉ từ nhãn R-7;
+  giá trị ngoài danh sách giữ trong alternatives với normalized null và issue, không selected khi INVALID.
+  fullName bỏ danh xưng. Location giữ dấu câu. Summary qua trang chưa chắc thì AMBIGUOUS.
+- Experience v3 tái dùng engine v2; integration đối chiếu kết quả và bất biến raw OCR.
+  Test đăng ký và tạo job v3 bằng fixture SQL trong schema riêng để process/complete/replay;
+  activate/enqueue/claim vận hành vẫn chặn v3, chưa mở publication trước lát cắt 4.
+- Test-first FAIL đúng vì thiếu engine. Tester phát hiện PIP-T1 (chức vụ thành tên) và
+  PIP-T2 (khoảng năm thành phone); Implementer sửa validation, giữ nguyên hai regression, đã PASS.
+- Affected cuối Implementer 58 PASS. Tester bổ sung acceptance: 6 field tắt, invalid alternative,
+  bảy danh xưng, evidence CRLF/astral Unicode. Parser 30, experience 13, mapping integration 24 PASS.
+- Full gate cuối: `spotlessApply` rồi `check --rerun-tasks --console=plain --warning-mode=all`:
+  **471 test, 59 lớp, 0 failure/error/skip**, gồm Modulith; 0 compile warning, 7 task thực chạy, 1m46s.
+  Java 25/PostgreSQL 17 cổng15439, schema/storage cô lập; không DB dev/drop/reset.
+  Runtime dùng baseline YAML sanitized và process-only import/UTC/socket như lát cắt 2.
+  Integration đầu lỗi vì container dừng; đã start đúng container test rồi chạy lại; log lỗi đầu đã bị
+  ghi đè, chỉ transcript còn bằng chứng, không khẳng định có artifact lỗi đó.
+- Bằng chứng ignored dưới backend/build/reports/: personal-info-parser-test-first.log,
+  personal-info-parser-tester-regression.log, personal-info-parser-tester-r2-full.log,
+  personal-info-parser-tester-r2-spotless.log, personal-info-parser-tester-r2-full-xml/,
+  personal-info-parser-tester-r2-final-summary.json, personal-info-parser-tester-r2-final-sha256.txt.
+  Fingerprint 8 file không đổi sau full gate; manifest SHA256
+  `d56912142620291eedfd5f6420acfa341c68d77342a2d9dd1814ef010be38fae`.
+- Reviewer vòng 1: PIP-R1 heading thành tên, PIP-R2 inline summary bị cắt, PIP-R3 phone mở ngoặc bị bỏ qua. Ba regression FAIL trước sửa, sau sửa PASS; Tester thêm kiểm ownership reference/recruiter/company và NFD/fullwidth colon. Full gate 466 cũ giữ riêng; gate 471 là source cuối.
+- Reviewer/vòng/source, link/anchor và CI head cuối ghi trong PR; pending không PASS.
+  Secret scanner NOT VERIFIED do thiếu công cụ; accuracy trên CV thật NOT VERIFIED, không báo accuracy.
+  Worker/frontend N/A vì không đổi. PR Draft, con người nghiệm thu; không agent merge/Ready.
+
+---
 # Kiểm chứng lát cắt 2 - Config và version
 
 - Developer giao ngày 2026-11-01; chỉ [AC-4..AC-7](spec.md#lát-cắt-2--config-và-version),

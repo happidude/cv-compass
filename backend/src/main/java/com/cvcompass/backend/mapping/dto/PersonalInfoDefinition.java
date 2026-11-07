@@ -16,6 +16,7 @@ public record PersonalInfoDefinition(
         List<String> excludedRegions)
         implements MappingConfig {
     public static final String ENGINE_VERSION = "personal-info-mapping/3.0";
+    public static final String GRAMMAR_ENGINE_VERSION = "personal-info-mapping/3.1";
     public static final Set<String> FIELD_NAMES =
             Set.of("fullName", "email", "phone", "location", "summary", "gender");
     public static final Set<String> SECTIONS =
@@ -41,7 +42,7 @@ public record PersonalInfoDefinition(
     @Override
     public void validate() {
         if (schemaVersion != 3
-                || !ENGINE_VERSION.equals(engineCompatibility)
+                || !supportsEngine(engineCompatibility)
                 || revision == null
                 || !revision.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
                 || experience == null
@@ -68,6 +69,10 @@ public record PersonalInfoDefinition(
                 invalid();
         }
         for (var headings : sectionHeadings.values()) names(headings);
+    }
+
+    public static boolean supportsEngine(String engine) {
+        return ENGINE_VERSION.equals(engine) || GRAMMAR_ENGINE_VERSION.equals(engine);
     }
 
     private static void names(List<String> values) {

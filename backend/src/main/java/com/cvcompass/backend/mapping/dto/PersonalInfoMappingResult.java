@@ -31,7 +31,7 @@ public record PersonalInfoMappingResult(
         implements MappingOutcome {
     public PersonalInfoMappingResult {
         if (schemaVersion != 3
-                || !PersonalInfoDefinition.ENGINE_VERSION.equals(engineVersion)
+                || !PersonalInfoDefinition.supportsEngine(engineVersion)
                 || personalInfo == null
                 || !personalInfo.keySet().equals(PersonalInfoDefinition.FIELD_NAMES)) invalid();
         values = List.copyOf(values);

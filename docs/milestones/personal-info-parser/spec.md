@@ -5,6 +5,20 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 
 ## Phê duyệt
 
+- Developer đổi ưu tiên ngày 2026-11-05: [mở rộng grammar và clean code có mục tiêu](grammar-expansion.md).
+  Chưa làm chương trình đánh giá/search hoặc hoàn thành lát cắt 6; các AC/R cũ giữ nguyên.
+
+- Developer duyệt ngoại lệ trong chat ngày 2026-11-03: tiếp tục lát cắt 4 và 5 trên cùng
+  nhánh `feature/personal-info-parser` và PR Draft #26 của lát cắt 3, không chờ merge #26.
+  Base main giữ `69930b951659c56e709a5f24757c2012de5f3731`; mốc bắt đầu phần 4–5 là
+  `edd6d95a262df29359de535cb86705d4a8143ac4`. Vẫn triển khai tuần tự 4 → 5, mức 3,
+  Implementer → Tester → Reviewer, tối đa 3 vòng cho mỗi phần; không agent merge/Ready.
+- Developer duyệt semantics ngày 2026-11-03: field vắng/disabled/invalid/ambiguous không
+  tạo lệnh xóa; chỉ PROPOSED hợp lệ được đề xuất. Không đổi theo comparator đã duyệt là no-op,
+  không tạo proposal/history. Provenance MAPPING theo field gồm documentId/resultId/configRevision/evidence;
+  bảo vệ USER/CONFIRMED/EDITED theo nhóm bảo thủ. Xóa thủ công là thao tác người dùng rõ ràng,
+  không suy từ payload thiếu field. Đối chiếu API hiện có trước code phụ thuộc; không đổi AC/R.
+
 - Bổ sung phạm vi `gender`: developer duyệt trong chat ngày 2026-11-01; chỉ cập nhật spec,
   công cụ đo/test/fixture lát cắt 1 và gold nháp private. PR #23 đã merge vào main;
   base `1f7e67b16f22dcf223de13fde97b95684c3a505f`, nhánh `feature/personal-info-gender`.
@@ -313,7 +327,7 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
 
 ### Lát cắt 4 — Publication và database
 
-- Ước lượng sau bổ sung gender: **10–11 file code/migration** (phụ thuộc shape; xem Open Questions):
+- Developer duyệt điều chỉnh ngày 2026-11-03: **18 file code/test/migration** cho lát cắt 4, 7 file UI cho lát cắt 5; docs kê riêng.
   `backend/src/main/java/com/cvcompass/backend/candidate/service/PublicationService.java`,
   `CandidateReviewService.java`, `CandidateService.java` cùng thư mục;
   `backend/src/main/java/com/cvcompass/backend/candidate/repository/PublicationRepository.java`,
@@ -335,7 +349,20 @@ annotation private hay cấu hình runtime riêng. Không lấy thay đổi loca
   remap bằng/khác nội dung, bảo vệ state/origin, late result, rollback/conflict, edit bỏ evidence,
   confirm giữ evidence và audit đúng actor/version. Không unique hay gộp định danh cá nhân.
 
+- Bổ sung đã duyệt cho lát cắt 4: `backend/src/main/java/com/cvcompass/backend/candidate/service/CandidateValidator.java`;
+  `backend/src/main/java/com/cvcompass/backend/mapping/config/MappingBootstrap.java`;
+  `backend/src/main/java/com/cvcompass/backend/mapping/service/MappingService.java`;
+  `backend/src/main/java/com/cvcompass/backend/mapping/repository/MappingRepository.java`;
+  `backend/src/test/java/com/cvcompass/backend/MappingIntegrationTests.java`,
+  `BackendApplicationTests.java`, `OcrMigrationIntegrationTests.java` cùng thư mục.
+  Giữ đủ regression v1/v2, mở lifecycle v3 sau publication và cập nhật pin migration, không sửa Flyway cũ.
+- Developer duyệt bổ sung `backend/src/test/java/com/cvcompass/backend/CandidateIdentityArchitectureTests.java`
+  ngày 2026-11-03: hỗ trợ đúng package candidate.mapping đã duyệt, giữ kiểm tra mapper cũ và ranh giới dependency.
 ### Lát cắt 5 — UI tối thiểu
+
+- Developer quyết định ngày 2026-11-05: giữ đúng 7 file UI; chỉ thêm coverage unit/jsdom,
+  không thêm tests/browser/m11.spec.ts hoặc đổi Playwright discovery/config. Suite browser hiện có vẫn chạy;
+  personal-info.browser.test.tsx là jsdom, không coi là browser/PDF thật cho luồng mới.
 
 - Ước lượng sau bổ sung gender: **7 file code** (không tăng; chờ API được duyệt): `frontend/src/features/candidates/schema.ts`, `pages.tsx`, `pdf-pane.tsx`;
   `personal-info.tsx` (mới, cùng thư mục); `frontend/tests/personal-info.test.tsx`,

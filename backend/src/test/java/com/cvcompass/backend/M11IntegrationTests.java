@@ -132,6 +132,17 @@ class M11IntegrationTests {
     }
 
     @Test
+    void legacyExperienceProposalHasExplicitKindWithoutChangingItsData() throws Exception {
+        var d = document();
+        var p = published(d);
+        publication.publish(result(d, raw(), false));
+        var proposal = queries.proposals(p.id(), null, 100).getFirst();
+        assertThat(proposal.kind()).isEqualTo("EXPERIENCE");
+        assertThat(proposal.data().path("company").isObject()).isTrue();
+        assertThat(proposal.data().has("patch")).isFalse();
+    }
+
+    @Test
     void historyFailureRollsBackPublicationThroughItsSpringProxy() throws Exception {
         var doc = document();
         long resultId = result(doc, raw(), false);

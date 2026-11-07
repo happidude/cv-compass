@@ -2,7 +2,6 @@ package com.cvcompass.backend.mapping.repository;
 
 import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingVersions;
-import com.cvcompass.backend.mapping.dto.PersonalInfoDefinition;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -68,8 +67,6 @@ public class MappingRepository {
     }
 
     public void activate(long id, String digest) {
-        if (json.readTree(definitionJson(id)).path("schemaVersion").asInt(-1) == 3)
-            throw new IllegalStateException("MAPPING_V3_ACTIVATION_NOT_AVAILABLE");
         jdbc.update(
                 """
                 UPDATE "CV_MAPPING_CONFIGS" SET "ACTIVATED_AT"=clock_timestamp(),
@@ -95,9 +92,10 @@ public class MappingRepository {
     }
 
     public void enqueue(long extractionId, long configId, String engine, int maxAttempts) {
-        if (PersonalInfoDefinition.ENGINE_VERSION.equals(engine)
-                || json.readTree(definitionJson(configId)).path("schemaVersion").asInt(-1) == 3)
-            throw new IllegalStateException("MAPPING_V3_ENQUEUE_NOT_AVAILABLE");
+        if (!com.cvcompass.backend.mapping.dto.MappingVersions.config(
+                        definitionJson(configId), json)
+                .engineCompatibility()
+                .equals(engine)) throw new IllegalStateException("MAPPING_ENGINE_CONFIG_MISMATCH");
         jdbc.update(
                 """
                 INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
@@ -111,16 +109,37 @@ public class MappingRepository {
 
     public Optional<MappingClaim> claim(
             String engine, String otherEngine, Duration lease, Duration deadline) {
+        return claim(engine, otherEngine, otherEngine, lease, deadline);
+    }
+
+    public Optional<MappingClaim> claim(
+            String engine,
+            String otherEngine,
+            String personalEngine,
+            Duration lease,
+            Duration deadline) {
+        return claim(engine, otherEngine, personalEngine, personalEngine, lease, deadline);
+    }
+
+    public Optional<MappingClaim> claim(
+            String engine,
+            String otherEngine,
+            String personalEngine,
+            String grammarEngine,
+            Duration lease,
+            Duration deadline) {
         var ids =
                 jdbc.query(
                         """
                 SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "STATUS"='PENDING'
-                AND "ENGINE_VERSION" IN (?,?) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
+                AND "ENGINE_VERSION" IN (?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1') OR EXISTS(SELECT 1 FROM "CV_MAPPING_CONFIGS" c WHERE c."ID"="CV_MAPPING_JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="CV_MAPPING_JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
                         engine,
-                        otherEngine);
+                        otherEngine,
+                        personalEngine,
+                        grammarEngine);
         if (ids.isEmpty()) return Optional.empty();
         long id = ids.getFirst();
         UUID token = UUID.randomUUID();

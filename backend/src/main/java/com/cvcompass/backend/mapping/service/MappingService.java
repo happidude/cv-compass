@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.event.Level;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -27,6 +28,8 @@ public class MappingService {
     private final TransactionTemplate tx;
     private final MappingProperties properties;
     private final ExperienceEngine experienceEngine;
+    private final PersonalInfoEngine personalInfoEngine;
+    private final PersonalInfoEngineV31 grammarEngine;
 
     public MappingService(
             MappingRepository repository,
@@ -36,6 +39,49 @@ public class MappingService {
             PlatformTransactionManager transactions,
             MappingProperties properties,
             ExperienceEngine experienceEngine) {
+        this(
+                repository,
+                inputs,
+                engine,
+                json,
+                transactions,
+                properties,
+                experienceEngine,
+                new PersonalInfoEngine(experienceEngine));
+    }
+
+    public MappingService(
+            MappingRepository repository,
+            OcrExtractionReader inputs,
+            MappingEngine engine,
+            ObjectMapper json,
+            PlatformTransactionManager transactions,
+            MappingProperties properties,
+            ExperienceEngine experienceEngine,
+            PersonalInfoEngine personalInfoEngine) {
+        this(
+                repository,
+                inputs,
+                engine,
+                json,
+                transactions,
+                properties,
+                experienceEngine,
+                personalInfoEngine,
+                new PersonalInfoEngineV31());
+    }
+
+    @Autowired
+    public MappingService(
+            MappingRepository repository,
+            OcrExtractionReader inputs,
+            MappingEngine engine,
+            ObjectMapper json,
+            PlatformTransactionManager transactions,
+            MappingProperties properties,
+            ExperienceEngine experienceEngine,
+            PersonalInfoEngine personalInfoEngine,
+            PersonalInfoEngineV31 grammarEngine) {
         this.repository = repository;
         this.inputs = inputs;
         this.engine = engine;
@@ -43,6 +89,8 @@ public class MappingService {
         this.tx = new TransactionTemplate(transactions);
         this.properties = properties;
         this.experienceEngine = experienceEngine;
+        this.personalInfoEngine = personalInfoEngine;
+        this.grammarEngine = grammarEngine;
     }
 
     public long register(String revision, MappingConfig definition) {
@@ -69,8 +117,6 @@ public class MappingService {
                     repository.lockSettings();
                     var definition = MappingVersions.config(repository.definitionJson(id), json);
                     definition.validate();
-                    if (definition.schemaVersion() == 3)
-                        throw new IllegalStateException("MAPPING_V3_ACTIVATION_NOT_AVAILABLE");
                     repository.activate(
                             id, MappingDigests.sha256(MappingDigests.canonical(definition)));
                 });
@@ -96,8 +142,6 @@ public class MappingService {
                     String selectedEngine =
                             MappingVersions.config(repository.definitionJson(settings[0]), json)
                                     .engineCompatibility();
-                    if (PersonalInfoDefinition.ENGINE_VERSION.equals(selectedEngine))
-                        throw new IllegalStateException("MAPPING_V3_ENQUEUE_NOT_AVAILABLE");
                     for (long id : ids)
                         repository.enqueue(
                                 id, settings[0], selectedEngine, properties.getMaxAttempts());
@@ -115,6 +159,8 @@ public class MappingService {
                             repository.claim(
                                     MappingEngine.VERSION,
                                     ExperienceEngine.VERSION,
+                                    PersonalInfoEngine.VERSION,
+                                    PersonalInfoEngineV31.VERSION,
                                     properties.getLeaseDuration(),
                                     properties.getHardDeadline());
                     claim.ifPresent(
@@ -154,6 +200,8 @@ public class MappingService {
         return switch (current.engineVersion()) {
             case MappingEngine.VERSION -> engine.map(current, input);
             case ExperienceEngine.VERSION -> experienceEngine.map(current, input);
+            case PersonalInfoEngine.VERSION -> personalInfoEngine.map(current, input);
+            case PersonalInfoEngineV31.VERSION -> grammarEngine.map(current, input);
             default -> throw new IllegalArgumentException("Unsupported mapping engine");
         };
     }
