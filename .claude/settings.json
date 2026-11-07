@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push -u origin:*)",
+      "Bash(git push origin:*)",
+      "Bash(gh pr create --draft:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr edit:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./secrets/**)",
+      "Read(./credentials/**)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*.pdf)",
+      "Read(./storage/**)",
+      "Read(./uploads/**)",
+      "Read(./worker/storage/**)",
+      "Read(./worker/uploads/**)",
+      "Read(./worker/sample_cvs/**)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh release:*)",
+      "Bash(gh secret:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh api -X DELETE:*)",
+      "Bash(git push origin HEAD:main:*)",
+      "Bash(git push origin +*:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(git push --force-with-lease:*)"
+    ]
+  }
+}

@@ -28,4 +28,5 @@ git push -u origin <approved-branch>
 ```
 
 PR nhắm main, dùng [template](../.github/pull_request_template.md); vẫn cần con người review.
-Quyền publish và ngoại lệ snapshot Draft theo workflow; thiếu quyền thì chuẩn bị kết quả đã review.
+Writer (implementer/tester) commit phần mình sửa, push feature branch sau mỗi commit; implementer mở Draft PR
+ở lần push đầu (`gh pr create --draft`), các lần sau chỉ push. Chuyển Ready/merge chỉ con người.
