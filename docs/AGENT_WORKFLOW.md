@@ -56,6 +56,8 @@ Một writer tại một thời điểm: chờ writer/check dừng hẳn, đọc
 Đạt acceptance, hết Critical/High, verifier PASS trên source cuối, review theo mức;
 không secrets/CV/runtime artifact, `git diff --check` sạch. [Mẫu bằng chứng](templates/verification.md).
 CI bắt buộc chưa xanh thì không nói sẵn sàng merge; CI bị chặn (billing/startup) ghi NOT VERIFIED và mở Draft.
+**Ngoại lệ tạm thời** (chủ dự án duyệt 2026-11-08, đến khi billing Actions được gỡ): bàn giao được khi
+local full gate PASS trên source cuối; CI ghi NOT VERIFIED, không ghi PASS.
 [Git/PR](CV_COMPASS_GIT_WORKFLOW.md).
 
 ## Custom agent (Claude Code)
