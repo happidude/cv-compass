@@ -55,8 +55,13 @@ ghi BLOCKED/NOT VERIFIED, chưa hoàn tất. [Git/PR](CV_COMPASS_GIT_WORKFLOW.md
 
 ## Custom agent
 
-`.codex/agents/*.toml`: name/description/developer_instructions; chỉ một subagent, đóng xong mới tạo.
-Model/effort/quyền kế thừa; không pin model tài khoản.
-Reviewer read-only là chỉ dẫn, không sandbox OS; cô lập mạnh dùng phiên read-only.
-Có thể cần trust/phiên mới, không hot-reload. Thiếu native dispatch: vai trò tuần tự có chỉ dẫn,
-báo rõ. Không cần global setting/credential/MCP/dependency mới.
+Agent chính là **Claude Code**. `CLAUDE.md` import `AGENTS.md` (nguồn quy tắc duy nhất);
+component `backend|frontend|worker/CLAUDE.md` import AGENTS component tương ứng.
+Subagent: `.claude/agents/{implementer,tester,reviewer}.md` (frontmatter `name`/`description`/`tools`);
+gọi tuần tự, chỉ một subagent ghi tại một thời điểm, đóng xong mới gọi tiếp.
+Model `inherit`; không pin model/effort tài khoản trong file dự án.
+Reviewer bị khóa Write/Edit ở mức công cụ; Bash vẫn mở để đọc Git nên read-only của Bash là chỉ dẫn.
+Quyền dùng chung ở `.claude/settings.json`; thiết lập cá nhân ở `.claude/settings.local.json` (ignore).
+Thiếu dispatch subagent: chạy vai trò tuần tự trong phiên chính và báo rõ.
+`.codex/` giữ tạm để tương thích lịch sử, không còn là cấu hình chính; xóa khi chủ dự án duyệt.
+Không cần global setting/credential/MCP/dependency mới.

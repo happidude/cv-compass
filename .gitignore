@@ -63,6 +63,12 @@ credentials/
 !/.codex/agents/tester.toml
 !/.codex/agents/reviewer.toml
 
+# Claude Code: shared project config is tracked; personal/local state stays ignored.
+/.claude/**
+!/.claude/settings.json
+!/.claude/agents/
+!/.claude/agents/*.md
+
 # Keep sensitive/runtime exclusions authoritative after documentation exceptions.
 secrets/
 credentials/
