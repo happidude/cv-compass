@@ -1,0 +1,11 @@
+name: runner-hello
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: [self-hosted, linux, claude]
+    timeout-minutes: 5
+    steps:
+      - run: echo "Runner WSL hoạt động" && uname -a
