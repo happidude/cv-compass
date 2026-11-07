@@ -12,6 +12,10 @@
 
 Quyền/ownership theo [root](../AGENTS.md), bàn giao theo [workflow](../docs/AGENT_WORKFLOW.md).
 
+## Follow-up
+
+<Finding Medium/Low chưa sửa và việc tiếp theo; không có thì ghi rõ.>
+
 ## Open Questions
 
 <Bối cảnh/lựa chọn/khuyến nghị cho việc ngoài spec; không có thì ghi rõ.>

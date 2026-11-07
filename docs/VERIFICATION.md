@@ -9,7 +9,7 @@
 | Backend | Java 25/PostgreSQL 17; từ backend: `./gradlew test --tests <affected>` và `./gradlew spotlessApply`; full `./gradlew check --rerun-tasks` (Windows `.\gradlew.bat`); Modulith khi áp dụng |
 | Worker | Từ worker: `ruff format src tests spikes run_worker.py run_pull_worker.py`, `ruff check src tests spikes run_worker.py run_pull_worker.py`; unittest affected; full builder/verifier dưới đây |
 | Frontend | Từ frontend: `npm exec prettier -- --write src tests`, affected Vitest; full `npm run check` và `npm run test:browser` |
-| Docs/rules/TOML | Toàn Markdown link/anchor, tham chiếu/phân loại khi di chuyển; TOML parse/field/role; ignore/staging; diff frozen theo spec; `git diff --check`, `git diff --cached --check`; app suite N/A có lý do |
+| Docs/rules/TOML | Toàn Markdown link/anchor, tham chiếu/phân loại khi di chuyển; JSON parse `.claude/settings.json`, frontmatter `.claude/agents/*.md` (name/description/model/tools); ignore/staging; diff frozen theo spec; `git diff --check`, `git diff --cached --check`; app suite N/A có lý do |
 
 Full worker từ root trên Ubuntu/WSL CPython 3.14.8 đã provision + Docker Linux/cgroup v2:
 `python3.14 worker/spikes/m6_2_hardening/build_baseline.py`, rồi

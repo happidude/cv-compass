@@ -7,7 +7,7 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 
 - Developer duyệt trong chat ngày 2026-11-08 (chuyển agent sang Claude Code):
   quyền dùng CV mẫu áp dụng cho nhà cung cấp mô hình **Anthropic (Claude)**; thư mục private đổi thành
-  `D:\cv_compass\data\test\`. Lát cắt chưa làm dùng ngân sách review theo
+  `D:\cv_compass\data\test\`. Lát cắt chưa làm (hiện là lát cắt 6) dùng ngân sách review theo
   [workflow](../../AGENT_WORKFLOW.md) (1 lượt + 1 delta, chỉ Critical/High chặn). CI tạm bỏ qua đến khi
   billing GitHub Actions được gỡ: bàn giao khi local full gate PASS, CI ghi NOT VERIFIED. Không phải
   phê duyệt bắt đầu lát cắt 6; ưu tiên ngày 2026-11-05 giữ nguyên.
@@ -97,12 +97,12 @@ Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
 
 | # | Lát cắt | Mức | Vòng |
 | --- | --- | --- | --- |
-| 0 | Kế hoạch và đối chiếu spec với code (docs) | 2 | 1+1 |
-| 1 | Gold và công cụ đo | 2 | 1+1 |
-| 2 | Config và version | 3 | 1+1 |
-| 3 | Parser | 3 | 1+1 |
-| 4 | Publication và database | 3 | 1+1 |
-| 5 | UI tối thiểu (nâng mức 3 nếu đổi contract) | 2 | 1+1 |
+| 0 | Kế hoạch và đối chiếu spec với code (docs) | 2 | 2 |
+| 1 | Gold và công cụ đo | 2 | 2 |
+| 2 | Config và version | 3 | 3 |
+| 3 | Parser | 3 | 3 |
+| 4 | Publication và database | 3 | 3 |
+| 5 | UI tối thiểu (nâng mức 3 nếu đổi contract) | 2 | 2 |
 | 6 | E2E và đánh giá | 3 | 1+1 |
 
 ## Acceptance
