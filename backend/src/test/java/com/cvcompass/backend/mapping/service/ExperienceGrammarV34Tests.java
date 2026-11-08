@@ -148,6 +148,194 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void givesPipeAndSlashPriorityOverDashesOutsideParentheses() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Founder – GM Division / SAMPLE Vietnam 2013 - 2015
+                CEO / SAMPLE-ONE - SAMPLE GROUP (Hose : SMP) Aug 2024 – Now
+                Engineer | Sample-One – Sample Group (Team / Unit) 2020 – 2021
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Founder – GM Division", "CEO", "Engineer");
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "SAMPLE Vietnam",
+                        "SAMPLE-ONE - SAMPLE GROUP (Hose : SMP)",
+                        "Sample-One – Sample Group (Team / Unit)");
+    }
+
+    @Test
+    void stopsContextAtCombinedEnglishAndVietnameseHeadings() throws Exception {
+        for (String heading :
+                List.of(
+                        "EDUCATION AND CERTIFICATIONS",
+                        "Education & Skills",
+                        "Education/Skills",
+                        "Education, Certifications",
+                        "Học vấn và chứng chỉ")) {
+            var result =
+                    parse(
+                            "3.4",
+                            """
+                    Consulting
+                    Advisor / Sample Advisory 2020 – 2021
+                    """
+                                    + heading
+                                    + "\n2012 – 2016 Sample Academy");
+            assertThat(result.experiences())
+                    .as(heading)
+                    .singleElement()
+                    .satisfies(
+                            row -> {
+                                assertThat(row.company().raw()).isEqualTo("Sample Advisory");
+                                assertThat(row.issues())
+                                        .extracting(issue -> issue.code())
+                                        .contains("ROLE_CONTEXT_UNCLASSIFIED");
+                            });
+            assertThat(result.issues())
+                    .as(heading)
+                    .extracting(issue -> issue.code())
+                    .doesNotContain("UNCLASSIFIED_EXPERIENCE_CONTEXT");
+        }
+    }
+
+    @Test
+    void requiresAnAdjacentAnchorForUndatedEmployersAndRejectsProseAndAddresses() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Engineer
+                Sample Devices Ltd
+                Handled reports for the sample team
+                Orphan Sample Group
+                Wrote weekly status notes
+                The sample sales team shared its progress last week, Sample Group
+                Period: 2018 – 2019
+                250/9 Sample Road, Sample Group 2020 – 2021
+                12 Example Street, Ward Sample Company
+                Period: 2022 – 2023
+                2024 – 2025: 12 Example Street, Phường Mẫu
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample Devices Ltd");
+        assertThat(rows.getFirst().title().raw()).isEqualTo("Engineer");
+    }
+
+    @Test
+    void usesEntirePeriodHeadingAsTitleWhenNextLineLooksLikeAnEmployer() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Regional Manager | Northern Operations | Transformation 2020 – 2021
+                SAMPLE SYSTEMS
+                Sep 2022 – Jul 2023 Regional Manager | Partner Programs
+                Sample Network | Long An
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "Regional Manager | Northern Operations | Transformation",
+                        "Regional Manager | Partner Programs");
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("SAMPLE SYSTEMS", "Sample Network");
+    }
+
+    @Test
+    void preservesDatedEmployersAndIndependentFollowingEmployers() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Education and Data Services 2019 – 2020
+                2020 – 2021 Sample Tea House
+                SAMPLE DEVICES LTD
+                Position: Engineer
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "Education and Data Services", "Sample Tea House", "SAMPLE DEVICES LTD");
+        assertThat(rows.get(1).title().state()).isEqualTo("NOT_FOUND");
+        assertThat(rows.get(2).title().raw()).isEqualTo("Engineer");
+    }
+
+    @Test
+    void doesNotReplaceAnInlineEmployerWithTheNextIndependentlyAnchoredEmployer() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Engineer | Sample Group 2020 – 2021
+                SAMPLE DEVICES LTD
+                Position: Engineer
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample Group", "SAMPLE DEVICES LTD");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Engineer", "Engineer");
+    }
+
+    @Test
+    void preservesUnclassifiedTitleTextAndAnUppercaseCompanyWithADash() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Service Operations | Digital Transformation 2020 – 2021
+                SAMPLE-ONE - SAMPLE GROUP
+                """)
+                        .experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("SAMPLE-ONE - SAMPLE GROUP");
+                            assertThat(row.title().raw())
+                                    .isEqualTo("Service Operations | Digital Transformation");
+                        });
+    }
+
+    @Test
+    void keepsVerifiedPageContinuationWithoutAnAdjacentTitleOrPeriod() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        List.of(
+                                new Page(1, "ok", "Experience\n2019 – 2021 Sample Group\nEngineer"),
+                                new Page(2, "ok", "Sample Group (continued)")));
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row ->
+                                assertThat(row.evidence())
+                                        .anySatisfy(span -> assertThat(span.page()).isEqualTo(2)));
+        assertThat(result.issues())
+                .extracting(issue -> issue.code())
+                .doesNotContain("ORPHAN_CONTINUATION");
+    }
+
+    @Test
     void associatesTitlesBeforeAndAfterCompanyAnchorsWithoutReusingThem() throws Exception {
         var rows =
                 parse(
@@ -195,6 +383,8 @@ class ExperienceGrammarV34Tests {
                 OTHER PROJECTS
                 Regional Manager 2018 – 2020
                 Sample Projects | Vietnam
+                EDUCATION AND CERTIFICATIONS
+                2012 – 2016 Sample Academy
                 """);
         assertThat(result.experiences())
                 .extracting(row -> row.company().raw())
@@ -285,6 +475,11 @@ class ExperienceGrammarV34Tests {
     }
 
     private static PersonalInfoMappingResult parse(String version, String raw) throws Exception {
+        return parse(version, List.of(new Page(1, "ok", raw)));
+    }
+
+    private static PersonalInfoMappingResult parse(String version, List<Page> pages)
+            throws Exception {
         PersonalInfoDefinition definition;
         try (var stream =
                 ExperienceGrammarV34Tests.class.getResourceAsStream(
@@ -295,14 +490,7 @@ class ExperienceGrammarV34Tests {
                                     new String(stream.readAllBytes(), StandardCharsets.UTF_8),
                                     JsonMapper.builder().build());
         }
-        var input =
-                new Extraction(
-                        1,
-                        2,
-                        "cv-compass.ocr/2.0",
-                        "success",
-                        false,
-                        List.of(new Page(1, "ok", raw)));
+        var input = new Extraction(1, 2, "cv-compass.ocr/2.0", "success", false, pages);
         return PersonalInfoEngineV31.map(
                 new MappingClaim(
                         3,
