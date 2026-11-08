@@ -165,7 +165,7 @@ Tuân thủ AGENTS.md + backend/AGENTS.md. Mức 3 (E-eval mức 2).
 - E-eval: class trong src/test (không vào jar), chỉ chạy khi có biến môi trường CV_EVAL_DIR, in số tổng hợp, không in
   hay log nội dung CV; có test với fixture tổng hợp; không chạy trong CI.
 - Open Questions trong round-2.md: Q1 làm theo khuyến nghị (chấp nhận tiền tố tháng + issue MONTH_ABBREVIATION_NONSTANDARD)
-  trừ khi chủ dự án ghi khác trong PR #<docs>; Q2, Q3 KHÔNG làm.
+  trừ khi chủ dự án ghi khác trong PR #38; Q2, Q3 KHÔNG làm.
 - Không merge, không push main, không sửa Flyway, không xóa/làm yếu test, không dùng CV thật/PII.
 Kết thúc: link 4 Draft PR, PASS/FAIL/NOT VERIFIED từng check, Open Questions.
 ```
