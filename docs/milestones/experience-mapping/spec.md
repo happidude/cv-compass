@@ -40,12 +40,14 @@ Sửa thứ tự đọc nằm ở worker, ngoài phạm vi spec này.
 
 - **Q1 — "đến nay"**: kỳ `Now/Present/nay` kết thúc ở **ngày nhập CV** của tài liệu nguồn của dòng đó
   (`importedAt`). Dòng do HR tạo (không có tài liệu) dùng ngày nhập của tài liệu mới nhất đã liên kết;
-  không có tài liệu nào thì không tính và báo lý do. Ngày kết thúc sau ngày nhập CV được cắt về ngày nhập.
+  thiếu ngày tham chiếu thì chỉ bỏ kỳ đến nay và báo lý do. Kỳ đã kết thúc vẫn tính theo ngày đã ghi.
+  Khi có ngày tham chiếu, ngày kết thúc sau ngày nhập CV được cắt về ngày nhập.
 - **Q2 — trùng thời gian**: hợp các khoảng (union); phần chồng nhau và khoảng liền kề chỉ tính một lần.
 - **Q3 — độ chính xác**: khoảng tính từ `start.earliest()` đến `end.latest()` (bao gồm hai đầu).
   `2009 – 2012` = 01/01/2009–31/12/2012 = **4 năm**; `Sep 2025 – Jul 2026` = 11 tháng.
   Số tháng của mỗi khoảng sau khi hợp = `Period.between(start, end + 1 ngày).toTotalMonths()` (bỏ phần lẻ ngày).
 - **Q4 — loại trừ**: không tự loại loại nào. HR có thể bỏ từng dòng khỏi tổng (`countInTotal = false`).
+  ACCEPT một đề xuất thay thế giữ lựa chọn đã lưu trên dòng hiện hành.
 - Không tính: thiếu ngày bắt đầu; thiếu ngày kết thúc mà không ghi "đến nay"; kỳ `INVALID`/`AMBIGUOUS`
   chưa được HR sửa; dòng đã xóa. Mỗi dòng không tính có lý do hiển thị cho HR.
 - Kết quả là **ước tính hỗ trợ HR**, không phải dữ liệu đã xác minh; hiển thị kèm "tính đến ngày …" và
@@ -80,8 +82,6 @@ tự ghi ("8+ years"); lưu tổng năm để search (P3 sẽ materialize khi c�
 
 ## Open Questions
 
-1. File local chưa commit `backend/src/main/resources/mapping/experience-config-v2.json` trên máy chủ dự án:
-   có phải danh mục công ty/chức danh đang thử nghiệm? Nếu có, E2 có thể dùng làm alias, cần chủ dự án quyết định
-   có commit hay không (không chứa dữ liệu ứng viên).
+1. Chủ dự án đã chốt không dùng danh mục công ty và chức danh local làm alias trong E1–E4.
 2. Dữ liệu hồ sơ đã publish trước đó sẽ không tự đổi; khi chạy engine 3.4 trên CV cũ, kinh nghiệm mới thành
    proposal chờ HR duyệt. Nếu chỉ là dữ liệu thử, khuyến nghị reset DB local theo hướng dẫn hiện có.
