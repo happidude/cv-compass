@@ -112,3 +112,16 @@ test("overview lists only loaded work and roadmap items are not links", async ({
   await expect(nav.getByRole("link", { name: /Xuất PDF/ })).toHaveCount(0);
   await expect(nav.locator('[aria-disabled="true"]')).toHaveCount(3);
 });
+test("overview truncates long file names inside their column", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Tất cả/ }).click();
+  const link = page.getByRole("link", { name: /Ten_file_rat_dai/ });
+  const row = page.locator(".queue__item").filter({ has: link });
+  const linkBox = (await link.boundingBox())!;
+  const routeBox = (await row.locator(".route").boundingBox())!;
+  expect(linkBox.x + linkBox.width).toBeLessThanOrEqual(routeBox.x);
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 1440);
+});
