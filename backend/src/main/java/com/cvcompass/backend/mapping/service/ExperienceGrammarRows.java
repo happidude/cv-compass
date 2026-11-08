@@ -51,6 +51,7 @@ final class ExperienceGrammarRows {
     private static final Pattern STREET_ADDRESS =
             Pattern.compile(
                     "(?iu)^(?:\\d+/\\d+[\\p{L}\\d/]*\\s+[^,]+,|\\d+\\p{L}?\\s+[^,]+,\\s*(?:phường|quận|ward|district)\\b).*");
+    private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+");
     private static final Pattern STOP_HEADING_SUFFIX =
             Pattern.compile("(?iu)^(?:\\s+(?:and|và)(?=\\s|$)|\\s*[&/,])");
     private static final Pattern BULLET = Pattern.compile("^(?:[-–—*•●▪]|\\d+[.)])\\s+.*|^[•●▪].*");
@@ -399,6 +400,8 @@ final class ExperienceGrammarRows {
                     line, null, List.of(), List.of(capture.proposal()), index, false, false, false);
         }
 
+        start = trimAtomEnd(line.text, 0, start);
+        end = trimAtomStart(line.text, end, line.text.length());
         var before = atom(line, 0, start);
         var after = atom(line, end, line.text.length());
         String remainder =
@@ -423,13 +426,16 @@ final class ExperienceGrammarRows {
         var companies = new ArrayList<Atom>();
         var titles = new ArrayList<Atom>();
         for (var part : parts) {
-            if (location(part.text())) continue;
+            if (location(part.text())
+                    || part == parts.getFirst()
+                            && ExperienceDefinition.key(part.text()).equals("earlier career"))
+                continue;
             if (title(part.text(), true)) titles.add(part);
             else if (companyTextAllowed(part.text())) companies.add(part);
         }
         boolean ownCompany = companies.size() == 1 && company(companies.getFirst().text(), true);
         var next =
-                ownCompany || !companies.isEmpty() && standaloneAnchor(index + 2, line.page)
+                ownCompany || !companies.isEmpty() && standaloneAnchor(index + 2, line.page, true)
                         ? null
                         : followingCompany(index, index + 1, true);
         if (next != null) {
@@ -486,7 +492,9 @@ final class ExperienceGrammarRows {
 
     private Atom followingCompany(int anchor, int index, boolean requireCompanyLike) {
         var next = nearbyHeadingText(anchor, index);
-        if (next == null || !companyTextAllowed(next.text)) return null;
+        if (next == null
+                || !companyTextAllowed(next.text)
+                || index > anchor && standaloneAnchor(index + 1, next.page, false)) return null;
         var separator =
                 hasPrimarySeparator(next, 0, next.text.length())
                         ? PRIMARY_SEPARATOR
@@ -500,9 +508,6 @@ final class ExperienceGrammarRows {
         var value = values.size() == 1 ? values.getFirst() : atom(next, 0, next.text.length());
         if (title(value.text(), true)) return null;
         if (!requireCompanyLike) return value;
-        if (index + 1 < lines.size()
-                && lines.get(index + 1).page == next.page
-                && wrappedPeriod(lines.get(index + 1))) return null;
 
         boolean followedByRegion =
                 parts.size() == 2
@@ -514,17 +519,22 @@ final class ExperienceGrammarRows {
         return followedByRegion || letters > 0 && uppercase * 5 >= letters * 3 ? value : null;
     }
 
-    private boolean standaloneAnchor(int index, int page) {
+    private boolean standaloneAnchor(int index, int page, boolean includeTitle) {
         if (index >= lines.size()) return false;
         var line = lines.get(index);
-        return line.page == page
-                && (ExperienceGrammarDates.dateOnly(line)
-                        || wrappedPeriod(line)
-                        || matches(line.text, true).stream()
-                                .anyMatch(
-                                        label ->
-                                                label.field().equals("period")
-                                                        || label.field().equals("title")));
+        if (line.page != page || heading(line.text, true)) return false;
+        if (ExperienceGrammarDates.dateOnly(line) || wrappedPeriod(line)) return true;
+        var rowLabels = matches(line.text, true);
+        if (rowLabels.stream().anyMatch(label -> label.field().equals("company"))) return false;
+        return rowLabels.stream()
+                        .anyMatch(
+                                label ->
+                                        label.field().equals("period")
+                                                || includeTitle && label.field().equals("title"))
+                || includeTitle
+                        && rowLabels.isEmpty()
+                        && !ExperienceGrammarDates.hasRange(line.text)
+                        && title(line.text, true);
     }
 
     private boolean adjacentAnchor(int index, int page) {
@@ -550,7 +560,7 @@ final class ExperienceGrammarRows {
                         && !heading(next.text, true)
                         && matches(next.text, true).isEmpty()
                         && !next.text.matches("[0-9]{4}")
-                        && ExperienceGrammarDates.find(next) == null
+                        && !ExperienceGrammarDates.hasRange(next.text)
                 ? next
                 : null;
     }
@@ -686,21 +696,23 @@ final class ExperienceGrammarRows {
                                 config.rules().summaryHeadings())
                         .flatMap(List::stream)
                         .anyMatch(value -> ExperienceDefinition.key(value).equals(key))
-                || stopHeading(key, v34)
+                || stopHeading(text, v34)
                 || v34 && contextHeading(key, true);
     }
 
-    boolean stopHeading(String key, boolean v34) {
+    boolean stopHeading(String text, boolean v34) {
+        String key = ExperienceDefinition.key(text.replaceFirst("[:：]$", ""));
         for (var heading : config.rules().stopHeadings()) {
             var stop = ExperienceDefinition.key(heading);
-            if (stop.equals(key)
-                    || v34
-                            && key.startsWith(stop)
-                            && STOP_HEADING_SUFFIX
-                                    .matcher(key)
-                                    .region(stop.length(), key.length())
-                                    .lookingAt()
-                            && !ExperienceGrammarDates.hasRange(key)) return true;
+            if (stop.equals(key)) return true;
+            if (!v34 || !key.startsWith(stop)) continue;
+            var connector = STOP_HEADING_SUFFIX.matcher(key).region(stop.length(), key.length());
+            if (connector.lookingAt()
+                    && !Character.isLowerCase(text.stripLeading().codePointAt(0))
+                    && !text.stripTrailing().endsWith(".")
+                    && key.indexOf(',', connector.end()) < 0
+                    && WORD.matcher(text).results().limit(7).count() <= 6
+                    && !ExperienceGrammarDates.hasRange(key)) return true;
         }
         return false;
     }
@@ -757,13 +769,23 @@ final class ExperienceGrammarRows {
     }
 
     private Atom atom(SourceLine line, int start, int end) {
-        while (start < end
-                && (Character.isWhitespace(line.text.charAt(start))
-                        || "|/:：".indexOf(line.text.charAt(start)) >= 0)) start++;
-        while (end > start
-                && (Character.isWhitespace(line.text.charAt(end - 1))
-                        || "|/：:".indexOf(line.text.charAt(end - 1)) >= 0)) end--;
+        start = trimAtomStart(line.text, start, end);
+        end = trimAtomEnd(line.text, start, end);
         return start == end ? null : atom(List.of(line.span(start, end)));
+    }
+
+    private static int trimAtomStart(String text, int start, int end) {
+        while (start < end && atomBoundary(text.charAt(start))) start++;
+        return start;
+    }
+
+    private static int trimAtomEnd(String text, int start, int end) {
+        while (end > start && atomBoundary(text.charAt(end - 1))) end--;
+        return end;
+    }
+
+    private static boolean atomBoundary(char value) {
+        return Character.isWhitespace(value) || "|/:：".indexOf(value) >= 0;
     }
 
     private Atom atom(List<Evidence> evidence) {
