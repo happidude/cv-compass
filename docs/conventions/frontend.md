@@ -8,7 +8,7 @@ Trạng thái: **Đã duyệt ngày 26/10/2026**; phạm vi tại [README](READM
 Bảng dưới ghi nhận trước khi áp dụng; trạng thái cuối tại [REFACTOR_REPORT.md](REFACTOR_REPORT.md).
 
 React function components + hooks, TypeScript strict, React Router, TanStack Query,
-Zod; Tailwind v4 kết hợp CSS semantic trong `app/styles.css`, local shadcn/Radix Button.
+Zod; Tailwind v4 kết hợp CSS semantic trong `app/styles.css` (tách lớp ở `app/styles/`), local shadcn/Radix Button.
 ESLint flat config đã giới hạn dependency; Prettier có script nhưng không thấy config
 Prettier riêng. Không có nhu cầu thêm framework, store, PropTypes hay formatter khác.
 
@@ -28,7 +28,20 @@ Prettier riêng. Không có nhu cầu thêm framework, store, PropTypes hay form
 | Giữ `app/`, `features/{documents,batches}/`, `shared/`, `mocks/` | Feature có `api.ts`, `schema.ts`, `queries.ts`, `pages.tsx`, `index.ts` | Tạo global `pages/services/store/types/constants` và di chuyển tất cả | Feature-oriented đang là pattern chủ đạo; không tạo tầng chưa có nhu cầu |
 | app dùng feature public entrypoint; feature khác qua public entrypoint; shared độc lập | `upload-page.tsx` import `../batches`; `app/router.tsx` qua feature index | Import `../batches/api` từ documents hoặc shared import app | `eslint.config.js` đã enforce các ranh giới này |
 | Co-locate type/helper/constants theo ownership | Zod/type trong feature `schema.ts`, query key trong `api.ts`, polling trong shared | Global `types.ts` gom mọi domain (minh họa) | Tìm code theo feature dễ hơn; không đổi location chỉ để giống một boilerplate |
-| Không ép một component mỗi file | `shared/ui/common.tsx` chứa các UI primitives liên quan | Rename mọi file thành PascalCase chỉ vì component PascalCase | File hiện dùng lowercase/kebab-case và tên vai trò; component name khác file name |
+| Không ép một component mỗi file | `shared/ui/feedback.tsx` chứa Notice/ErrorNotice/Loading/Empty liên quan | Rename mọi file thành PascalCase chỉ vì component PascalCase | File hiện dùng lowercase/kebab-case và tên vai trò; component name khác file name |
+
+## Cập nhật 08/11/2026 — UI hub (feature/ui-hub-redesign, chờ duyệt)
+
+Chủ dự án yêu cầu làm lại UI thành hub; các điểm dưới thay cho quyết định cũ tương ứng khi PR được merge.
+
+| Rule | Đúng | Sai / cần tránh | Lý do |
+| --- | --- | --- | --- |
+| UI dùng chung import qua `shared/ui` (index) | `import { Button, Panel } from "../../shared/ui"` | Import file lẻ `shared/ui/button` từ feature | Một cửa vào, đổi nội bộ kit không chạm feature |
+| Màu/khoảng cách/bo góc dùng token CSS | `var(--c-accent)`, `var(--sp-4)` trong `app/styles/*.css` | Hex/px rời rạc trong component | Đổi theme chỉ sửa `tokens.css` |
+| Style tái sử dụng ở `components.css`, bố cục màn ở `screens.css`, shell ở `shell.css` | `.panel`, `.btn`, `.route` | Thêm class trùng nghĩa cho từng trang | Tránh phình CSS, dễ tìm |
+| Page lớn tách section theo trách nhiệm, state giữ ở page | `profile-page.tsx` + `proposals.tsx`, `history.tsx`, `source-pane.tsx` | Một file > 600 dòng trộn mọi section | Dễ đọc/review; hành vi và query key giữ nguyên |
+| Module mới: `nav.ts` + `router.tsx` + `features/<module>/` | Mục roadmap không có `to` hiển thị "Sắp có" | Link tới trang chưa có code | Không gây hiểu nhầm tính năng đã có |
+| Text/role mà test dựa vào được giữ nguyên khi đổi giao diện | Tên nút, nhãn field, `article` kinh nghiệm, `.stats`, `.pdf-canvas-view` | Đổi chữ hiển thị để "đẹp hơn" mà không cập nhật test có chủ đích | Test là lưới an toàn hành vi |
 
 ## Naming, component và hooks
 
