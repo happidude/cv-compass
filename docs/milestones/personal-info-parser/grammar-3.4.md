@@ -8,7 +8,8 @@ Trong section kinh nghiệm hoặc tóm tắt kinh nghiệm đã nhận diện, 
 một kỳ để neo dòng ngắn. Kỳ có thể ở đầu, ở cuối hoặc nằm trong ngoặc. Dấu
 phân cách có thể tách chức danh, công ty và địa danh. Địa danh đứng riêng
 trong một phần sẽ bị bỏ khi lấy tên công ty. Dấu gạch chỉ tách phần chữ khi
-không có dấu gạch đứng hoặc gạch chéo ngoài ngoặc. Dòng công ty không ghi kỳ
+không có dấu gạch đứng hoặc gạch chéo ngoài ngoặc giữa các phần chữ. Dấu phân
+cách sát kỳ không ảnh hưởng đến lựa chọn dấu tách phần chữ. Dòng công ty không ghi kỳ
 cần kỳ hoặc chức danh liền kề nếu parser phải suy ra công ty. Địa chỉ và câu
 mô tả dài có dấu phẩy không được nhận là công ty.
 

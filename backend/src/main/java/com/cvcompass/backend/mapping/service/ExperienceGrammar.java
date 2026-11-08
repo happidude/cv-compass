@@ -249,7 +249,7 @@ final class ExperienceGrammar {
         if (contains(config.rules().experienceHeadings(), key)) return "DETAIL";
         if (contains(config.rules().summaryHeadings(), key)) return "SUMMARY";
         if (ExperienceGrammarRows.contextHeading(key)) return "CONTEXT";
-        if (rows.stopHeading(key, v34)) return "STOP";
+        if (rows.stopHeading(text, v34)) return "STOP";
         return null;
     }
 
@@ -263,8 +263,13 @@ final class ExperienceGrammar {
                                             !detail.summary
                                                     && companyKey(summary.company)
                                                             .equals(companyKey(detail.company))
-                                                    && compatibleTitle(summary, detail)
-                                                    && compatibleStart(summary, detail))
+                                                    && (compatibleTitle(summary, detail)
+                                                                    && compatibleStart(
+                                                                            summary, detail)
+                                                            || v34
+                                                                    && summary.titles.isEmpty()
+                                                                    && sameResolvedPeriod(
+                                                                            summary, detail)))
                             .toList();
             if (matches.size() == 1) {
                 var detail = matches.getFirst();
@@ -278,7 +283,8 @@ final class ExperienceGrammar {
             } else if (matches.size() > 1) {
                 issues.add(
                         new Issue("AMBIGUOUS_SUMMARY_LINK", "experiences", allEvidence(summary)));
-            } else if (summary.titles.isEmpty()
+            } else if (!v34
+                    && summary.titles.isEmpty()
                     && blocks.stream()
                             .anyMatch(
                                     detail ->
@@ -298,6 +304,18 @@ final class ExperienceGrammar {
                 && !right.titles.isEmpty()
                 && left.titles.stream()
                         .anyMatch(title -> currentTitleKeys(right).contains(titleKey(title)));
+    }
+
+    private static boolean sameResolvedPeriod(Block left, Block right) {
+        var first = period(left);
+        var second = period(right);
+        return first.state().equals("PROPOSED")
+                && second.state().equals("PROPOSED")
+                && first.start() != null
+                && first.start().equals(second.start())
+                && (first.end() != null || first.ongoingAsStated())
+                && Objects.equals(first.end(), second.end())
+                && first.ongoingAsStated() == second.ongoingAsStated();
     }
 
     private static boolean compatibleStart(Block left, Block right) {
