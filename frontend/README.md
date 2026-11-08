@@ -34,13 +34,40 @@ npm run test:browser
 
 npm 11.19+ enforces the checked-in install-script policy: esbuild native setup is approved at its locked version; MSW auto-update is denied. The committed dev worker matches the locked MSW package; refresh it explicitly with `npm exec msw init dev-public` when upgrading MSW.
 
-Tests exercise contract/ID safety, cursor/dedupe, retries and OCR rendering. Playwright uses synthetic data only, covers five screens at 1440/1024/768, axe and keyboard navigation. Screenshot output stays ignored under `test-results/`.
+Tests exercise contract/ID safety, cursor/dedupe, retries and OCR rendering. Playwright uses synthetic data only, covers eight screens at 1440/1024/768, axe and keyboard navigation. Screenshot output stays ignored under `test-results/`.
 
 ## Structure and routes
 
-`app/`: bootstrap/providers/router/layout; `shared/`: UI/config/HTTP/schema/format/polling; `features/documents/` and `features/batches/`: schemas, APIs, queries, pages. ESLint enforces shared → no features and cross-feature public entry points. Presentational components do not call HTTP.
+```text
+src/
+  main.tsx              bootstrap (fonts, styles, optional MSW, router)
+  app/
+    router.tsx          routes + breadcrumb handles
+    auth.tsx            RequireUser, LoginPage, LogoutButton
+    providers.tsx       TanStack Query client
+    shell/              layout, sidebar (rail), topbar, breadcrumb, nav registry (nav.ts)
+    styles.css          style entry → styles/tokens, base, shell, components, screens
+  shared/               config, http, session, schema, format, polling
+    ui/                 UI kit (Button, Badge/Status, Panel, PageHeader, Notice, Loading,
+                        Pagination, Segmented, CountBar, RouteLine…) — import from shared/ui
+  features/
+    overview/           hub "Tổng quan" (reads existing list APIs only)
+    documents/          api, schema, queries, route.ts, list/detail/upload pages, ocr-result
+    batches/            api, schema, queries, pages
+    candidates/         api, schema, queries, labels, route.ts, list/profile pages and sections
+  mocks/                MSW handlers + synthetic fixtures (dev/test only)
+```
 
-PDF pages 1–5 map to `/documents`, `/documents/upload`, `/batches`, `/batches/:id`, `/documents/:id`. `/` redirects to documents; unknown routes show 404. Sidebar and spacing follow the PDF without its export whitespace. Batches and items store zero-based `page` in URL. Documents use `nextBeforeId`, descending IDs and no invented total pages.
+Layers: `shared` never imports `app`/`features`; features talk to each other only via `index.ts`;
+pages compose sections, sections compose `shared/ui`; only `api.ts`/`queries.ts` touch HTTP.
+Add a module: one entry in `app/shell/nav.ts`, one route in `app/router.tsx`, one folder in `features/`.
+Visual rules and tokens: [DESIGN.md](DESIGN.md); product context: [PRODUCT.md](PRODUCT.md).
+
+Routes: `/` overview, `/candidates`, `/candidates/:id`, `/documents`, `/documents/upload`,
+`/documents/:id`, `/batches`, `/batches/:id`; unknown routes show 404. Login returns to the page
+that required it. Batches and items store zero-based `page` in URL. Documents use `nextBeforeId`,
+descending IDs and no invented total pages. Roadmap modules appear in the rail as "Sắp có"
+(not links) until they are approved and built.
 
 ## Verified backend contract at origin/main 8692e2d
 

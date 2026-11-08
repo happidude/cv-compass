@@ -1,9 +1,28 @@
-import { createBrowserRouter, Navigate, Link } from "react-router-dom";
-import { Layout } from "./layout";
+import { createBrowserRouter, Link } from "react-router-dom";
+import { Layout } from "./shell/layout";
+import { RequireUser, LoginPage } from "./auth";
+import { OverviewPage } from "../features/overview";
 import { DocumentsPage, DocumentPage, UploadPage } from "../features/documents";
 import { BatchesPage, BatchPage } from "../features/batches";
 import { CandidatesPage, CandidatePage } from "../features/candidates";
-import { RequireUser, LoginPage } from "./auth";
+import { PageHeader } from "../shared/ui";
+
+const documents = { label: "Quản lý CV", to: "/documents" };
+const batches = { label: "Lịch sử nhập", to: "/batches" };
+const candidates = { label: "Hồ sơ ứng viên", to: "/candidates" };
+
+function RouteProblem({ title }: { title: string }) {
+  return (
+    <>
+      <PageHeader
+        title={title}
+        description="Đường dẫn không tồn tại hoặc trang chưa thể hiển thị."
+      />
+      <Link to="/">Quay về Tổng quan</Link>
+    </>
+  );
+}
+
 export const routes = [
   { path: "/login", element: <LoginPage /> },
   {
@@ -12,28 +31,63 @@ export const routes = [
       {
         element: <Layout />,
         errorElement: (
-          <main>
-            <h1>Không thể mở trang</h1>
-            <Link to="/documents">Quay về Quản lý CV</Link>
+          <main className="main">
+            <RouteProblem title="Không thể mở trang" />
           </main>
         ),
         children: [
-          { path: "/", element: <Navigate to="/documents" replace /> },
-          { path: "/documents", element: <DocumentsPage /> },
-          { path: "/documents/upload", element: <UploadPage /> },
-          { path: "/documents/:id", element: <DocumentPage /> },
-          { path: "/batches", element: <BatchesPage /> },
-          { path: "/batches/:id", element: <BatchPage /> },
-          { path: "/candidates", element: <CandidatesPage /> },
-          { path: "/candidates/:id", element: <CandidatePage /> },
+          {
+            path: "/",
+            element: <OverviewPage />,
+            handle: { crumb: "Tổng quan" },
+          },
+          {
+            path: "/candidates",
+            element: <CandidatesPage />,
+            handle: { crumb: candidates.label },
+          },
+          {
+            path: "/candidates/:id",
+            element: <CandidatePage />,
+            handle: {
+              parent: candidates,
+              crumb: (p: Record<string, string>) => `Hồ sơ #${p.id}`,
+            },
+          },
+          {
+            path: "/documents",
+            element: <DocumentsPage />,
+            handle: { crumb: documents.label },
+          },
+          {
+            path: "/documents/upload",
+            element: <UploadPage />,
+            handle: { parent: documents, crumb: "Upload" },
+          },
+          {
+            path: "/documents/:id",
+            element: <DocumentPage />,
+            handle: {
+              parent: documents,
+              crumb: (p: Record<string, string>) => `CV #${p.id}`,
+            },
+          },
+          {
+            path: "/batches",
+            element: <BatchesPage />,
+            handle: { crumb: batches.label },
+          },
+          {
+            path: "/batches/:id",
+            element: <BatchPage />,
+            handle: {
+              parent: batches,
+              crumb: (p: Record<string, string>) => `Chi tiết batch ${p.id}`,
+            },
+          },
           {
             path: "*",
-            element: (
-              <>
-                <h1>404 — Không tìm thấy trang</h1>
-                <Link to="/documents">Quay về Quản lý CV</Link>
-              </>
-            ),
+            element: <RouteProblem title="404 — Không tìm thấy trang" />,
           },
         ],
       },

@@ -1,4 +1,4 @@
-type Tone = "neutral" | "info" | "good" | "warn" | "bad";
+import { Badge, type Tone } from "./badge";
 const job: Record<string, [string, Tone, string]> = {
   NOT_SCHEDULED: [
     "Chưa lên lịch OCR",
@@ -29,8 +29,9 @@ const result: Record<string, [string, Tone, string]> = {
   partial: ["Một phần", "warn", "Kết quả OCR một phần."],
   failed: ["Thất bại", "bad", "Kết quả OCR thất bại."],
 };
+export type StatusDomain = "job" | "batch" | "page" | "result";
 export function statusInfo(
-  domain: "job" | "batch" | "page" | "result",
+  domain: StatusDomain,
   value: string,
 ): [string, Tone, string] {
   const mapping = { job, batch, page, result }[domain];
@@ -42,13 +43,13 @@ export function Status({
   domain,
   value,
 }: {
-  domain: "job" | "batch" | "page" | "result";
+  domain: StatusDomain;
   value: string;
 }) {
   const [label, tone, description] = statusInfo(domain, value);
   return (
-    <span className={`badge ${tone}`} title={description}>
-      <span aria-hidden="true">●</span> {label}
-    </span>
+    <Badge tone={tone} mark title={description}>
+      {label}
+    </Badge>
   );
 }

@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 const screens = [
+  ["/", "Tổng quan"],
+  ["/candidates", "Hồ sơ ứng viên"],
+  ["/candidates/1", "Synthetic An Nguyen"],
   ["/documents", "Quản lý CV"],
   ["/documents/upload", "Upload CV"],
   ["/batches", "Lịch sử nhập"],
@@ -85,4 +88,40 @@ test("basic keyboard navigation and dropzone input", async ({ page }) => {
   await expect(page.getByText("Đến nội dung chính")).toBeFocused();
   await page.getByLabel("Chọn file PDF").focus();
   await expect(page.getByLabel("Chọn file PDF")).toBeFocused();
+});
+test("overview lists only loaded work and roadmap items are not links", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tổng quan");
+  // Default filter shows OCR failures and partial results of the first page.
+  await expect(page.getByText("Trong 7 CV mới nhất")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Mở CV Synthetic_failed.pdf" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Mở CV Synthetic_pending.pdf" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: /Đang xử lý/ }).click();
+  await expect(
+    page.getByRole("link", { name: "Mở CV Synthetic_pending.pdf" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Mở batch 142" })).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
+  await expect(nav.getByText("Xuất PDF")).toBeVisible();
+  await expect(nav.getByRole("link", { name: /Xuất PDF/ })).toHaveCount(0);
+  await expect(nav.locator('[aria-disabled="true"]')).toHaveCount(3);
+});
+test("overview truncates long file names inside their column", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Tất cả/ }).click();
+  const link = page.getByRole("link", { name: /Ten_file_rat_dai/ });
+  const row = page.locator(".queue__item").filter({ has: link });
+  const linkBox = (await link.boundingBox())!;
+  const routeBox = (await row.locator(".route").boundingBox())!;
+  expect(linkBox.x + linkBox.width).toBeLessThanOrEqual(routeBox.x);
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 1440);
 });

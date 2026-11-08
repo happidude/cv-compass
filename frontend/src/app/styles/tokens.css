@@ -1,0 +1,94 @@
+/*
+ * Design tokens — "Survey map" world (see frontend/DESIGN.md).
+ * Every colour, size and radius used by the app is defined here so a future
+ * theme only redefines this file.
+ */
+:root {
+  /* Ground and surfaces */
+  --c-ground: #f2f4ef;
+  --c-surface: #ffffff;
+  --c-surface-sunken: #f7f8f5;
+  --c-surface-hover: #f1f4ef;
+
+  /* Rail (survey ink) */
+  --c-rail: #12302c;
+  --c-rail-raised: #1c443e;
+  --c-rail-line: #2a554e;
+  --c-rail-text: #e3ece8;
+  --c-rail-muted: #9fbab3;
+
+  /* Text */
+  --c-ink: #17211f;
+  --c-ink-2: #46544f;
+  --c-ink-3: #5a6863;
+  --c-on-accent: #ffffff;
+
+  /* Contour lines */
+  --c-line: #dde3db;
+  --c-line-strong: #c3ccc2;
+  --c-control-line: #a9b4ab;
+
+  /* Primary action: survey teal */
+  --c-accent: #1b5d54;
+  --c-accent-hover: #154b44;
+  --c-accent-soft: #e1eeea;
+  --c-accent-ink: #154b44;
+  --c-focus: #0f7a6c;
+
+  /* Map-legend states */
+  --c-good: #2c6a37;
+  --c-good-soft: #e3efe1;
+  --c-warn: #8a4a0c;
+  --c-warn-soft: #fbedd5;
+  --c-warn-mark: #c27618;
+  --c-bad: #b0281f;
+  --c-bad-soft: #fbe5e1;
+  --c-info: #1d5784;
+  --c-info-soft: #e2edf6;
+  --c-neutral: #46544f;
+  --c-neutral-soft: #eaede8;
+  --c-highlight: #fff1b8;
+
+  /* Type */
+  --font-sans:
+    Inter, "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue",
+    sans-serif;
+  --fs-xs: 0.75rem; /* 12 */
+  --fs-sm: 0.8125rem; /* 13 */
+  --fs-md: 0.875rem; /* 14 */
+  --fs-lg: 1rem; /* 16 */
+  --fs-xl: 1.25rem; /* 20 */
+  --fs-2xl: 1.5rem; /* 24 */
+  --lh-tight: 1.3;
+  --lh-body: 1.55;
+
+  /* Space (4px base) */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --sp-10: 2.5rem;
+  --sp-12: 3rem;
+
+  /* Shape and depth */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgb(18 48 44 / 6%);
+  --shadow-2: 0 6px 20px rgb(18 48 44 / 12%), 0 1px 3px rgb(18 48 44 / 8%);
+
+  /* Layout */
+  --rail-w: 232px;
+  --rail-w-compact: 68px;
+  --topbar-h: 56px;
+  --content-max: 1480px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+}

@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-08T05:10:05.237523Z",
+  "title": "Design System: CV Compass",
+  "extensions": {
+    "colorMeta": {
+      "rail": {
+        "role": "neutral",
+        "displayName": "Survey Ink"
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Map Paper"
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Survey Teal"
+      },
+      "warn-mark": {
+        "role": "tertiary",
+        "displayName": "Ochre Station"
+      },
+      "bad": {
+        "role": "tertiary",
+        "displayName": "Survey Red"
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Page title",
+        "purpose": "The single h1 of a screen."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All UI text and data."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-1",
+        "value": "0 1px 2px rgb(18 48 44 / 6%)",
+        "purpose": "Panels."
+      },
+      {
+        "name": "shadow-2",
+        "value": "0 6px 20px rgb(18 48 44 / 12%), 0 1px 3px rgb(18 48 44 / 8%)",
+        "purpose": "Dialogs only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "State transitions, 150–220 ms."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-rail",
+        "value": "1099px"
+      },
+      {
+        "name": "mobile",
+        "value": "767px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action of a screen or section.",
+      "html": "<button class=\"ds-btn\">Upload CV</button>",
+      "css": ".ds-btn{background:#1b5d54;color:#fff;border:0;border-radius:6px;min-height:36px;padding:0 16px;font:500 14px Inter,sans-serif;transition:background .15s}.ds-btn:hover{background:#154b44}.ds-btn:focus-visible{outline:2px solid #0f7a6c;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Other actions.",
+      "html": "<button class=\"ds-btn2\">Cập nhật thủ công</button>",
+      "css": ".ds-btn2{background:#fff;color:#17211f;border:1px solid #c3ccc2;border-radius:6px;min-height:36px;padding:0 16px;font:500 14px Inter,sans-serif}.ds-btn2:hover{background:#f1f4ef}.ds-btn2:focus-visible{outline:2px solid #0f7a6c;outline-offset:2px}"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "description": "Map-legend state with dot and text.",
+      "html": "<span class=\"ds-badge\"><i></i>Một phần</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:6px;padding:0 8px;min-height:22px;border-radius:999px;background:#fbedd5;color:#8a4a0c;font:500 12px Inter,sans-serif}.ds-badge i{width:7px;height:7px;border-radius:50%;background:currentColor}"
+    },
+    {
+      "name": "Evidence Reference",
+      "kind": "chip",
+      "refersTo": "evidence-ref",
+      "description": "Grid reference to a PDF page and paragraph.",
+      "html": "<button class=\"ds-ref\">Tr.3 · Đ.1</button>",
+      "css": ".ds-ref{border:1px solid #bcd3cc;background:#e1eeea;color:#154b44;border-radius:4px;min-height:24px;padding:0 8px;font:600 12px Inter,sans-serif}.ds-ref:hover{background:#cfe4dd;border-color:#1b5d54}"
+    },
+    {
+      "name": "Route Line",
+      "kind": "custom",
+      "description": "Signature: processing route with stations.",
+      "html": "<ol class=\"ds-route\"><li class=\"d\">Lưu file</li><li class=\"a\">OCR</li><li class=\"u\">Hồ sơ</li></ol>",
+      "css": ".ds-route{display:flex;gap:0;list-style:none;padding:0;font:500 12px Inter,sans-serif;color:#17211f}.ds-route li{flex:1;padding-top:16px;position:relative}.ds-route li:before{content:'';position:absolute;top:0;left:0;width:10px;height:10px;border-radius:50%;border:2px solid #c3ccc2;box-sizing:border-box}.ds-route li:after{content:'';position:absolute;top:4px;left:14px;right:4px;height:2px;background:#c3ccc2}.ds-route li:last-child:after{display:none}.ds-route .d:before{background:#2c6a37;border-color:#2c6a37}.ds-route .d:after{background:#2c6a37}.ds-route .a:before{background:#c27618;border-color:#c27618}.ds-route .u:before{border-style:dashed}"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Rail link; active shows a station dot.",
+      "html": "<nav class=\"ds-rail\"><a class=\"on\">Tổng quan</a><a>Quản lý CV</a></nav>",
+      "css": ".ds-rail{background:#12302c;padding:12px;display:grid;gap:2px;width:220px}.ds-rail a{color:#e3ece8;padding:9px 12px;border-radius:6px;font:500 14px Inter,sans-serif}.ds-rail a.on{background:#1c443e;color:#fff;font-weight:600}.ds-rail a:hover{background:rgba(255,255,255,.06)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Bản đồ khảo sát được chú giải",
+    "overview": "Mỗi CV là một tuyến qua các trạm xử lý; mỗi giá trị có toạ độ trong PDF gốc. Shell quen thuộc, thế giới chỉ đóng góp màu, chữ, mật độ và tuyến xử lý.",
+    "keyCharacteristics": [
+      "Rail mực khảo sát",
+      "Nền giấy bản đồ",
+      "Ký hiệu trạng thái kèm chữ",
+      "Tuyến xử lý",
+      "Chip toạ độ evidence"
+    ],
+    "rules": [
+      {
+        "name": "Không bịa số",
+        "body": "Chỉ đếm trên bản ghi đã tải và ghi rõ phạm vi.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Ghi nguồn và trạng thái review cạnh giá trị"
+    ],
+    "donts": [
+      "Không hero metric khi API chưa có số tổng",
+      "Không dùng màu trạng thái làm trang trí"
+    ]
+  }
+}

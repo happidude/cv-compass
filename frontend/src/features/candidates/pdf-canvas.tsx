@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiUrl, authExpired } from "../../shared/session";
+import { Button } from "../../shared/ui";
 
 export function PdfCanvas({
   documentId,
@@ -88,36 +90,56 @@ export function PdfCanvas({
       data-document-id={documentId}
       data-page-number={page}
     >
-      {status === "loading" && <p role="status">Đang hiển thị trang PDF…</p>}
+      {status === "loading" && (
+        <p role="status" className="muted">
+          Đang hiển thị trang PDF…
+        </p>
+      )}
       {status === "error" && (
-        <p role="alert">
+        <p role="alert" className="notice notice--bad">
           Không thể hiển thị trang PDF này. Thử tải lại hoặc mở/tải PDF gốc.
         </p>
       )}
-      <canvas
-        ref={canvas}
-        aria-label={`PDF tài liệu ${documentId}, trang ${page}`}
-        role="img"
-        hidden={status === "error"}
-      />
       {status === "ready" && (
-        <>
-          <p>
+        <div className="pdf-pager">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => onPage(page - 1)}
+          >
+            <ChevronLeft size={14} aria-hidden="true" />
+            Trang PDF trước
+          </Button>
+          <p className="nums">
             Trang {page}/{pages}
           </p>
-          <button disabled={page <= 1} onClick={() => onPage(page - 1)}>
-            Trang PDF trước
-          </button>{" "}
-          <button disabled={page >= pages} onClick={() => onPage(page + 1)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => onPage(page + 1)}
+          >
             Trang PDF tiếp
-          </button>
-          <details>
-            <summary>Văn bản của trang PDF (nếu có)</summary>
-            <pre className="raw-text">
-              {text || "Trang PDF không có lớp văn bản."}
-            </pre>
-          </details>
-        </>
+            <ChevronRight size={14} aria-hidden="true" />
+          </Button>
+        </div>
+      )}
+      <div className="pdf-sheet">
+        <canvas
+          ref={canvas}
+          aria-label={`PDF tài liệu ${documentId}, trang ${page}`}
+          role="img"
+          hidden={status === "error"}
+        />
+      </div>
+      {status === "ready" && (
+        <details className="disclosure">
+          <summary>Văn bản của trang PDF (nếu có)</summary>
+          <pre className="text-block text-block--scroll">
+            {text || "Trang PDF không có lớp văn bản."}
+          </pre>
+        </details>
       )}
     </div>
   );

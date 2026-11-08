@@ -6,16 +6,21 @@ import { useBatches, useBatch, useItems } from "./queries";
 import { validRouteId } from "../../shared/schema";
 import { usePollingBudget, activeBatch } from "../../shared/polling";
 import { date } from "../../shared/format";
+import { RefreshCw } from "lucide-react";
 import {
-  Heading,
-  Filename,
-  Loading,
+  Badge,
+  Button,
+  CountBar,
   Empty,
   ErrorNotice,
+  Filename,
+  Loading,
+  Notice,
+  PageHeader,
   Pagination,
-} from "../../shared/ui/common";
-import { Button } from "../../shared/ui/button";
-import { Status } from "../../shared/ui/status";
+  Panel,
+  Status,
+} from "../../shared/ui";
 function usePage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get("page") ?? "0";
@@ -32,12 +37,12 @@ export function BatchesPage() {
   const q = useBatches(page);
   return (
     <>
-      <Heading
+      <PageHeader
         title="Lịch sử nhập"
         description="Kết quả lưu file của các batch CV."
       />
-      <section className="panel">
-        {q.isPending && <Loading />}
+      <Panel>
+        {q.isPending && <Loading rows={6} />}
         {q.isError && (
           <ErrorNotice error={q.error} retry={() => void q.refetch()} />
         )}
@@ -45,16 +50,17 @@ export function BatchesPage() {
           <>
             {q.data.content.length ? (
               <div className="table-scroll">
-                <table>
+                <table className="table">
                   <thead>
                     <tr>
                       <th>Mã batch</th>
                       <th>Thời gian tạo</th>
-                      <th>Tổng file</th>
-                      <th>Upload thành công</th>
-                      <th>Upload thất bại</th>
+                      <th className="cell-num">Tổng file</th>
+                      <th className="cell-num">Upload thành công</th>
+                      <th className="cell-num">Upload thất bại</th>
+                      <th>Kết quả</th>
                       <th>Trạng thái nhập</th>
-                      <th>
+                      <th className="cell-action">
                         <span className="sr-only">Thao tác</span>
                       </th>
                     </tr>
@@ -62,15 +68,24 @@ export function BatchesPage() {
                   <tbody>
                     {q.data.content.map((b) => (
                       <tr key={b.id}>
-                        <td>#{b.id}</td>
-                        <td>{date(b.createdAt)}</td>
-                        <td>{b.totalFiles}</td>
-                        <td>{b.successCount}</td>
-                        <td>{b.failedCount}</td>
+                        <td className="nums">#{b.id}</td>
+                        <td className="cell-nowrap cell-muted">
+                          {date(b.createdAt)}
+                        </td>
+                        <td className="cell-num">{b.totalFiles}</td>
+                        <td className="cell-num">{b.successCount}</td>
+                        <td className="cell-num">{b.failedCount}</td>
+                        <td className="cell-bar">
+                          <CountBar
+                            total={b.totalFiles}
+                            good={b.successCount}
+                            bad={b.failedCount}
+                          />
+                        </td>
                         <td>
                           <Status domain="batch" value={b.status} />
                         </td>
-                        <td>
+                        <td className="cell-action">
                           <Link
                             aria-label={`Chi tiết batch ${b.id}`}
                             to={`/batches/${b.id}`}
@@ -94,7 +109,7 @@ export function BatchesPage() {
             />
           </>
         )}
-      </section>
+      </Panel>
       <p className="footnote">
         Các số liệu mô tả upload, không phải kết quả OCR.
       </p>
@@ -128,33 +143,59 @@ function BatchContent({ id }: { id: string }) {
   const b = q.data;
   return (
     <>
-      <Heading
+      <PageHeader
         title={
           <>
             Batch #{id} <Status domain="batch" value={b.status} />
           </>
         }
         description={`Tạo lúc ${date(b.createdAt)}`}
+        actions={
+          <Button
+            variant="secondary"
+            disabled={q.isFetching || items.isFetching}
+            onClick={() => {
+              budget.restart();
+              void q.refetch();
+              void client.invalidateQueries({
+                queryKey: batchKeys.items(id, page),
+              });
+            }}
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Cập nhật thủ công
+          </Button>
+        }
       />
       {q.isError && <ErrorNotice error={q.error} />}
       <div className="stats">
-        {[
-          ["Tổng file", b.totalFiles],
-          ["Upload thành công", b.successCount],
-          ["Upload thất bại", b.failedCount],
+        {(
           [
-            "Chưa có kết quả upload",
-            Math.max(0, b.totalFiles - b.successCount - b.failedCount),
-          ],
-        ].map(([label, value]) => (
-          <section className="panel padded" key={label}>
+            ["Tổng file", b.totalFiles, ""],
+            ["Upload thành công", b.successCount, "stat--good"],
+            [
+              "Upload thất bại",
+              b.failedCount,
+              b.failedCount ? "stat--bad" : "",
+            ],
+            [
+              "Chưa có kết quả upload",
+              Math.max(0, b.totalFiles - b.successCount - b.failedCount),
+              "",
+            ],
+          ] as const
+        ).map(([label, value, tone]) => (
+          <section className={`stat ${tone}`} key={label}>
             <p>{label}</p>
             <strong>{value}</strong>
           </section>
         ))}
       </div>
-      <section className="panel">
-        {items.isPending && <Loading />}
+      <Panel
+        title="File trong batch"
+        subtitle={`Cập nhật lúc ${date(new Date(q.dataUpdatedAt).toISOString())} (trình duyệt nhận dữ liệu)`}
+      >
+        {items.isPending && <Loading rows={4} />}
         {items.isError && (
           <ErrorNotice error={items.error} retry={() => void items.refetch()} />
         )}
@@ -162,13 +203,13 @@ function BatchContent({ id }: { id: string }) {
           <>
             {items.data.content.length ? (
               <div className="table-scroll">
-                <table>
+                <table className="table">
                   <thead>
                     <tr>
                       <th>Tên file</th>
                       <th>Kết quả upload</th>
                       <th>Mã lỗi</th>
-                      <th>
+                      <th className="cell-action">
                         <span className="sr-only">Thao tác</span>
                       </th>
                     </tr>
@@ -181,22 +222,24 @@ function BatchContent({ id }: { id: string }) {
                         </td>
                         <td>
                           {item.documentId ? (
-                            <span className="badge good">
-                              ● Upload thành công
-                            </span>
+                            <Badge tone="good" mark>
+                              Upload thành công
+                            </Badge>
                           ) : item.errorCode ? (
-                            <span className="badge bad">● Upload thất bại</span>
+                            <Badge tone="bad" mark>
+                              Upload thất bại
+                            </Badge>
                           ) : (
-                            <span className="badge neutral">Chưa xác định</span>
+                            <Badge tone="neutral">Chưa xác định</Badge>
                           )}
                         </td>
-                        <td>
+                        <td className="cell-muted nums">
                           {item.errorCode &&
                           /^[A-Z0-9_]{1,100}$/.test(item.errorCode)
                             ? item.errorCode
                             : "—"}
                         </td>
-                        <td>
+                        <td className="cell-action">
                           {item.documentId ? (
                             <Link to={`/documents/${item.documentId}`}>
                               Mở CV
@@ -221,28 +264,11 @@ function BatchContent({ id }: { id: string }) {
             />
           </>
         )}
-      </section>
-      <div className="table-footer">
-        <span>
-          Cập nhật lúc {date(new Date(q.dataUpdatedAt).toISOString())} (trình
-          duyệt nhận dữ liệu)
-        </span>
-        <Button
-          variant="outline"
-          disabled={q.isFetching || items.isFetching}
-          onClick={() => {
-            budget.restart();
-            void q.refetch();
-            void client.invalidateQueries({
-              queryKey: batchKeys.items(id, page),
-            });
-          }}
-        >
-          Cập nhật thủ công
-        </Button>
-      </div>
+      </Panel>
       {budget.expired && activeBatch(b.status) && (
-        <p>Đã dừng tự cập nhật sau thời gian giới hạn.</p>
+        <Notice tone="neutral" className="mt-4">
+          <p>Đã dừng tự cập nhật sau thời gian giới hạn.</p>
+        </Notice>
       )}
     </>
   );

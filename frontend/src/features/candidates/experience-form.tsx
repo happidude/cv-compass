@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../../shared/ui";
 import type { ExperienceData } from "./schema";
 function dateText(value: ExperienceData["period"]["start"]) {
   if (!value) return "";
@@ -54,7 +55,7 @@ export function ExperienceForm({
   const [busy, setBusy] = useState(false);
   return (
     <form
-      className="panel edit-form"
+      className="form-card"
       onSubmit={async (e) => {
         e.preventDefault();
         setError("");
@@ -85,91 +86,111 @@ export function ExperienceForm({
       }}
     >
       <h3>{initial ? "Chỉnh sửa kinh nghiệm" : "Thêm kinh nghiệm"}</h3>
-      <label>
-        Công ty
-        <input
-          required
-          maxLength={4096}
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-        />
-      </label>
-      <label>
-        Chức danh
-        <input
-          maxLength={4096}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      </label>
-      <p className="footnote">Có thể để trống chức danh nếu chưa xác định.</p>
-      <p>
-        Ngày theo YYYY, YYYY-MM hoặc YYYY-MM-DD; giữ đúng độ chính xác được
-        biết.
-      </p>
-      <label>
-        Bắt đầu
-        <input
-          value={start}
-          placeholder="YYYY-MM"
-          onChange={(e) => setStart(e.target.value)}
-        />
-      </label>
-      <label>
-        Kết thúc
-        <input
-          disabled={ongoing}
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-        />
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={ongoing}
-          onChange={(e) => setOngoing(e.target.checked)}
-        />
-        Đang làm theo nội dung CV
-      </label>
-      <label>
-        Mã chuyên môn (phân cách bằng dấu phẩy)
-        <input
-          value={functions}
-          onChange={(e) => setFunctions(e.target.value)}
-        />
-      </label>
-      <label>
-        Mã cấp bậc
-        <input
-          value={seniority}
-          onChange={(e) => setSeniority(e.target.value)}
-        />
-      </label>
-      <label>
-        Mã ngành doanh nghiệp (riêng với chuyên môn)
-        <input
-          value={industries}
-          onChange={(e) => setIndustries(e.target.value)}
-        />
-      </label>
-      <label>
-        Mô tả
-        <textarea
-          maxLength={16384}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </label>
-      <p>
+      <div className="form-grid">
+        <label className="field">
+          Công ty
+          <input
+            className="input"
+            required
+            maxLength={4096}
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+          />
+        </label>
+        <div className="field">
+          <label className="field">
+            Chức danh
+            <input
+              className="input"
+              maxLength={4096}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+          <span className="field__hint">
+            Có thể để trống chức danh nếu chưa xác định.
+          </span>
+        </div>
+        <p className="form-note span-2">
+          Ngày theo YYYY, YYYY-MM hoặc YYYY-MM-DD; giữ đúng độ chính xác được
+          biết.
+        </p>
+        <label className="field">
+          Bắt đầu
+          <input
+            className="input"
+            value={start}
+            placeholder="YYYY-MM"
+            onChange={(e) => setStart(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          Kết thúc
+          <input
+            className="input"
+            disabled={ongoing}
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </label>
+        <label className="checkbox span-2">
+          <input
+            type="checkbox"
+            checked={ongoing}
+            onChange={(e) => setOngoing(e.target.checked)}
+          />
+          Đang làm theo nội dung CV
+        </label>
+        <label className="field">
+          Mã chuyên môn (phân cách bằng dấu phẩy)
+          <input
+            className="input"
+            value={functions}
+            onChange={(e) => setFunctions(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          Mã cấp bậc
+          <input
+            className="input"
+            value={seniority}
+            onChange={(e) => setSeniority(e.target.value)}
+          />
+        </label>
+        <label className="field span-2">
+          Mã ngành doanh nghiệp (riêng với chuyên môn)
+          <input
+            className="input"
+            value={industries}
+            onChange={(e) => setIndustries(e.target.value)}
+          />
+        </label>
+        <label className="field span-2">
+          Mô tả
+          <textarea
+            className="textarea"
+            maxLength={16384}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+      </div>
+      <p className="form-note">
         Giá trị chỉnh sửa mang nguồn USER; bằng chứng cũ được giữ trong lịch sử.
       </p>
-      {error && <p role="alert">{error}</p>}
-      <button disabled={busy} type="submit">
-        Lưu kinh nghiệm
-      </button>{" "}
-      <button type="button" onClick={onCancel}>
-        Hủy
-      </button>
+      {error && (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+      <div className="btn-row">
+        <Button disabled={busy} type="submit">
+          Lưu kinh nghiệm
+        </Button>
+        <Button variant="secondary" onClick={onCancel}>
+          Hủy
+        </Button>
+      </div>
     </form>
   );
 }

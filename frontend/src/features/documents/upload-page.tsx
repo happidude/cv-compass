@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useBeforeUnload } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { UploadCloud, X } from "lucide-react";
+import { FileText, UploadCloud, X } from "lucide-react";
 import { uploadDocument, documentKeys } from "./api";
 import { uploadBatch, batchKeys, type BatchItem } from "../batches";
 import { config } from "../../shared/config";
 import { bytes, displayName } from "../../shared/format";
 import { RequestError, errorLabel } from "../../shared/http";
-import { Filename, Heading, ErrorNotice } from "../../shared/ui/common";
-import { Button } from "../../shared/ui/button";
+import {
+  Badge,
+  Button,
+  ErrorNotice,
+  Filename,
+  Notice,
+  PageHeader,
+  Panel,
+  RouteLine,
+} from "../../shared/ui";
 type Entry = { file: File; key: number; error?: string };
 type Outcome = {
   items: {
@@ -133,189 +141,264 @@ export function UploadPage() {
   }
   return (
     <>
-      <Heading
+      <PageHeader
         title="Upload CV"
         description="Chọn một hoặc nhiều file PDF để lưu vào kho CV."
       />
-      <div
-        className="dropzone"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          add(e.dataTransfer.files);
-        }}
-      >
-        <UploadCloud aria-hidden="true" size={28} />
-        <strong>Kéo thả PDF vào đây</strong>
-        <p>
-          PDF · tối đa {bytes(config.maxBytes)}/file · 1–{config.maxFiles}{" "}
-          file/batch
-        </p>
-        <label className="button outline file-picker">
-          Chọn file
-          <input
-            aria-label="Chọn file PDF"
-            type="file"
-            accept="application/pdf,.pdf"
-            multiple
-            disabled={sending || !!outcome || uncertain}
-            onChange={(e) => {
-              if (e.target.files) add(e.target.files);
-              e.target.value = "";
+      <div className="upload-layout">
+        <div className="stack">
+          <div
+            className="dropzone"
+            data-disabled={sending || !!outcome || uncertain || undefined}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              add(e.dataTransfer.files);
             }}
-          />
-        </label>
-      </div>
-      {selectionError && (
-        <p role="alert" className="notice bad">
-          {selectionError}
-        </p>
-      )}
-      <section className="panel upload-list">
-        <h2>
-          {entries.length ? `${entries.length} file đã chọn` : "Chưa chọn file"}
-        </h2>
-        {entries.length > 0 && (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tên file</th>
-                  <th>Dung lượng</th>
-                  <th>Kết quả</th>
-                  <th>
-                    <span className="sr-only">Bỏ file</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <tr key={entry.key}>
-                    <td>
-                      <Filename name={entry.file.name} />
-                    </td>
-                    <td>{bytes(entry.file.size)}</td>
-                    <td>
-                      {entry.error ? (
-                        <span className="text-bad">
-                          Chưa gửi — {entry.error}
-                        </span>
-                      ) : outcome ? (
-                        "Đã gửi — xem kết quả bên dưới"
-                      ) : uncertain ? (
-                        "Chưa xác định kết quả"
-                      ) : sending ? (
-                        "Đang gửi trong request chung"
-                      ) : (
-                        "Sẵn sàng"
-                      )}
-                    </td>
-                    <td>
-                      {!sending && !outcome && !uncertain && (
-                        <Button
-                          variant="outline"
-                          aria-label={`Bỏ ${displayName(entry.file.name)}`}
-                          onClick={() =>
-                            setEntries((prev) =>
-                              prev.filter((e) => e.key !== entry.key),
-                            )
-                          }
-                        >
-                          <X size={15} aria-hidden="true" />
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      {sending && (
-        <div className="notice">
-          <label htmlFor="upload-progress">
-            Tiến độ gửi request: {progress}%
-          </label>
-          <progress id="upload-progress" max={100} value={progress} />
-          <p>
-            Đây là tiến độ truyền dữ liệu, chưa phải kết quả lưu file hoặc OCR.
-          </p>
-          <Button variant="outline" onClick={() => controller.current?.abort()}>
-            Dừng gửi
-          </Button>
-        </div>
-      )}
-      <div aria-live="polite" aria-atomic="true">
-        {uncertain ? (
-          <div className="notice warn">
-            <h2>Chưa xác định kết quả</h2>
+          >
+            <span className="dropzone__icon" aria-hidden="true">
+              <UploadCloud size={24} />
+            </span>
+            <strong>Kéo thả PDF vào đây</strong>
             <p>
-              Request đã gửi có thể vẫn được máy chủ xử lý. Kiểm tra{" "}
-              <Link to="/documents">CV đã lưu</Link> hoặc{" "}
-              <Link to="/batches">lịch sử nhập</Link> trước khi gửi lại.
+              PDF · tối đa {bytes(config.maxBytes)}/file · 1–{config.maxFiles}{" "}
+              file/batch
             </p>
+            <label className="btn btn--secondary file-picker">
+              Chọn file
+              <input
+                aria-label="Chọn file PDF"
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                disabled={sending || !!outcome || uncertain}
+                onChange={(e) => {
+                  if (e.target.files) add(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
           </div>
-        ) : error ? (
-          <ErrorNotice error={error} />
-        ) : (
-          outcome && (
-            <section className="panel padded">
-              <h2>Kết quả từ máy chủ</h2>
-              {outcome.items.map((item, i) => (
-                <p key={i}>
-                  <Filename name={item.name} /> —{" "}
-                  {item.documentId ? (
-                    <>
-                      <span className="badge good">Upload thành công</span>{" "}
-                      <Link to={`/documents/${item.documentId}`}>Mở CV</Link>
-                    </>
-                  ) : (
-                    <>
-                      <span className="badge bad">
-                        Upload thất bại · Chưa lưu
-                      </span>{" "}
-                      {errorLabel(item.errorCode ?? "") ??
-                        "Không thể lưu file."}{" "}
-                      {item.errorCode &&
-                        /^[A-Z0-9_]{1,100}$/.test(item.errorCode) &&
-                        `(${item.errorCode})`}
-                    </>
-                  )}
-                </p>
-              ))}
-              {outcome.batchId && (
-                <Button asChild>
-                  <Link to={`/batches/${outcome.batchId}`}>Xem batch</Link>
-                </Button>
-              )}
-              <p className="footnote">
-                Upload thành công không đồng nghĩa OCR thành công.
+          {selectionError && (
+            <p role="alert" className="notice notice--bad">
+              {selectionError}
+            </p>
+          )}
+          <Panel
+            className="upload-list"
+            title={
+              entries.length
+                ? `${entries.length} file đã chọn`
+                : "Chưa chọn file"
+            }
+            subtitle={
+              entries.length > 0
+                ? `${validCount} file hợp lệ sẽ được gửi`
+                : "Danh sách file sẽ hiện ở đây trước khi gửi."
+            }
+          >
+            {entries.length > 0 && (
+              <div className="table-scroll">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Tên file</th>
+                      <th className="cell-num">Dung lượng</th>
+                      <th>Kết quả</th>
+                      <th className="cell-action">
+                        <span className="sr-only">Bỏ file</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((entry) => (
+                      <tr key={entry.key}>
+                        <td>
+                          <span className="file-cell">
+                            <FileText size={16} aria-hidden="true" />
+                            <Filename name={entry.file.name} />
+                          </span>
+                        </td>
+                        <td className="cell-num cell-muted">
+                          {bytes(entry.file.size)}
+                        </td>
+                        <td>
+                          {entry.error ? (
+                            <span className="text-bad">
+                              Chưa gửi — {entry.error}
+                            </span>
+                          ) : outcome ? (
+                            "Đã gửi — xem kết quả bên dưới"
+                          ) : uncertain ? (
+                            "Chưa xác định kết quả"
+                          ) : sending ? (
+                            "Đang gửi trong request chung"
+                          ) : (
+                            "Sẵn sàng"
+                          )}
+                        </td>
+                        <td className="cell-action">
+                          {!sending && !outcome && !uncertain && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon
+                              aria-label={`Bỏ ${displayName(entry.file.name)}`}
+                              onClick={() =>
+                                setEntries((prev) =>
+                                  prev.filter((e) => e.key !== entry.key),
+                                )
+                              }
+                            >
+                              <X size={15} aria-hidden="true" />
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+          {sending && (
+            <Notice>
+              <label htmlFor="upload-progress">
+                Tiến độ gửi request: {progress}%
+              </label>
+              <progress
+                className="progress"
+                id="upload-progress"
+                max={100}
+                value={progress}
+              />
+              <p className="notice__meta">
+                Đây là tiến độ truyền dữ liệu, chưa phải kết quả lưu file hoặc
+                OCR.
               </p>
-            </section>
-          )
-        )}
-      </div>
-      <div className="actions end">
-        <Button
-          variant="outline"
-          disabled={sending || !entries.length}
-          onClick={reset}
-        >
-          {outcome || uncertain ? "Bắt đầu lượt mới" : "Xóa danh sách"}
-        </Button>
-        {!outcome && !uncertain && (
-          <Button disabled={sending || !validCount} onClick={() => void send()}>
-            {sending
-              ? "Đang upload…"
-              : `Upload${validCount ? ` ${validCount} file` : ""}`}
-          </Button>
-        )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => controller.current?.abort()}
+              >
+                Dừng gửi
+              </Button>
+            </Notice>
+          )}
+          <div aria-live="polite" aria-atomic="true">
+            {uncertain ? (
+              <Notice tone="warn">
+                <h2>Chưa xác định kết quả</h2>
+                <p>
+                  Request đã gửi có thể vẫn được máy chủ xử lý. Kiểm tra{" "}
+                  <Link to="/documents">CV đã lưu</Link> hoặc{" "}
+                  <Link to="/batches">lịch sử nhập</Link> trước khi gửi lại.
+                </p>
+              </Notice>
+            ) : error ? (
+              <ErrorNotice error={error} />
+            ) : (
+              outcome && (
+                <Panel
+                  title="Kết quả từ máy chủ"
+                  actions={
+                    outcome.batchId && (
+                      <Button asChild size="sm">
+                        <Link to={`/batches/${outcome.batchId}`}>
+                          Xem batch
+                        </Link>
+                      </Button>
+                    )
+                  }
+                  footer="Upload thành công không đồng nghĩa OCR thành công."
+                >
+                  <ul className="result-list">
+                    {outcome.items.map((item, i) => (
+                      <li key={i}>
+                        <Filename name={item.name} />
+                        {item.documentId ? (
+                          <>
+                            <Badge tone="good" mark>
+                              Upload thành công
+                            </Badge>
+                            <Link to={`/documents/${item.documentId}`}>
+                              Mở CV
+                            </Link>
+                          </>
+                        ) : (
+                          <>
+                            <Badge tone="bad" mark>
+                              Upload thất bại · Chưa lưu
+                            </Badge>
+                            <span className="muted">
+                              {errorLabel(item.errorCode ?? "") ??
+                                "Không thể lưu file."}{" "}
+                              {item.errorCode &&
+                                /^[A-Z0-9_]{1,100}$/.test(item.errorCode) &&
+                                `(${item.errorCode})`}
+                            </span>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </Panel>
+              )
+            )}
+          </div>
+          <div className="btn-row btn-row--end">
+            <Button
+              variant="secondary"
+              disabled={sending || !entries.length}
+              onClick={reset}
+            >
+              {outcome || uncertain ? "Bắt đầu lượt mới" : "Xóa danh sách"}
+            </Button>
+            {!outcome && !uncertain && (
+              <Button
+                disabled={sending || !validCount}
+                onClick={() => void send()}
+              >
+                {sending
+                  ? "Đang upload…"
+                  : `Upload${validCount ? ` ${validCount} file` : ""}`}
+              </Button>
+            )}
+          </div>
+        </div>
+        <aside className="upload-guide" aria-labelledby="upload-guide-title">
+          <h2 id="upload-guide-title">Sau khi upload</h2>
+          <RouteLine
+            vertical
+            label="Các bước sau khi upload"
+            stops={[
+              {
+                label: "Lưu file",
+                state: "done",
+                detail: "PDF gốc được giữ nguyên, không bị ghi đè.",
+              },
+              {
+                label: "OCR",
+                state: "waiting",
+                detail: "Chạy bất đồng bộ; theo dõi trong Quản lý CV.",
+              },
+              {
+                label: "Hồ sơ",
+                state: "todo",
+                detail: "Giá trị chưa chắc chắn chờ HR xác nhận.",
+              },
+            ]}
+          />
+          <p className="form-note">
+            Nhiều file được gửi trong một batch; kết quả từng file xem ở Lịch sử
+            nhập.
+          </p>
+        </aside>
       </div>
       <dialog
         ref={leaveDialog}
         aria-labelledby="leave-title"
-        className="leave-dialog"
+        className="dialog"
         onCancel={(e) => {
           e.preventDefault();
           if (blocker.state === "blocked") blocker.reset();
@@ -326,7 +409,7 @@ export function UploadPage() {
           Rời trang sẽ dừng chờ kết quả. Máy chủ có thể vẫn lưu file; hãy kiểm
           tra dữ liệu trước khi gửi lại.
         </p>
-        <div className="actions">
+        <div className="btn-row">
           <Button
             autoFocus
             onClick={() => {
@@ -336,7 +419,7 @@ export function UploadPage() {
             Ở lại
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               controller.current?.abort();
               if (blocker.state === "blocked") blocker.proceed();

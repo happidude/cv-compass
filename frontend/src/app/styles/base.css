@@ -1,0 +1,118 @@
+/* Element defaults. Components never restyle bare elements globally. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+:root {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  color: var(--c-ink);
+  background: var(--c-ground);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+  accent-color: var(--c-accent);
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+body {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+  background: var(--c-ground);
+}
+::selection {
+  background: #cfe4dd;
+  color: var(--c-ink);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button,
+summary {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+a {
+  color: var(--c-accent-ink);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+a:hover {
+  color: var(--c-accent-hover);
+}
+:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--c-ink);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
+}
+h1 {
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+h3 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+h4 {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-ink-2);
+}
+p {
+  margin: 0;
+}
+pre {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+table {
+  font-variant-numeric: tabular-nums;
+}
+dl,
+dd {
+  margin: 0;
+}
+blockquote {
+  margin: 0;
+}
+details > summary {
+  color: var(--c-accent-ink);
+}
+progress {
+  accent-color: var(--c-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
