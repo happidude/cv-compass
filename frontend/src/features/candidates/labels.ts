@@ -7,6 +7,20 @@ export const stateLabel = (state: string) =>
     : state === "EDITED"
       ? "Đã chỉnh sửa"
       : "Chưa xác minh";
+/** Display name: parsed name, else the source file name, else a neutral id label. */
+export const candidateTitle = (
+  id: string | number,
+  fullName?: string | null,
+  filename?: string | null,
+) => fullName || filename || "Ứng viên #" + id;
+/** The earliest linked document (lowest id), matching the list API fallback. */
+export const firstFilename = (
+  documents: readonly { id: string; filename: string }[],
+) =>
+  documents.reduce<{ id: string; filename: string } | undefined>(
+    (first, doc) => (!first || Number(doc.id) < Number(first.id) ? doc : first),
+    undefined,
+  )?.filename;
 export const stateTone = (state: string): Tone =>
   state === "CONFIRMED" ? "good" : state === "EDITED" ? "info" : "warn";
 export function dateLabel(value: ExperienceData["period"]["start"]) {

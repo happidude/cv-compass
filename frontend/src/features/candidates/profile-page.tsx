@@ -17,7 +17,7 @@ import {
 import { ExperienceForm } from "./experience-form";
 import { ExperienceValues, type Evidence } from "./experience";
 import { HistorySection } from "./history";
-import { stateLabel, stateTone } from "./labels";
+import { candidateTitle, firstFilename, stateLabel, stateTone } from "./labels";
 import { PersonalFields, PersonalForm } from "./personal-info";
 import { ProposalsSection } from "./proposals";
 import { useHistory, useProfile, useProposals } from "./queries";
@@ -108,7 +108,7 @@ function CandidateContent({ id }: { id: string }) {
   return (
     <div className="profile">
       <PageHeader
-        title={p.basic.fullName || "Ứng viên #" + id}
+        title={candidateTitle(id, p.basic.fullName, firstFilename(p.documents))}
         meta={
           <>
             <span className="nums">Phiên bản {p.version}</span>

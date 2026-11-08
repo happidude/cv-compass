@@ -55,6 +55,7 @@ export const basicSchema = z.object({
   location: z.string().nullable().optional(),
   summary: z.string().nullable().optional(),
   gender: z.string().nullable().optional(),
+  dateOfBirth: z.string().nullable().optional(),
 });
 export const personalFieldSchema = z
   .object({
@@ -97,6 +98,7 @@ export const personalInfoSchema = z.object({
     location: personalFieldSchema.optional(),
     summary: personalFieldSchema.optional(),
     gender: personalFieldSchema.optional(),
+    dateOfBirth: personalFieldSchema.optional(),
   }),
 });
 export type PersonalInfo = z.infer<typeof personalInfoSchema>;
@@ -132,6 +134,7 @@ export const pageSchema = z.object({
       fullName: z.string().nullable(),
       basicState: z.string(),
       importedAt: z.string(),
+      sourceFilename: z.string().nullable().optional(),
     }),
   ),
   hasNext: z.boolean(),

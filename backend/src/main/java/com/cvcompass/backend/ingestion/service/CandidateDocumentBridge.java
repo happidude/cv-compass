@@ -2,7 +2,9 @@ package com.cvcompass.backend.ingestion.service;
 
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
 import com.cvcompass.backend.ingestion.repository.CandidateDocumentRepository;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +39,10 @@ public class CandidateDocumentBridge implements CandidateDocuments {
 
     public List<Document> list(long candidateId) {
         return repository.list(candidateId);
+    }
+
+    public Map<Long, String> firstFilenames(Collection<Long> candidateIds) {
+        return candidateIds.isEmpty() ? Map.of() : repository.firstFilenames(candidateIds);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

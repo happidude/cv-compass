@@ -3,6 +3,7 @@ package com.cvcompass.backend.candidate.service;
 import com.cvcompass.backend.candidate.dto.Page;
 import com.cvcompass.backend.candidate.dto.Profile;
 import com.cvcompass.backend.candidate.dto.Proposal;
+import com.cvcompass.backend.candidate.dto.Summary;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
@@ -25,7 +26,10 @@ public class CandidateQueryService {
             throw new CandidateFailure(400, "VALIDATION_ERROR");
         var rows = repository.list(before, size);
         boolean next = rows.size() > size;
-        var content = List.copyOf(rows.subList(0, Math.min(rows.size(), size)));
+        var page = rows.subList(0, Math.min(rows.size(), size));
+        var filenames = documents.firstFilenames(page.stream().map(Summary::id).toList());
+        var content =
+                page.stream().map(row -> row.withSourceFilename(filenames.get(row.id()))).toList();
         return new Page(content, next, next ? content.getLast().id() : null);
     }
 
