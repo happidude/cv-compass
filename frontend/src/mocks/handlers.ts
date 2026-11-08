@@ -9,8 +9,10 @@ import {
   documentPage,
   apiFailure,
 } from "./fixtures";
+import { candidateHandlers } from "./candidates";
 const base = config.apiBase;
 export const handlers = [
+  ...candidateHandlers,
   http.get(`${base}/auth/me`, () =>
     HttpResponse.json({ username: "synthetic-user", roles: ["ROLE_USER"] }),
   ),
