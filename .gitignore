@@ -68,6 +68,8 @@ credentials/
 !/.claude/settings.json
 !/.claude/agents/
 !/.claude/agents/*.md
+CLAUDE.local.md
+**/CLAUDE.local.md
 
 # Keep sensitive/runtime exclusions authoritative after documentation exceptions.
 secrets/

@@ -5,6 +5,13 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 
 ## Phê duyệt
 
+- Developer duyệt trong chat ngày 2026-11-08 (chuyển agent sang Claude Code):
+  quyền dùng CV mẫu áp dụng cho nhà cung cấp mô hình **Anthropic (Claude)**; thư mục private đổi thành
+  `D:\cv_compass\data\test\`. Lát cắt chưa làm (hiện là lát cắt 6) dùng ngân sách review theo
+  [workflow](../../AGENT_WORKFLOW.md) (1 lượt + 1 delta, chỉ Critical/High chặn). CI tạm bỏ qua đến khi
+  billing GitHub Actions được gỡ: bàn giao khi local full gate PASS, CI ghi NOT VERIFIED. Không phải
+  phê duyệt bắt đầu lát cắt 6; ưu tiên ngày 2026-11-05 giữ nguyên.
+
 - Developer đổi ưu tiên ngày 2026-11-05: [mở rộng grammar và clean code có mục tiêu](grammar-expansion.md).
   Chưa làm chương trình đánh giá/search hoặc hoàn thành lát cắt 6; các AC/R cũ giữ nguyên.
 
@@ -31,10 +38,10 @@ và đúng mục acceptance của lát cắt được giao. Không đọc các l
 - Thay đổi local của developer được giữ nguyên: không reset, stash, discard, stage ngoài phạm vi.
 - Database local là dữ liệu test nhưng không có quyền drop hay reset; kiểm thử dùng schema/storage cô lập.
 - **Dữ liệu CV thật — phương án (B) đã được developer chọn:**
-  Thư mục private là `D:\cv_compass\data\codex-test\`; agent chỉ đọc thư mục này.
+  Thư mục private là `D:\cv_compass\data\test\` (trước 2026-11-08: `codex-test`); agent chỉ đọc thư mục này.
   Chủ CV là HoangNguyen; cơ sở cho phép: `<ĐIỀN: mô tả cơ sở cho phép dùng CV>`.
   Developer xác nhận có quyền dùng CV mẫu và chấp nhận nội dung CV/raw OCR đi qua nhà cung cấp
-  mô hình của agent. Quyền này chỉ có hiệu lực từ lát cắt 1; agent chỉ đọc đúng
+  mô hình của agent (Anthropic/Claude từ 2026-11-08; trước đó OpenAI/Codex). Quyền này chỉ có hiệu lực từ lát cắt 1; agent chỉ đọc đúng
   thư mục trên khi lát cắt 1, 3 hoặc 6 cần, không quét nơi khác, không gửi tới dịch vụ ngoài nào khác,
   không ghi PII/raw OCR/screenshot/report chứa PII vào Git. PR docs hiện tại vẫn không đọc CV.
 - **Gold và held-out:** gold do developer kiểm tra và xác nhận. Tập held-out tách theo document,
@@ -85,7 +92,7 @@ khi đủ bằng chứng, nếu không thì trạng thái NOT_FOUND/AMBIGUOUS/IN
 
 ## Mức workflow và lát cắt
 
-Mỗi lát cắt: một nhánh, một PR, CI xanh độc lập, tuần tự. Phiên mới cho mỗi lát cắt.
+Mỗi lát cắt: một nhánh, một PR, CI xanh độc lập (tạm thời NOT VERIFIED, xem Phê duyệt 2026-11-08), tuần tự. Phiên mới cho mỗi lát cắt.
 Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
 
 | # | Lát cắt | Mức | Vòng |
@@ -96,7 +103,7 @@ Developer đã duyệt giữ tách lát cắt 3 (parser) và 4 (publication).
 | 3 | Parser | 3 | 3 |
 | 4 | Publication và database | 3 | 3 |
 | 5 | UI tối thiểu (nâng mức 3 nếu đổi contract) | 2 | 2 |
-| 6 | E2E và đánh giá | 3 | 3 |
+| 6 | E2E và đánh giá | 3 | 1+1 |
 
 ## Acceptance
 
