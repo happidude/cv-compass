@@ -21,12 +21,15 @@ export function RouteLine({
   vertical = false,
   className,
   label,
+  labelledBy,
 }: {
   stops: RouteStop[];
   compact?: boolean;
   vertical?: boolean;
   className?: string;
-  label: string;
+  label?: string;
+  /** Prefer this over `label` when a visible or sr-only heading names the route. */
+  labelledBy?: string;
 }) {
   return (
     <ol
@@ -36,7 +39,8 @@ export function RouteLine({
         vertical && "route--vertical",
         className,
       )}
-      aria-label={compact ? undefined : label}
+      aria-label={compact || labelledBy ? undefined : label}
+      aria-labelledby={compact ? undefined : labelledBy}
       aria-hidden={compact ? "true" : undefined}
       title={
         compact

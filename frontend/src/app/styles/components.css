@@ -123,12 +123,6 @@
   background: var(--c-bad-soft);
   color: var(--c-bad);
 }
-.badge--outline {
-  background: transparent;
-  border: 1px solid var(--c-line-strong);
-  color: var(--c-ink-2);
-}
-
 /* ---- Panel ------------------------------------------------------------ */
 .panel {
   background: var(--c-surface);

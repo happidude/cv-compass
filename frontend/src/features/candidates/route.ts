@@ -11,7 +11,7 @@ export function profileRoute(
     (e) => e.state === "CONFIRMED",
   ).length;
   return [
-    { label: "Hồ sơ", state: "done", detail: "Đã publish" },
+    { label: "Hồ sơ", state: "done", detail: "Đã tạo hồ sơ" },
     {
       label: "Thông tin cơ bản",
       state:

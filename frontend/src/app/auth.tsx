@@ -13,11 +13,15 @@ import { RequestError } from "../shared/http";
 import { Button, ErrorNotice, Loading, RouteLine } from "../shared/ui";
 
 /** Only same-app paths are accepted as a post-login destination. */
-function returnPath(state: unknown) {
-  const from = (state as { from?: Location } | null)?.from;
-  const path = from ? from.pathname + from.search : "/";
-  return path.startsWith("/") && !path.startsWith("//") && path !== "/login"
-    ? path
+export function returnPath(state: unknown) {
+  const from = (state as { from?: Partial<Location> } | null)?.from;
+  const pathname = typeof from?.pathname === "string" ? from.pathname : "";
+  const search = typeof from?.search === "string" ? from.search : "";
+  return pathname.startsWith("/") &&
+    !pathname.startsWith("//") &&
+    !pathname.startsWith("/\\") &&
+    pathname !== "/login"
+    ? pathname + search
     : "/";
 }
 

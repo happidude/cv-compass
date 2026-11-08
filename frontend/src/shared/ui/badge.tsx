@@ -8,7 +8,7 @@ export function Badge({
   className,
   children,
 }: {
-  tone?: Tone | "outline";
+  tone?: Tone;
   mark?: boolean;
   title?: string;
   className?: string;

@@ -77,7 +77,7 @@ function DocumentContent({ id }: { id: string }) {
           Tuyến xử lý
         </h2>
         <RouteLine
-          label="Tuyến xử lý"
+          labelledBy="route-title"
           stops={documentRoute(d.processing.status)}
         />
         <Notice tone={jobTone(d.processing.status)}>

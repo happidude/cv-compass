@@ -123,7 +123,7 @@ function CandidateContent({ id }: { id: string }) {
           Tiến độ review
         </h2>
         <RouteLine
-          label="Tiến độ review"
+          labelledBy="review-route"
           stops={profileRoute(p, proposals.data)}
         />
       </section>
