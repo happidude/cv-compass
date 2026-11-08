@@ -562,6 +562,59 @@ class M11IntegrationTests {
     }
 
     @Test
+    void acceptingAReplacementKeepsTheHrExclusionOnTheSameExperience() throws Exception {
+        var doc = document();
+        var initial = published(doc);
+        var old = initial.experiences().getFirst();
+        var data = (ObjectNode) old.data().deepCopy();
+        data.put("countInTotal", false);
+        var excluded =
+                candidates.editExperience(
+                        initial.id(), initial.version(), old.id(), data, "SAVE", "synthetic-user");
+        assertThat(excluded.experienceSummary().skipped())
+                .singleElement()
+                .satisfies(row -> assertThat(row.reason().name()).isEqualTo("EXCLUDED_BY_USER"));
+
+        long mappingId =
+                result(
+                        doc,
+                        raw().replace("Northstar Devices", "Sample Replacement Devices"),
+                        false);
+        assertThat(publication.publish(mappingId)).isTrue();
+        var profile = queries.detail(initial.id());
+        var proposal = queries.proposals(initial.id(), null, 100).getFirst();
+        assertThat(proposal.data().has("countInTotal")).isFalse();
+
+        var accepted =
+                reviews.decide(
+                        profile.id(),
+                        profile.version(),
+                        proposal.id(),
+                        "ACCEPT",
+                        old.id(),
+                        null,
+                        "synthetic-user");
+        assertThat(accepted.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.id()).isEqualTo(old.id());
+                            assertThat(row.data().path("company").path("raw").asString())
+                                    .isEqualTo("Sample Replacement Devices");
+                            assertThat(row.data().path("countInTotal").isBoolean()).isTrue();
+                            assertThat(row.data().path("countInTotal").asBoolean()).isFalse();
+                        });
+        assertThat(accepted.experienceSummary().totalMonths()).isZero();
+        assertThat(accepted.experienceSummary().skipped())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.id()).isEqualTo(old.id());
+                            assertThat(row.reason().name()).isEqualTo("EXCLUDED_BY_USER");
+                        });
+    }
+
+    @Test
     void actualOcrMappingPublicationIsIdempotentAndPreservesRawSource() throws Exception {
         var doc = document();
         long r = result(doc, raw(), false);

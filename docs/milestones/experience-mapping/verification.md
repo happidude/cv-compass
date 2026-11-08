@@ -19,6 +19,5 @@ CI ghi riêng theo head của mỗi Draft PR. Full gate chạy trên E4.
 
 Xem [spec](spec.md#open-questions).
 
-- Khi HR chấp nhận đề xuất thay thế một kinh nghiệm đã loại khỏi tổng, API
-  hiện thay toàn bộ DATA và trường thiếu mặc định bật. Giữ cách thay hiện có
-  cho đến khi chủ dự án quyết định có mang lựa chọn loại trừ qua lần thay thế hay không.
+- Chủ dự án đã chốt giữ lựa chọn tính tổng khi ACCEPT đề xuất thay thế.
+  Kỳ đã kết thúc được tính cả khi thiếu ngày nhập tham chiếu.

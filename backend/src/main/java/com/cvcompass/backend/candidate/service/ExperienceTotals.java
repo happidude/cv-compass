@@ -58,7 +58,7 @@ final class ExperienceTotals {
                     entry.ongoingAsStated()
                             ? reference
                             : latest(entry.endDate(), entry.endPrecision());
-            if (end.isAfter(reference)) end = reference;
+            if (reference != null && end.isAfter(reference)) end = reference;
             if (end.isBefore(start)) {
                 skipped.add(new Skipped(entry.id(), SkipReason.PERIOD_UNRESOLVED));
                 continue;
@@ -85,8 +85,8 @@ final class ExperienceTotals {
             return SkipReason.PERIOD_UNRESOLVED;
         if (start == null) return SkipReason.MISSING_START;
         if (!entry.ongoingAsStated() && entry.endDate() == null) return SkipReason.MISSING_END;
-        if (reference == null) return SkipReason.NO_REFERENCE_DATE;
-        if (start.isAfter(reference)) return SkipReason.START_AFTER_REFERENCE;
+        if (reference == null && entry.ongoingAsStated()) return SkipReason.NO_REFERENCE_DATE;
+        if (reference != null && start.isAfter(reference)) return SkipReason.START_AFTER_REFERENCE;
         return null;
     }
 

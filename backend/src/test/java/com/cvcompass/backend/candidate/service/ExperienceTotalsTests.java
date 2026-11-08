@@ -223,7 +223,7 @@ class ExperienceTotalsTests {
     }
 
     @Test
-    void skipsHrPeriodsWhenThereIsNoLinkedImport() {
+    void countsClosedPeriodsWithoutAnImportButSkipsOngoingPeriods() {
         var result =
                 ExperienceTotals.calculate(
                         List.of(
@@ -248,13 +248,12 @@ class ExperienceTotalsTests {
                                         "PROPOSED",
                                         false,
                                         true,
-                                        null)),
+                                        null),
+                                closed(3, "2024-03-01", "2024-04-30")),
                         Map.of());
-        assertThat(result.countedIds()).isEmpty();
-        assertThat(result.skipped())
-                .containsExactly(
-                        new Skipped(id(1), NO_REFERENCE_DATE),
-                        new Skipped(id(2), NO_REFERENCE_DATE));
+        assertThat(result.totalMonths()).isEqualTo(3);
+        assertThat(result.countedIds()).containsExactly(id(2), id(3));
+        assertThat(result.skipped()).containsExactly(new Skipped(id(1), NO_REFERENCE_DATE));
     }
 
     private static ExperienceTotalsInput closed(long id, String start, String end) {
