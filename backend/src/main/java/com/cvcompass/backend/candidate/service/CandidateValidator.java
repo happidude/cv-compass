@@ -51,8 +51,10 @@ public class CandidateValidator {
                         "descriptionEvidence",
                         "evidence",
                         "issues",
-                        "localId")
+                        "localId",
+                        "countInTotal")
                 .containsAll(clean.propertyNames())) invalid();
+        if (clean.has("countInTotal") && !clean.path("countInTotal").isBoolean()) invalid();
         stripEvidence(clean);
         for (String field : List.of("company", "title", "period"))
             if (!clean.path(field).isObject()) invalid();

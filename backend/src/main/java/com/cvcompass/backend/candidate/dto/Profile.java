@@ -12,4 +12,5 @@ public record Profile(
         String basicOrigin,
         JsonNode extensions,
         List<Experience> experiences,
-        List<CandidateDocuments.Document> documents) {}
+        List<CandidateDocuments.Document> documents,
+        ExperienceSummary experienceSummary) {}

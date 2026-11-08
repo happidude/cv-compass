@@ -36,7 +36,7 @@ public class CandidateRevisionService {
 
     public void revision(
             long id, long version, String actor, String action, Object before, Object after) {
-        JsonNode snapshot = after == null ? null : json.valueToTree(after);
+        JsonNode snapshot = snapshot(after);
         if (snapshot instanceof ObjectNode object) {
             if (object.has("version")) object.put("version", version + 1);
             else if (object.path("profile") instanceof ObjectNode profile)
@@ -47,8 +47,20 @@ public class CandidateRevisionService {
                 version,
                 actor,
                 action,
-                before == null ? null : json.writeValueAsString(before),
+                before == null ? null : snapshot(before).toString(),
                 snapshot == null ? null : snapshot.toString());
+    }
+
+    private JsonNode snapshot(Object value) {
+        if (value == null) return null;
+        JsonNode snapshot = json.valueToTree(value);
+        // Derived summaries belong to profile responses, not persisted history snapshots.
+        if (snapshot instanceof ObjectNode object) {
+            object.remove("experienceSummary");
+            if (object.path("profile") instanceof ObjectNode profile)
+                profile.remove("experienceSummary");
+        }
+        return snapshot;
     }
 
     public List<History> history(long id, Long before, int size) {

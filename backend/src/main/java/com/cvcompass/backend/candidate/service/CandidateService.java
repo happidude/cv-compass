@@ -130,7 +130,7 @@ public class CandidateService {
                     experiences.insertExperience(id, clean, "EDITED", "USER", null, null);
                 else
                     experiences.updateExperience(
-                            existing.id(), clean, "EDITED", "USER", null, null);
+                            existing.id(), clean, "EDITED", "USER", existing.documentId(), null);
             }
             default -> throw new CandidateFailure(400, "VALIDATION_ERROR");
         }
