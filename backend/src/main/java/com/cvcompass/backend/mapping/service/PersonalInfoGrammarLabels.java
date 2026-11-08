@@ -52,8 +52,10 @@ final class PersonalInfoGrammarLabels {
                         (field, rule) ->
                                 rule.labels().forEach(label -> values.add(alias(field, label))));
         boolean v33 =
-                PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(
-                        config.engineCompatibility());
+                PersonalInfoDefinition.GRAMMAR_V34_ENGINE_VERSION.equals(
+                                config.engineCompatibility())
+                        || PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(
+                                config.engineCompatibility());
         var configured =
                 values.stream().map(Alias::text).collect(java.util.stream.Collectors.toSet());
         // 3.3 turns some boundaries (date of birth) into fields; a field label wins over the

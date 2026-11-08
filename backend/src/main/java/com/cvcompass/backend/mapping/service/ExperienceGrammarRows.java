@@ -7,6 +7,7 @@ import com.cvcompass.backend.mapping.dto.MappingResult.Evidence;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Typed finite row anchors establish relationships; whitespace columns do not. */
@@ -32,6 +33,22 @@ final class ExperienceGrammarRows {
     private static final Pattern MODIFIER =
             Pattern.compile(
                     "(?iu)(?:senior|junior|deputy|assistant|acting|regional|global|head of|chief|lead)");
+
+    private static final Pattern COMPANY_PREFIX =
+            Pattern.compile("(?iu)^(?:công ty|cty|ctcp|tnhh|tập đoàn)\\s+.+");
+    private static final Pattern HEADING_PART = Pattern.compile("\\([^()]*\\)|\\||\\s+[/–—-]\\s+");
+    private static final Pattern BULLET = Pattern.compile("^(?:[-–—*•●▪]|\\d+[.)])\\s+.*|^[•●▪].*");
+    private static final Set<String> REGIONS =
+            Set.of(
+                    "vietnam",
+                    "việt nam",
+                    "singapore",
+                    "thailand",
+                    "malaysia",
+                    "indonesia",
+                    "philippines",
+                    "sea",
+                    "apac");
 
     record Atom(String raw, String text, List<Evidence> evidence) {
         Atom {
@@ -82,7 +99,7 @@ final class ExperienceGrammarRows {
                             ExperienceDefinition.key(value)));
     }
 
-    Row parse(int index) {
+    Row parse(int index, boolean anchored) {
         var line = lines.get(index);
         if (CONTEXT.matcher(line.text).matches() || APPLICATION.matcher(line.text).matches())
             return new Row(line, null, List.of(), List.of(), index, false, false, true);
@@ -103,7 +120,7 @@ final class ExperienceGrammarRows {
         var periods = new ArrayList<PeriodProposal>();
         boolean continued = false, ambiguous = false;
         int consumed = index;
-        var matches = matches(line.text);
+        var matches = matches(line.text, anchored);
         if (!matches.isEmpty()) {
             for (int n = 0; n < matches.size(); n++) {
                 var label = matches.get(n);
@@ -113,7 +130,7 @@ final class ExperienceGrammarRows {
                 if (value == null && index + 1 < lines.size()) {
                     var next = lines.get(index + 1);
                     if (next.page == line.page
-                            && matches(next.text).isEmpty()
+                            && matches(next.text, anchored).isEmpty()
                             && !heading(next.text)) {
                         value = atom(next, 0, next.text.length());
                         valueLine = next;
@@ -176,11 +193,11 @@ final class ExperienceGrammarRows {
                         var cleaned = stripContinuation(valueLine, value);
                         continued |= cleaned != value;
                         value = cleaned;
-                        if (consumed + 1 < lines.size() && !company(value.text())) {
+                        if (consumed + 1 < lines.size() && !company(value.text(), anchored)) {
                             var next = lines.get(consumed + 1);
                             if (next.page == line.page
-                                    && company(value.text() + " " + next.text)
-                                    && matches(next.text).isEmpty()) {
+                                    && company(value.text() + " " + next.text, anchored)
+                                    && matches(next.text, anchored).isEmpty()) {
                                 var spans = new ArrayList<>(value.evidence());
                                 spans.add(next.whole());
                                 value = atom(spans);
@@ -193,8 +210,8 @@ final class ExperienceGrammarRows {
                                 && consumed + 1 < lines.size()) {
                             var next = lines.get(consumed + 1);
                             if (next.page == line.page
-                                    && title(next.text)
-                                    && matches(next.text).isEmpty()) {
+                                    && title(next.text, anchored)
+                                    && matches(next.text, anchored).isEmpty()) {
                                 var spans = new ArrayList<>(value.evidence());
                                 spans.add(next.whole());
                                 value = atom(spans);
@@ -206,6 +223,10 @@ final class ExperienceGrammarRows {
                 }
             }
         } else {
+            if (anchored) {
+                var headingRow = anchoredRow(index);
+                if (headingRow != null) return headingRow;
+            }
             var capture = ExperienceGrammarDates.find(line);
             if (line.raw.matches("(?s).*\\S(?:\\t| {3,})\\S.*")
                     && !line.text.contains("|")
@@ -225,8 +246,8 @@ final class ExperienceGrammarRows {
                     else if (value.text().matches("[0-9]{4}"))
                         periods.add(
                                 ExperienceGrammarDates.labelled(line, parts.start(), parts.end()));
-                    else if (company(value.text())) companies.add(value);
-                    else if (title(value.text())) titles.add(value);
+                    else if (company(value.text(), anchored)) companies.add(value);
+                    else if (title(value.text(), anchored)) titles.add(value);
                     else ambiguous = true;
                 }
             } else if (capture != null) {
@@ -244,8 +265,8 @@ final class ExperienceGrammarRows {
                                     before == null ? empty() : before,
                                     after == null ? empty() : after)) {
                         if (value.raw().isEmpty() || value.text().matches("[().;:：]*")) continue;
-                        if (company(value.text())) companies.add(value);
-                        else if (title(value.text())) titles.add(value);
+                        if (company(value.text(), anchored)) companies.add(value);
+                        else if (title(value.text(), anchored)) titles.add(value);
                         else ambiguous = true;
                     }
                 }
@@ -259,12 +280,12 @@ final class ExperienceGrammarRows {
                     return new Row(line, null, List.of(), List.of(), index, false, false, true);
                 var cleaned = stripContinuation(line, value);
                 continued = value != cleaned;
-                if (company(cleaned.text())) companies.add(cleaned);
-                else if (title(value.text())) titles.add(value);
+                if (company(cleaned.text(), anchored)) companies.add(cleaned);
+                else if (title(value.text(), anchored)) titles.add(value);
                 else if (MODIFIER.matcher(value.text()).matches()
                         && index + 1 < lines.size()
                         && lines.get(index + 1).page == line.page
-                        && title(lines.get(index + 1).text)) {
+                        && title(lines.get(index + 1).text, anchored)) {
                     titles.add(
                             atom(
                                     List.of(
@@ -291,8 +312,158 @@ final class ExperienceGrammarRows {
                 false);
     }
 
+    private Row anchoredRow(int index) {
+        var line = lines.get(index);
+        var captures = ExperienceGrammarDates.findAll(line);
+        if (captures.isEmpty()) {
+            if (index + 1 >= lines.size()) return null;
+            var next = lines.get(index + 1);
+            if (next.page != line.page || !wrappedPeriod(next)) return null;
+            var company = followingCompany(index, index);
+            return company == null
+                    ? null
+                    : new Row(line, company, List.of(), List.of(), index, false, false, false);
+        }
+        var capture = captures.getFirst();
+        if (captures.size() != 1)
+            return new Row(line, null, List.of(), List.of(), index, false, true, false);
+
+        int start = capture.start();
+        int end = capture.end();
+        // Strip only parentheses enclosing the period, including inner whitespace.
+        int left = line.text.substring(0, start).stripTrailing().length();
+        int right = line.text.length() - line.text.substring(end).stripLeading().length();
+        if (left > 0
+                && right < line.text.length()
+                && line.text.charAt(left - 1) == '('
+                && line.text.charAt(right) == ')') {
+            start = left - 1;
+            end = right + 1;
+        }
+        if (ExperienceGrammarDates.dateOnly(line)
+                || start == 0 && line.text.substring(end).isBlank()) {
+            var next = nearbyHeadingText(index, index + 1);
+            if (next != null && title(next.text, true) && !wrappedPeriod(line)) {
+                var company = followingCompany(index, index + 2);
+                if (company != null)
+                    return new Row(
+                            line,
+                            company,
+                            List.of(atom(next, 0, next.text.length())),
+                            List.of(capture.proposal()),
+                            index + 2,
+                            false,
+                            false,
+                            false);
+            }
+            return new Row(
+                    line, null, List.of(), List.of(capture.proposal()), index, false, false, false);
+        }
+
+        var before = atom(line, 0, start);
+        var after = atom(line, end, line.text.length());
+        String remainder =
+                ((before == null ? "" : before.text()) + " " + (after == null ? "" : after.text()))
+                        .strip();
+        if (!shortHeading(remainder) || BULLET.matcher(line.text).matches())
+            return new Row(line, null, List.of(), List.of(), index, false, false, true);
+
+        var parts = new ArrayList<Atom>();
+        headingParts(line, 0, start, parts);
+        headingParts(line, end, line.text.length(), parts);
+        var companies = new ArrayList<Atom>();
+        var titles = new ArrayList<Atom>();
+        for (var part : parts) {
+            if (location(part.text())) continue;
+            if (title(part.text(), true)) titles.add(part);
+            else companies.add(part);
+        }
+        var company = companies.size() == 1 ? companies.getFirst() : null;
+        int consumed = index;
+        if (companies.isEmpty() && !titles.isEmpty()) {
+            company = followingCompany(index, index + 1);
+            if (company != null) consumed++;
+        }
+        boolean continued = false;
+        if (company != null && consumed == index) {
+            var cleaned = stripContinuation(line, company);
+            continued = cleaned != company;
+            company = cleaned;
+        }
+        return new Row(
+                line,
+                company,
+                titles,
+                List.of(capture.proposal()),
+                consumed,
+                continued,
+                companies.size() > 1 || companies.isEmpty() && titles.isEmpty(),
+                false);
+    }
+
+    private static boolean wrappedPeriod(SourceLine line) {
+        var capture = ExperienceGrammarDates.find(line);
+        return capture != null
+                && line.text.substring(0, capture.start()).strip().equals("(")
+                && line.text.substring(capture.end()).strip().equals(")");
+    }
+
+    private Atom followingCompany(int anchor, int index) {
+        var next = nearbyHeadingText(anchor, index);
+        if (next == null) return null;
+        var parts = new ArrayList<Atom>();
+        headingParts(next, 0, next.text.length(), parts);
+        var values = parts.stream().filter(part -> !location(part.text())).toList();
+        return values.size() == 1 && !title(values.getFirst().text(), true)
+                ? values.getFirst()
+                : null;
+    }
+
+    private SourceLine nearbyHeadingText(int anchor, int index) {
+        if (index >= lines.size()) return null;
+        var next = lines.get(index);
+        return next.page == lines.get(anchor).page
+                        && shortHeading(next.text)
+                        && !heading(next.text)
+                        && !contextHeading(
+                                ExperienceDefinition.key(next.text.replaceFirst("[:：]$", "")))
+                        && matches(next.text, true).isEmpty()
+                        && !next.text.matches("[0-9]{4}")
+                        && ExperienceGrammarDates.find(next) == null
+                ? next
+                : null;
+    }
+
+    private void headingParts(SourceLine line, int start, int end, List<Atom> parts) {
+        var separators = HEADING_PART.matcher(line.text).region(start, end);
+        while (separators.find()) {
+            if (separators.group().startsWith("(")) continue;
+            var part = atom(line, start, separators.start());
+            if (part != null) parts.add(part);
+            start = separators.end();
+        }
+        var last = atom(line, start, end);
+        if (last != null) parts.add(last);
+    }
+
+    private static boolean shortHeading(String text) {
+        return text.length() <= 160
+                && text.split(" ").length <= 14
+                && !text.endsWith(".")
+                && !PROSE.matcher(text).matches()
+                && !BULLET.matcher(text).matches()
+                && !CONTEXT.matcher(text).matches()
+                && !APPLICATION.matcher(text).matches();
+    }
+
+    private static boolean location(String text) {
+        if (REGIONS.contains(ExperienceDefinition.key(text))) return true;
+        var province = PersonalInfoProvinces.find(text);
+        return province != null && province.start() == 0 && province.end() == text.length();
+    }
+
     boolean explicitEmployment(SourceLine line) {
-        return matches(line.text).stream().anyMatch(label -> label.field().equals("company"))
+        return matches(line.text, false).stream().anyMatch(label -> label.field().equals("company"))
                 || STATEMENT.matcher(line.text).matches();
     }
 
@@ -300,7 +471,7 @@ final class ExperienceGrammarRows {
         return new Atom("", "", List.of());
     }
 
-    boolean company(String text) {
+    private boolean company(String text, boolean v34) {
         boolean configured =
                 config.companies().stream()
                         .anyMatch(
@@ -313,11 +484,13 @@ final class ExperienceGrammarRows {
                                                                                 ExperienceDefinition
                                                                                         .key(
                                                                                                 text))));
+        String companyText = v34 ? text.replaceAll("\\([^()]*\\)", "") : text;
         return configured
                 || !PROSE.matcher(text).matches()
                         && !CONTEXT.matcher(text).matches()
-                        && !text.contains(":")
+                        && !companyText.contains(":")
                         && (COMPANY.matcher(text).matches()
+                                || v34 && COMPANY_PREFIX.matcher(text).matches()
                                 || config.companies().stream()
                                         .anyMatch(
                                                 rule ->
@@ -332,8 +505,8 @@ final class ExperienceGrammarRows {
                                                                                                                 text)))));
     }
 
-    private boolean title(String text) {
-        if (company(text)
+    private boolean title(String text, boolean v34) {
+        if (company(text, v34)
                 || PROSE.matcher(text).matches()
                 || CONTEXT.matcher(text).matches()
                 || text.endsWith(".")
@@ -343,6 +516,7 @@ final class ExperienceGrammarRows {
                 || text.matches("(?iu).*(?:CEO|CFO|COO).*(?:course|training|program).*"))
             return false;
         return ROLE.matcher(text).find()
+                || v34 && text.matches("(?iu).*\\bcoordinator\\b.*")
                 || config.titles().stream()
                         .anyMatch(
                                 rule ->
@@ -366,11 +540,16 @@ final class ExperienceGrammarRows {
                 .anyMatch(value -> ExperienceDefinition.key(value).equals(key));
     }
 
-    private List<Match> matches(String text) {
+    static boolean contextHeading(String key) {
+        return key.matches("(?iu)(?:advisory|consulting|shareholder|co-founder|projects|dự án)");
+    }
+
+    private List<Match> matches(String text, boolean v34) {
         var result = new ArrayList<Match>();
         for (var label : labels) {
             var matcher = label.pattern().matcher(text);
             while (matcher.find()) {
+                if (v34 && insideParentheses(text, matcher.start())) continue;
                 if (result.stream()
                         .noneMatch(
                                 old ->
@@ -384,6 +563,15 @@ final class ExperienceGrammarRows {
         }
         result.sort(Comparator.comparingInt(Match::start));
         return result;
+    }
+
+    private static boolean insideParentheses(String text, int end) {
+        int depth = 0;
+        for (int i = 0; i < end; i++) {
+            if (text.charAt(i) == '(') depth++;
+            else if (text.charAt(i) == ')' && depth > 0) depth--;
+        }
+        return depth > 0;
     }
 
     private Atom stripContinuation(SourceLine line, Atom value) {

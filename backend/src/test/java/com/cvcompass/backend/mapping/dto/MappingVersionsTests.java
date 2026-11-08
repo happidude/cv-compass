@@ -31,7 +31,7 @@ class MappingVersionsTests {
         assertThat(config.engineCompatibility()).isEqualTo("personal-info-mapping/3.1");
         assertThat(MappingVersions.config(MappingDigests.canonical(config), json))
                 .isEqualTo(config);
-        current.put("engineCompatibility", "personal-info-mapping/3.4");
+        current.put("engineCompatibility", "personal-info-mapping/3.5");
         assertThatThrownBy(() -> MappingVersions.config(json.writeValueAsString(current), json))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(MappingDigests.canonical(MappingVersions.config(legacy, json)))
@@ -222,7 +222,7 @@ class MappingVersionsTests {
                                 MappingVersions.result(
                                         body.replace(
                                                 "personal-info-mapping/3.0",
-                                                "personal-info-mapping/3.4"),
+                                                "personal-info-mapping/3.5"),
                                         json))
                 .isInstanceOf(RuntimeException.class)
                 .hasCauseInstanceOf(IllegalArgumentException.class);

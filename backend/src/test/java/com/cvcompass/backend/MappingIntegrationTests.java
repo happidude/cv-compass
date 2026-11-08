@@ -1157,6 +1157,39 @@ class MappingIntegrationTests {
         assertThat(mapping.result(oldClaim.jobId())).contains(old);
     }
 
+    @Test
+    void v34ActivationRoutesNewJobsAndKeepsQueuedV33Pinned() throws Exception {
+        var v33 = personalDefinition("3.3");
+        var v34 = personalDefinition("3.4");
+        long oldId = mapping.register(v33.revision(), v33);
+        long nextId = mapping.register(v34.revision(), v34);
+        long extraction = seed("success", null, "Work Experience\n2020 – 2025 Sample Tea House");
+        var repository = new MappingRepository(jdbc, json);
+        repository.enqueue(extraction, oldId, v33.engineCompatibility(), 3);
+
+        mapping.activate(nextId);
+        repository.cursor(extraction - 1, null);
+        assertThat(mapping.scan(100)).isEqualTo(1);
+
+        var oldClaim = mapping.claim().orElseThrow();
+        assertThat(oldClaim.engineVersion()).isEqualTo(v33.engineCompatibility());
+        assertThat(oldClaim.configId()).isEqualTo(oldId);
+        var old = (PersonalInfoMappingResult) mapping.process(oldClaim);
+        assertThat(old.experiences()).isEmpty();
+        mapping.complete(oldClaim, old);
+
+        var nextClaim = mapping.claim().orElseThrow();
+        assertThat(nextClaim.engineVersion()).isEqualTo(v34.engineCompatibility());
+        assertThat(nextClaim.configId()).isEqualTo(nextId);
+        var next = (PersonalInfoMappingResult) mapping.process(nextClaim);
+        assertThat(next.experiences())
+                .singleElement()
+                .satisfies(row -> assertThat(row.company().raw()).isEqualTo("Sample Tea House"));
+        mapping.complete(nextClaim, next);
+        assertThat(mapping.result(nextClaim.jobId())).contains(next);
+        assertThat(mapping.result(oldClaim.jobId())).contains(old);
+    }
+
     private PersonalInfoDefinition personalDefinition(String version) throws Exception {
         try (var stream =
                 getClass()

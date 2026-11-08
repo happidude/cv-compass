@@ -25,7 +25,14 @@ final class ExperienceGrammar {
     private final List<Block> blocks = new ArrayList<>();
     private final List<Issue> issues = new ArrayList<>();
 
+    private final boolean v34;
+
     ExperienceGrammar(Extraction input, ExperienceDefinition config) {
+        this(input, config, false);
+    }
+
+    ExperienceGrammar(Extraction input, ExperienceDefinition config, boolean v34) {
+        this.v34 = v34;
         this.input = input;
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
@@ -56,7 +63,8 @@ final class ExperienceGrammar {
                 continue;
             }
             if (section.equals("STOP")) continue;
-            var row = rows.parse(index);
+            boolean anchored = v34 && (section.equals("DETAIL") || section.equals("SUMMARY"));
+            var row = rows.parse(index, anchored);
             index = row.consumedThrough();
             if (pendingPage != -1 && pendingPage != line.page) {
                 if (!pendingPeriods.isEmpty() || !pendingTitles.isEmpty())
@@ -176,7 +184,7 @@ final class ExperienceGrammar {
                 boolean nextCompany =
                         index + 1 < lines.size()
                                 && lines.get(index + 1).page == line.page
-                                && rows.parse(index + 1).company() != null;
+                                && rows.parse(index + 1, anchored).company() != null;
                 if (current == null || nextCompany && !current.periods.isEmpty()) {
                     pendingPeriods.addAll(row.periods());
                     pendingPage = line.page;
@@ -240,8 +248,7 @@ final class ExperienceGrammar {
         String key = key(text.replaceFirst("[:：]$", ""));
         if (contains(config.rules().experienceHeadings(), key)) return "DETAIL";
         if (contains(config.rules().summaryHeadings(), key)) return "SUMMARY";
-        if (key.matches("(?iu)(?:advisory|consulting|shareholder|co-founder|projects|dự án)"))
-            return "CONTEXT";
+        if (ExperienceGrammarRows.contextHeading(key)) return "CONTEXT";
         if (contains(config.rules().stopHeadings(), key)) return "STOP";
         return null;
     }

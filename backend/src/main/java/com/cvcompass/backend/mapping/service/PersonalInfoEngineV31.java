@@ -42,9 +42,13 @@ public class PersonalInfoEngineV31 {
                                         ? "NO_OK_PAGES"
                                         : null;
         var experience =
-                rejection == null
-                        ? new ExperienceGrammar(input, definition.experience()).parse()
-                        : null;
+                rejection != null
+                        ? null
+                        : (PersonalInfoEngineV34.VERSION.equals(version)
+                                        ? new ExperienceGrammar(
+                                                input, definition.experience(), true)
+                                        : new ExperienceGrammar(input, definition.experience()))
+                                .parse();
         var personal = new TreeMap<String, PersonalInfoMappingResult.PersonalField>();
         if (rejection == null) personal.putAll(new PersonalInfoGrammar(input, definition).parse());
         else
