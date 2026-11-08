@@ -184,6 +184,21 @@ class PersonalInfoGrammarV32Tests {
     }
 
     @Test
+    void unlabeledPhoneIgnoresYearSequencesOutsidePageOne() throws Exception {
+        for (String years : List.of("2019 2020 - 2023", "1999 – 2000 / 2023")) {
+            var phone =
+                    field(
+                            "phone",
+                            new Page(1, "ok", "Education\n\uf095 0900000003"),
+                            new Page(2, "ok", years));
+            assertValue(phone, "0900000003", "0900000003", "UNLABELED_SINGLE_VALUE");
+            assertThat(phone.alternatives()).hasSize(1);
+        }
+        assertThat(field("Phone: 2019 2020 - 2023", "phone").normalized())
+                .isEqualTo("201920202023");
+    }
+
+    @Test
     void legacyReplayMatchesBaselineBytesForTheSameSyntheticInput() throws Exception {
         var input =
                 extraction(

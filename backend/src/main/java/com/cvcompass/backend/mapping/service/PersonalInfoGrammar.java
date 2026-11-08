@@ -28,6 +28,8 @@ final class PersonalInfoGrammar {
             Pattern.compile("^(?:[•●▪*–-]|\\p{L}[^:：]*[:：])");
     private static final Pattern CONTACT_SEGMENT = Pattern.compile("[^|•;]+");
     private static final Pattern UNLABELED_CONTACT_SEGMENT = Pattern.compile("[^|•●▪;,]+");
+    private static final Pattern YEAR_SEQUENCE =
+            Pattern.compile("(?:19|20)[0-9]{2}(?:[ /–-]+(?:19|20)[0-9]{2})*[ /–-]*");
     private static final Set<String> PROTECTED_REGIONS =
             Set.of("REFERENCE", "RECRUITER", "COMPANY");
     private static final List<String> CONTACT_FIELDS = List.of("email", "phone");
@@ -310,6 +312,8 @@ final class PersonalInfoGrammar {
                     contact -> {
                         String field = contact.field();
                         if (missing.contains(field)
+                                && !(field.equals("phone")
+                                        && YEAR_SEQUENCE.matcher(contact.logical()).matches())
                                 && check(field, contact.evidence().text(), contact.logical())
                                                 .normalized()
                                         != null)

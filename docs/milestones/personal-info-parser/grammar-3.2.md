@@ -13,6 +13,8 @@ config và engine đã ghim. Môi trường ứng dụng cần đăng ký và k�
 | D · Tóm tắt | Tách đoạn theo heading, nối các section theo thứ tự đọc bằng một dòng trống và giữ evidence từng đoạn với `SUMMARY_MULTI_SECTION`. Một section dùng cách xử lý 3.1. |
 | E · Liên hệ không nhãn | Xét riêng từng field khi grammar chưa tạo candidate từ nhãn hoặc vùng cá nhân/liên hệ. Loại vùng tham chiếu, tuyển dụng và công ty. Một giá trị hợp lệ khác biệt có mặt ở trang 1 được đề xuất với `UNLABELED_SINGLE_VALUE`. Nhiều giá trị khác biệt trả `AMBIGUOUS` cùng alternatives. |
 
+Fallback không nhãn chỉ được bật cho field có priority `SECTION_CONTEXT`.
+
 Kiểm chứng bằng dữ liệu tổng hợp. So sánh SHA-256 kết quả đã tuần tự hóa của 3.0 và 3.1 với
 baseline trước khi sửa trên cùng đầu vào. Kiểm tra tích hợp bao phủ routing, replay và provenance
 khi dùng PostgreSQL 17 cô lập. Xem kết quả kiểm chứng trong Draft PR.
