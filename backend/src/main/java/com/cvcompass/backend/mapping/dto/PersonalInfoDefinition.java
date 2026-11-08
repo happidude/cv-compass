@@ -17,6 +17,7 @@ public record PersonalInfoDefinition(
         implements MappingConfig {
     public static final String ENGINE_VERSION = "personal-info-mapping/3.0";
     public static final String GRAMMAR_ENGINE_VERSION = "personal-info-mapping/3.1";
+    public static final String GRAMMAR_V32_ENGINE_VERSION = "personal-info-mapping/3.2";
     public static final Set<String> FIELD_NAMES =
             Set.of("fullName", "email", "phone", "location", "summary", "gender");
     public static final Set<String> SECTIONS =
@@ -72,7 +73,9 @@ public record PersonalInfoDefinition(
     }
 
     public static boolean supportsEngine(String engine) {
-        return ENGINE_VERSION.equals(engine) || GRAMMAR_ENGINE_VERSION.equals(engine);
+        return ENGINE_VERSION.equals(engine)
+                || GRAMMAR_ENGINE_VERSION.equals(engine)
+                || GRAMMAR_V32_ENGINE_VERSION.equals(engine);
     }
 
     private static void names(List<String> values) {

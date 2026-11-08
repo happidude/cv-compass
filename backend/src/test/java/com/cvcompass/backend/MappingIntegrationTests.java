@@ -17,8 +17,13 @@ import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingDefinition;
 import com.cvcompass.backend.mapping.dto.MappingDefinition.Field;
 import com.cvcompass.backend.mapping.dto.MappingResult;
+import com.cvcompass.backend.mapping.dto.MappingVersions;
+import com.cvcompass.backend.mapping.dto.PersonalInfoDefinition;
+import com.cvcompass.backend.mapping.dto.PersonalInfoMappingResult;
+import com.cvcompass.backend.mapping.repository.MappingRepository;
 import com.cvcompass.backend.mapping.service.MappingService;
 import com.cvcompass.backend.mapping.service.MappingWorker;
+import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.List;
@@ -1082,6 +1087,53 @@ class MappingIntegrationTests {
                                 oldClaim.jobId()))
                 .isEqualTo(oldRow);
         assertThat(mapping.claim()).isEmpty();
+    }
+
+    @Test
+    void v32ActivationRoutesNewJobsAndKeepsQueuedV31Pinned() throws Exception {
+        var v31 = personalDefinition("3.1");
+        var v32 = personalDefinition("3.2");
+        long oldId = mapping.register(v31.revision(), v31);
+        long nextId = mapping.register(v32.revision(), v32);
+        long extraction = seed("success", null, "Location: Phường Mẫu\nMobile: +84(0)900000002");
+        var repository = new MappingRepository(jdbc, json);
+        repository.enqueue(extraction, oldId, v31.engineCompatibility(), 3);
+        assertThatThrownBy(
+                        () -> repository.enqueue(extraction, nextId, v31.engineCompatibility(), 3))
+                .hasMessage("MAPPING_ENGINE_CONFIG_MISMATCH");
+
+        mapping.activate(nextId);
+        repository.cursor(extraction - 1, null);
+        assertThat(mapping.scan(100)).isEqualTo(1);
+
+        var oldClaim = mapping.claim().orElseThrow();
+        assertThat(oldClaim.engineVersion()).isEqualTo(v31.engineCompatibility());
+        assertThat(oldClaim.configId()).isEqualTo(oldId);
+        var old = (PersonalInfoMappingResult) mapping.process(oldClaim);
+        assertThat(old.personalInfo().get("phone").state()).isEqualTo("INVALID");
+        mapping.complete(oldClaim, old);
+
+        var nextClaim = mapping.claim().orElseThrow();
+        assertThat(nextClaim.engineVersion()).isEqualTo(v32.engineCompatibility());
+        assertThat(nextClaim.configId()).isEqualTo(nextId);
+        var next = (PersonalInfoMappingResult) mapping.process(nextClaim);
+        assertThat(next.personalInfo().get("phone").normalized()).isEqualTo("0900000002");
+        assertThat(next.personalInfo().get("location").raw()).isEqualTo("Phường Mẫu");
+        mapping.complete(nextClaim, next);
+        mapping.complete(nextClaim, next);
+        assertThat(mapping.result(nextClaim.jobId())).contains(next);
+        assertThat(mapping.result(oldClaim.jobId())).contains(old);
+    }
+
+    private PersonalInfoDefinition personalDefinition(String version) throws Exception {
+        try (var stream =
+                getClass()
+                        .getResourceAsStream(
+                                "/mapping/personal-info-config-v" + version + ".json")) {
+            return (PersonalInfoDefinition)
+                    MappingVersions.config(
+                            new String(stream.readAllBytes(), StandardCharsets.UTF_8), json);
+        }
     }
 
     @Test

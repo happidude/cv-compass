@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 3,
+  "engineCompatibility": "personal-info-mapping/3.2",
+  "revision": "personal-info-grammar-v32-r1",
+  "experience": {
+    "schemaVersion": 2,
+    "engineCompatibility": "experience-mapping/2.0",
+    "rulesRevision": "synthetic-grammar-v31-r1",
+    "taxonomyRevision": "synthetic-taxonomy-v1",
+    "rules": {
+      "experienceHeadings": [
+        "Experience",
+        "Work Experience",
+        "Working Experiences",
+        "Professional Experience",
+        "Professional Experiences",
+        "Employment",
+        "Career Highlight",
+        "Work History",
+        "Kinh nghiệm",
+        "Kinh nghiệm làm việc"
+      ],
+      "summaryHeadings": [
+        "Career Overview",
+        "Summary of Experience",
+        "Tóm tắt kinh nghiệm"
+      ],
+      "stopHeadings": [
+        "Education",
+        "Học vấn",
+        "Skills",
+        "Achievements",
+        "Certificates",
+        "Projects",
+        "Advisory",
+        "References",
+        "Professional References",
+        "Referees",
+        "Người tham chiếu",
+        "Kiểm tra thông tin"
+      ],
+      "employerLabels": [
+        "Employer",
+        "Company",
+        "Công ty",
+        "Nhà tuyển dụng"
+      ],
+      "titleLabels": [
+        "Position",
+        "Title",
+        "Chức danh",
+        "Vị trí"
+      ],
+      "periodLabels": [
+        "Period",
+        "Dates",
+        "Thời gian"
+      ],
+      "continuationMarkers": [
+        "continued",
+        "tiếp theo"
+      ]
+    },
+    "titles": [],
+    "companies": []
+  },
+  "personalFields": {
+    "fullName": {
+      "enabled": true,
+      "labels": [
+        "Full name",
+        "Name",
+        "Họ tên",
+        "Họ và tên"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "PROFILE_HEADER",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "email": {
+      "enabled": true,
+      "labels": [
+        "Email",
+        "E-mail",
+        "Thư điện tử"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "phone": {
+      "enabled": true,
+      "labels": [
+        "Phone",
+        "Mobile",
+        "Telephone",
+        "Tel.",
+        "Điện thoại",
+        "Số điện thoại"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "location": {
+      "enabled": true,
+      "labels": [
+        "Address",
+        "Current address",
+        "Residence",
+        "Permanent place of residence",
+        "Địa chỉ",
+        "Nơi ở hiện tại",
+        "Location",
+        "Nơi ở"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "summary": {
+      "enabled": true,
+      "labels": [
+        "Summary",
+        "Professional Summary",
+        "Personal Statement",
+        "Scope and Value",
+        "Overview",
+        "Career Summary",
+        "Career Objective",
+        "Career Objectives",
+        "Objectives",
+        "Tóm tắt",
+        "Mục tiêu nghề nghiệp",
+        "Tóm tắt chuyên môn",
+        "Định hướng nghề nghiệp"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL",
+        "SECTION_CONTEXT"
+      ]
+    },
+    "gender": {
+      "enabled": true,
+      "labels": [
+        "Gender",
+        "Sex",
+        "Giới tính",
+        "Phái"
+      ],
+      "priorities": [
+        "EXPLICIT_LABEL"
+      ]
+    }
+  },
+  "sectionHeadings": {
+    "PERSONAL": [
+      "Personal Information",
+      "Personal Details",
+      "Personal Profile",
+      "Profile",
+      "Thông tin cá nhân"
+    ],
+    "CONTACT": [
+      "Contact",
+      "Contact Details",
+      "Contact Information",
+      "Liên hệ",
+      "Thông tin liên hệ"
+    ],
+    "SUMMARY": [
+      "Summary",
+      "Professional Summary",
+      "Personal Statement",
+      "Scope and Value",
+      "Overview",
+      "Career Summary",
+      "Career Objective",
+      "Career Objectives",
+      "Objectives",
+      "Tóm tắt",
+      "Mục tiêu nghề nghiệp",
+      "Tóm tắt chuyên môn",
+      "Định hướng nghề nghiệp"
+    ],
+    "EXPERIENCE": [
+      "Experience",
+      "Work Experience",
+      "Working Experiences",
+      "Professional Experience",
+      "Professional Experiences",
+      "Employment",
+      "Career Highlight",
+      "Work History",
+      "Kinh nghiệm",
+      "Kinh nghiệm làm việc"
+    ],
+    "EDUCATION": [
+      "Education",
+      "Skills",
+      "Expertise",
+      "Achievements",
+      "Certificates",
+      "Certifications",
+      "Projects",
+      "Advisory",
+      "Học vấn",
+      "Kỹ năng",
+      "Thành tích",
+      "Chứng chỉ",
+      "Dự án",
+      "Abilities and Qualifications"
+    ],
+    "REFERENCE": [
+      "Reference",
+      "References",
+      "Professional References",
+      "Referees",
+      "Người tham chiếu",
+      "Kiểm tra thông tin"
+    ]
+  },
+  "excludedRegions": [
+    "REFERENCE",
+    "RECRUITER",
+    "COMPANY"
+  ]
+}
