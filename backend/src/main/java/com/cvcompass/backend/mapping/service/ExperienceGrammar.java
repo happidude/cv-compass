@@ -249,7 +249,7 @@ final class ExperienceGrammar {
         if (contains(config.rules().experienceHeadings(), key)) return "DETAIL";
         if (contains(config.rules().summaryHeadings(), key)) return "SUMMARY";
         if (ExperienceGrammarRows.contextHeading(key)) return "CONTEXT";
-        if (contains(config.rules().stopHeadings(), key)) return "STOP";
+        if (rows.stopHeading(key, v34)) return "STOP";
         return null;
     }
 
