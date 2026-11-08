@@ -125,7 +125,7 @@ final class PersonalInfoGrammar {
                     || !line.personal()
                     || (i > start && line.heading())) break;
             if (line.blank() || line.text().matches("[:：|]")) continue;
-            if (i > start && pending.contains("location") && locationBoundary(line)) break;
+            if (!values.isEmpty() && pending.contains("location") && locationBoundary(line)) break;
             var found = labels.find(line.text());
             if (!found.isEmpty()) {
                 if (!values.isEmpty()
@@ -145,6 +145,8 @@ final class PersonalInfoGrammar {
             if (values.size() >= Math.max(MAX_VALUE_LINES, pending.size())) break;
         }
         if (pending.size() == 1 && !unknownLabel && !values.isEmpty()) {
+            // A boundary can also be the first apparent value of a detached address label.
+            if (pending.contains("location") && locationBoundary(values.getFirst().line())) return;
             if (pending.contains("fullName")
                     && values.size() > 1
                     && check(

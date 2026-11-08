@@ -166,6 +166,24 @@ class PersonalInfoGrammarV32Tests {
     }
 
     @Test
+    void detachedLocationKeepsAlternativesWhenOtherLabelsPrecedeValues() throws Exception {
+        String raw =
+                "PERSONAL INFORMATION\nAddress:\nPhone:\nEmail:\nQuận Mẫu, TP.HCM\n"
+                        + "0900 000 004\nmau@example.com\nEDUCATION\nX";
+        var v31 = definition("3.1");
+        var legacy =
+                new PersonalInfoEngineV31()
+                        .map(claim(v31), extraction(new Page(1, "ok", raw)))
+                        .personalInfo()
+                        .get("location");
+        var current = field(raw, "location");
+        assertThat(legacy.state()).isEqualTo("AMBIGUOUS");
+        assertThat(legacy.alternatives()).isNotEmpty();
+        assertThat(current.state()).isEqualTo(legacy.state());
+        assertThat(current.alternatives()).isEqualTo(legacy.alternatives());
+    }
+
+    @Test
     void legacyReplayMatchesBaselineBytesForTheSameSyntheticInput() throws Exception {
         var input =
                 extraction(
