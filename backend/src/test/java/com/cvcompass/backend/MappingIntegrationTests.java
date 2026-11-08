@@ -1125,6 +1125,38 @@ class MappingIntegrationTests {
         assertThat(mapping.result(oldClaim.jobId())).contains(old);
     }
 
+    @Test
+    void v33ActivationRoutesNewJobsAndKeepsQueuedV32Pinned() throws Exception {
+        var v32 = personalDefinition("3.2");
+        var v33 = personalDefinition("3.3");
+        long oldId = mapping.register(v32.revision(), v32);
+        long nextId = mapping.register(v33.revision(), v33);
+        long extraction = seed("success", null, "Location: Quận Mẫu, HCMC\nDOB: 01/02/1990");
+        var repository = new MappingRepository(jdbc, json);
+        repository.enqueue(extraction, oldId, v32.engineCompatibility(), 3);
+
+        mapping.activate(nextId);
+        repository.cursor(extraction - 1, null);
+        assertThat(mapping.scan(100)).isEqualTo(1);
+
+        var oldClaim = mapping.claim().orElseThrow();
+        assertThat(oldClaim.engineVersion()).isEqualTo(v32.engineCompatibility());
+        var old = (PersonalInfoMappingResult) mapping.process(oldClaim);
+        assertThat(old.personalInfo()).doesNotContainKey("dateOfBirth");
+        assertThat(old.personalInfo().get("location").normalized()).isEqualTo("Quận Mẫu, HCMC");
+        mapping.complete(oldClaim, old);
+
+        var nextClaim = mapping.claim().orElseThrow();
+        assertThat(nextClaim.engineVersion()).isEqualTo(v33.engineCompatibility());
+        assertThat(nextClaim.configId()).isEqualTo(nextId);
+        var next = (PersonalInfoMappingResult) mapping.process(nextClaim);
+        assertThat(next.personalInfo().get("location").normalized()).isEqualTo("Hồ Chí Minh");
+        assertThat(next.personalInfo().get("dateOfBirth").normalized()).isEqualTo("1990-02-01");
+        mapping.complete(nextClaim, next);
+        assertThat(mapping.result(nextClaim.jobId())).contains(next);
+        assertThat(mapping.result(oldClaim.jobId())).contains(old);
+    }
+
     private PersonalInfoDefinition personalDefinition(String version) throws Exception {
         try (var stream =
                 getClass()

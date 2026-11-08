@@ -33,6 +33,16 @@ final class PersonalInfoGrammar {
     private static final Set<String> PROTECTED_REGIONS =
             Set.of("REFERENCE", "RECRUITER", "COMPANY");
     private static final List<String> CONTACT_FIELDS = List.of("email", "phone");
+    // dateOfBirth only exists in 3.3 configs, so listing it cannot change older outputs.
+    private static final List<String> TYPED_FIELDS =
+            List.of("email", "phone", "gender", "dateOfBirth");
+    private static final int MAX_ADDRESS_LINES = 3;
+    private static final int ADDRESS_CONTACT_DISTANCE = 4;
+    private static final int MIN_UNLABELED_SUMMARY_WORDS = 20;
+    private static final Pattern ADDRESS_START =
+            Pattern.compile(
+                    "(?iu)^(?:(?:số|so|no\\.?)\\s*)?\\d{1,5}[a-z]?(?:\\s*/\\s*\\d{1,5}[a-z]?)*\\s*,?\\s+\\p{L}.*");
+    private static final Pattern BULLET = Pattern.compile("^\\s*([-•●▪*–+])\\s*\\S.*");
     private static final Pattern INTRO =
             Pattern.compile(
                     "(?iu)^(?:I am|I have|I bring|I offer|My background|My experience|Tôi|Với hơn)\\b.*");
@@ -46,6 +56,8 @@ final class PersonalInfoGrammar {
 
     private final Extraction input;
     private final boolean v32;
+    // 3.3 keeps every 3.2 rule and adds the fallbacks below; older versions never reach them.
+    private final boolean v33;
     private final PersonalInfoDefinition config;
     private final PersonalInfoGrammarLabels labels;
     private final List<PersonalInfoGrammarLines.Line> lines;
@@ -58,13 +70,16 @@ final class PersonalInfoGrammar {
     PersonalInfoGrammar(Extraction input, PersonalInfoDefinition config) {
         this.input = input;
         this.config = config;
-        this.v32 =
-                PersonalInfoDefinition.GRAMMAR_V32_ENGINE_VERSION.equals(
+        this.v33 =
+                PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(
                         config.engineCompatibility());
+        this.v32 =
+                v33
+                        || PersonalInfoDefinition.GRAMMAR_V32_ENGINE_VERSION.equals(
+                                config.engineCompatibility());
         this.labels = new PersonalInfoGrammarLabels(config);
         this.lines = PersonalInfoGrammarLines.read(input, config);
-        PersonalInfoDefinition.FIELD_NAMES.forEach(
-                field -> candidates.put(field, new ArrayList<>()));
+        config.fieldNames().forEach(field -> candidates.put(field, new ArrayList<>()));
     }
 
     Map<String, PersonalField> parse() {
@@ -105,9 +120,14 @@ final class PersonalInfoGrammar {
             mergeSummarySections();
             unlabeledContacts();
         }
+        if (v33) {
+            unlabeledDateOfBirth();
+            unlabeledLocation();
+            unlabeledSummary();
+        }
         headerNames();
         var result = new TreeMap<String, PersonalField>();
-        for (String field : PersonalInfoDefinition.FIELD_NAMES)
+        for (String field : config.fieldNames())
             result.put(field, select(field, candidates.get(field)));
         return result;
     }
@@ -181,10 +201,8 @@ final class PersonalInfoGrammar {
             if (!enabled(field, "EXPLICIT_LABEL")) continue;
             for (var value : values) {
                 var checked = check(field, value.evidence().text(), value.evidence().text());
-                boolean typed =
-                        List.of("email", "phone", "gender").contains(field)
-                                && checked.normalized() != null;
-                if (typed || !List.of("email", "phone", "gender").contains(field)) {
+                boolean typed = TYPED_FIELDS.contains(field) && checked.normalized() != null;
+                if (typed || !TYPED_FIELDS.contains(field)) {
                     add(
                             field,
                             List.of(value.evidence()),
@@ -372,7 +390,7 @@ final class PersonalInfoGrammar {
     private void summary(int start, PersonalInfoGrammarLabels.Label label) {
         if (!config.personalFields().get("summary").enabled()) return;
         var evidence = new ArrayList<Evidence>();
-        boolean uncertain = false, bounded = false;
+        boolean uncertain = false, bounded = false, crossPage = false;
         int page = lines.get(start).page();
         var first = lines.get(start);
         if (label != null) {
@@ -393,6 +411,24 @@ final class PersonalInfoGrammar {
                         && line.region().equals("SUMMARY")) {
                     page = line.page();
                     summaryConsumed.add(i);
+                    continue;
+                }
+                if (v33 && line.repeatedMargin()) {
+                    summaryConsumed.add(i);
+                    continue;
+                }
+                if (v33
+                        && line.page() == page + 1
+                        && !line.heading()
+                        && line.personal()
+                        && pageContinuation(line, evidence)) {
+                    // The section flows onto the next page without a new heading; keep reading
+                    // there and let the next heading bound it as usual.
+                    page = line.page();
+                    crossPage = true;
+                    summaryConsumed.add(i);
+                    evidence.add(line.source().whole());
+                    uncertain |= line.warning() || line.unprovenSpacing();
                     continue;
                 }
                 if (line.heading()
@@ -424,7 +460,9 @@ final class PersonalInfoGrammar {
                         raw,
                         List.copyOf(evidence),
                         uncertain,
-                        uncertain ? "SUMMARY_CONTINUATION_UNVERIFIED" : null);
+                        uncertain
+                                ? "SUMMARY_CONTINUATION_UNVERIFIED"
+                                : crossPage ? "SUMMARY_CROSS_PAGE" : null);
         add("summary", candidate);
         if (v32 && (label != null || first.heading())) summarySections.add(candidate);
     }
@@ -437,6 +475,211 @@ final class PersonalInfoGrammar {
         boolean uncertain = summarySections.stream().anyMatch(Candidate::uncertain);
         candidates.get("summary").clear();
         add("summary", new Candidate(raw, raw, evidence, uncertain, "SUMMARY_MULTI_SECTION"));
+    }
+
+    /** A bare phone number or birth date also marks a profile header (labels are optional). */
+    private boolean standaloneContact(PersonalInfoGrammarLines.Line line) {
+        String text = line.text().strip();
+        if (text.isEmpty() || !labels.find(text).isEmpty()) return false;
+        if (PersonalInfoDates.plausibleFullDate(text)) return true;
+        return !YEAR_SEQUENCE.matcher(text).matches()
+                && text.matches("\\+?[0-9(][0-9() .-]{6,}")
+                && check("phone", text, text).normalized() != null;
+    }
+
+    private boolean pageContinuation(PersonalInfoGrammarLines.Line line, List<Evidence> evidence) {
+        if (evidence.isEmpty()) return false;
+        var bullet = BULLET.matcher(line.text());
+        if (bullet.matches()) {
+            String marker = bullet.group(1);
+            // Same bullet style as the section so far: one list split by the page break.
+            return evidence.stream()
+                    .map(Evidence::text)
+                    .anyMatch(text -> text.stripLeading().startsWith(marker));
+        }
+        String previous = evidence.getLast().text().strip();
+        return !line.text().isEmpty()
+                && Character.isLowerCase(line.text().codePointAt(0))
+                && !previous.matches("(?s).*[.!?:]$");
+    }
+
+    /** One standalone, plausible full date in the profile area of page 1. */
+    private void unlabeledDateOfBirth() {
+        if (!enabled("dateOfBirth", "SECTION_CONTEXT") || !candidates.get("dateOfBirth").isEmpty())
+            return;
+        for (var line : lines) {
+            if (line.page() != 1
+                    || line.blank()
+                    || line.heading()
+                    || !List.of("PERSONAL", "CONTACT").contains(line.region())
+                    || !labels.find(line.text()).isEmpty()
+                    || !PersonalInfoDates.plausibleFullDate(line.text())) continue;
+            var evidence = span(line, 0, line.text().length());
+            if (evidence != null)
+                add("dateOfBirth", List.of(evidence), evidence.text(), line.warning(), null);
+        }
+        flagUnlabeled("dateOfBirth");
+    }
+
+    /**
+     * An unlabeled street address next to the candidate's contact lines on page 1. It must start
+     * with a house number, contain a comma and name a known province; the value ends at the
+     * province so text from an interleaved column is not kept.
+     */
+    private void unlabeledLocation() {
+        if (!enabled("location", "SECTION_CONTEXT") || !candidates.get("location").isEmpty())
+            return;
+        for (var line : lines) {
+            if (line.page() != 1
+                    || !addressLine(line)
+                    || !ADDRESS_START.matcher(line.text().strip()).matches()
+                    || !nearContact(line)) continue;
+            var evidence = new ArrayList<Evidence>();
+            var used = new ArrayList<Integer>();
+            for (int i = line.index();
+                    i < lines.size() && i < line.index() + MAX_ADDRESS_LINES;
+                    i++) {
+                var current = lines.get(i);
+                if (current.page() != line.page() || i > line.index() && !addressLine(current))
+                    break;
+                var province = PersonalInfoProvinces.find(current.text());
+                if (province != null) {
+                    var end = span(current, 0, province.end());
+                    if (end != null) {
+                        evidence.add(end);
+                        used.add(i);
+                    }
+                    String raw = raw(evidence);
+                    if (raw.contains(",")) {
+                        assignedValues.addAll(used);
+                        add("location", evidence, raw, line.warning(), null);
+                    }
+                    break;
+                }
+                evidence.add(current.source().whole());
+                used.add(i);
+            }
+        }
+        flagUnlabeled("location");
+    }
+
+    private boolean addressLine(PersonalInfoGrammarLines.Line line) {
+        return !line.blank()
+                && !line.noise()
+                && !line.heading()
+                && !PROTECTED_REGIONS.contains(line.region())
+                && !summaryConsumed.contains(line.index())
+                && !line.text().contains("@")
+                && !line.text().matches("(?iu).*(?:https?://|www\\.).*")
+                && !BULLET.matcher(line.text()).matches()
+                && labels.find(line.text()).isEmpty();
+    }
+
+    private boolean nearContact(PersonalInfoGrammarLines.Line line) {
+        for (int i = Math.max(0, line.index() - ADDRESS_CONTACT_DISTANCE);
+                i < lines.size() && i <= line.index() + ADDRESS_CONTACT_DISTANCE;
+                i++) {
+            var other = lines.get(i);
+            if (i == line.index() || other.page() != line.page()) continue;
+            if (EMAIL.matcher(other.text()).find()
+                    || standaloneContact(other)
+                    || labels.find(other.text()).stream()
+                            .anyMatch(label -> CONTACT_FIELDS.contains(label.field()))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * A prose paragraph in an untitled profile header (no section heading before it on page 1),
+     * used only when no summary section exists.
+     */
+    private void unlabeledSummary() {
+        if (!enabled("summary", "SECTION_CONTEXT") || !candidates.get("summary").isEmpty()) return;
+        var blocks = new ArrayList<List<PersonalInfoGrammarLines.Line>>();
+        var block = new ArrayList<PersonalInfoGrammarLines.Line>();
+        for (var line : lines) {
+            boolean header =
+                    line.page() == 1 && line.scope() == 0 && line.region().equals("PERSONAL");
+            if (header && (prose(line) || !block.isEmpty() && proseTail(line))) {
+                block.add(line);
+                continue;
+            }
+            if (!block.isEmpty()) blocks.add(List.copyOf(block));
+            block.clear();
+            if (!header) break;
+        }
+        if (!block.isEmpty()) blocks.add(List.copyOf(block));
+        var accepted =
+                blocks.stream()
+                        .filter(
+                                value ->
+                                        value.size() >= 2
+                                                && value.stream()
+                                                                .mapToInt(
+                                                                        line ->
+                                                                                line.text()
+                                                                                        .strip()
+                                                                                        .split(
+                                                                                                "\\s+")
+                                                                                        .length)
+                                                                .sum()
+                                                        >= MIN_UNLABELED_SUMMARY_WORDS
+                                                && value.getLast()
+                                                        .text()
+                                                        .strip()
+                                                        .matches("(?s).*[.!?]$"))
+                        .toList();
+        if (accepted.size() != 1) return;
+        var evidence = new ArrayList<Evidence>();
+        boolean uncertain = false;
+        for (var line : accepted.getFirst()) {
+            evidence.add(line.source().whole());
+            summaryConsumed.add(line.index());
+            uncertain |= line.warning() || line.unprovenSpacing();
+        }
+        String raw = raw(evidence);
+        add("summary", new Candidate(raw, raw, List.copyOf(evidence), uncertain, null));
+        unlabeledFields.add("summary");
+    }
+
+    private boolean prose(PersonalInfoGrammarLines.Line line) {
+        String text = line.text().strip();
+        if (line.blank()
+                || line.noise()
+                || line.heading()
+                || text.contains("@")
+                || !labels.find(text).isEmpty()
+                || standaloneContact(line)) return false;
+        String[] words = text.split("\\s+");
+        if (words.length < 5) return false;
+        long lower =
+                java.util.Arrays.stream(words)
+                        .filter(word -> Character.isLowerCase(word.codePointAt(0)))
+                        .count();
+        // Sentences, not a title/name line or a run of capitalised keywords.
+        return lower * 2 >= words.length;
+    }
+
+    /** The short last line of a wrapped sentence ("and continuous improvement."). */
+    private boolean proseTail(PersonalInfoGrammarLines.Line line) {
+        String text = line.text().strip();
+        return !text.isEmpty()
+                && Character.isLowerCase(text.codePointAt(0))
+                && !text.contains("@")
+                && labels.find(text).isEmpty()
+                && !standaloneContact(line);
+    }
+
+    /** Same rule as unlabeled contacts: one distinct value on page 1, otherwise ambiguous. */
+    private void flagUnlabeled(String field) {
+        var values = candidates.get(field);
+        long distinct =
+                values.stream()
+                        .map(value -> check(field, value.raw(), value.logical()).normalized())
+                        .distinct()
+                        .limit(2)
+                        .count();
+        if (distinct == 1) unlabeledFields.add(field);
     }
 
     private void headerNames() {
@@ -471,7 +714,11 @@ final class PersonalInfoGrammar {
                     next = nextMeaningful(next + 1, line.page(), 2);
                 }
             }
-            var checked = PersonalInfoGrammarValidation.check("fullName", raw(evidence), logical);
+            var checked =
+                    v33
+                            ? check("fullName", raw(evidence), logical)
+                            : PersonalInfoGrammarValidation.check(
+                                    "fullName", raw(evidence), logical);
             if (checked.normalized() != null && PersonalInfoGrammarValidation.headerName(logical))
                 add("fullName", evidence, logical, line.warning() || line.unprovenSpacing(), null);
         }
@@ -494,6 +741,7 @@ final class PersonalInfoGrammar {
             if (!context.contact)
                 context.contact =
                         line.text().contains("@")
+                                || v33 && standaloneContact(line)
                                 || labels.find(line.text()).stream()
                                         .anyMatch(
                                                 value ->
@@ -502,7 +750,8 @@ final class PersonalInfoGrammar {
                                                                                 "email",
                                                                                 "phone",
                                                                                 "gender",
-                                                                                "location")
+                                                                                "location",
+                                                                                "dateOfBirth")
                                                                         .contains(value.field()));
         }
         return result;
@@ -575,7 +824,7 @@ final class PersonalInfoGrammar {
     }
 
     private PersonalInfoGrammarValidation.Checked check(String field, String raw, String logical) {
-        return PersonalInfoGrammarValidation.check(field, raw, logical, v32);
+        return PersonalInfoGrammarValidation.check(field, raw, logical, v32, v33);
     }
 
     private PersonalField select(String field, List<Candidate> values) {

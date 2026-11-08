@@ -131,7 +131,9 @@ class PersonalInfoPublicationIntegrationTests {
                         json.readTree(
                                 getClass()
                                         .getResourceAsStream(
-                                                "/mapping/personal-info-config-v3.json")
+                                                engine.equals("personal-info-mapping/3.3")
+                                                        ? "/mapping/personal-info-config-v3.3.json"
+                                                        : "/mapping/personal-info-config-v3.json")
                                         .readAllBytes());
         tree.put("revision", "personal-" + UUID.randomUUID());
         tree.put("engineCompatibility", engine);
@@ -223,6 +225,27 @@ class PersonalInfoPublicationIntegrationTests {
                 .isEqualTo("personal-info-mapping/3.2");
         assertThat(publication.publish(id)).isFalse();
         assertThat(queries.detail(profile.id())).isEqualTo(profile);
+    }
+
+    @Test
+    void v33PublicationStoresProvinceAndIsoBirthDateWithSourceInMetadata() throws Exception {
+        var doc = document();
+        long id =
+                result(
+                        doc,
+                        "Full name: Synthetic Person\nDOB: 21/10/1990\n"
+                                + "Address: 12 Sample Street, Ward 1, District 7, HCMC",
+                        false,
+                        "personal-info-mapping/3.3");
+        assertThat(publication.publish(id)).isTrue();
+        var profile = queries.detail(candidate(doc));
+        assertThat(profile.basic().path("location").asString()).isEqualTo("Hồ Chí Minh");
+        assertThat(profile.basic().path("dateOfBirth").asString()).isEqualTo("1990-10-21");
+        var fields = profile.extensions().path("personalInfo").path("fields");
+        assertThat(fields.path("location").path("raw").asString())
+                .isEqualTo("12 Sample Street, Ward 1, District 7, HCMC");
+        assertThat(fields.path("dateOfBirth").path("raw").asString()).isEqualTo("21/10/1990");
+        assertThat(publication.publish(id)).isFalse();
     }
 
     @Test

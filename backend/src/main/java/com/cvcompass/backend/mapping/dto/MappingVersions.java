@@ -101,7 +101,10 @@ public final class MappingVersions {
         validateV2(experience);
         JsonNode fields = root.path("personalFields");
         if (!fields.isObject()
-                || !fields.propertyNames().equals(PersonalInfoDefinition.FIELD_NAMES))
+                || !fields.propertyNames()
+                        .equals(
+                                PersonalInfoDefinition.fieldNames(
+                                        root.path("engineCompatibility").asString())))
             throw invalid();
         for (JsonNode field : fields) {
             if (!field.isObject() || !field.path("enabled").isBoolean()) throw invalid();

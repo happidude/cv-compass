@@ -20,7 +20,14 @@ public class CandidateValidator {
     public void validateBasic(JsonNode value) {
         if (value == null
                 || !value.isObject()
-                || !Set.of("fullName", "email", "phone", "location", "summary", "gender")
+                || !Set.of(
+                                "fullName",
+                                "email",
+                                "phone",
+                                "location",
+                                "summary",
+                                "gender",
+                                "dateOfBirth")
                         .containsAll(value.propertyNames())) invalid();
         for (String field : value.propertyNames())
             if (!value.get(field).isNull()
@@ -28,7 +35,9 @@ public class CandidateValidator {
                             || value.get(field).asString().length()
                                     > (field.equals("summary")
                                             ? 10000
-                                            : field.equals("phone") ? 50 : 255))) invalid();
+                                            : field.equals("phone") || field.equals("dateOfBirth")
+                                                    ? 50
+                                                    : 255))) invalid();
     }
 
     public JsonNode userExperience(JsonNode value) {

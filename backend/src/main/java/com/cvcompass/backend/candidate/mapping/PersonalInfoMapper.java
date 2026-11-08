@@ -10,12 +10,16 @@ import tools.jackson.databind.node.ObjectNode;
 public final class PersonalInfoMapper {
     private static final ObjectMapper JSON = new ObjectMapper();
     public static final Set<String> FIELDS =
-            Set.of("fullName", "email", "phone", "location", "summary", "gender");
+            Set.of("fullName", "email", "phone", "location", "summary", "gender", "dateOfBirth");
+    // From 3.3 the profile keeps the canonical province and ISO date; the full source text
+    // stays in the field metadata (raw + evidence) for review.
+    private static final Set<String> V33_NORMALIZED = Set.of("location", "dateOfBirth");
 
     private PersonalInfoMapper() {}
 
     public static ObjectNode patch(JsonNode result, JsonNode basic) {
         var patch = JSON.createObjectNode();
+        boolean v33 = "personal-info-mapping/3.3".equals(result.path("engineVersion").asString());
         for (String name : FIELDS) {
             var field = result.path("personalInfo").path(name);
             if (field.path("enabled").asBoolean()
@@ -24,7 +28,7 @@ public final class PersonalInfoMapper {
                     && field.path("normalized").isString()
                     && !field.path("evidence").isEmpty()) {
                 String value =
-                        name.equals("gender")
+                        name.equals("gender") || v33 && V33_NORMALIZED.contains(name)
                                 ? field.path("normalized").asString()
                                 : field.path("raw").asString();
                 if (!same(name, basic.path(name), value)) patch.put(name, value);

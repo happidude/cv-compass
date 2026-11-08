@@ -140,11 +140,31 @@ public class MappingRepository {
             String grammarV32Engine,
             Duration lease,
             Duration deadline) {
+        return claim(
+                engine,
+                otherEngine,
+                personalEngine,
+                grammarEngine,
+                grammarV32Engine,
+                grammarV32Engine,
+                lease,
+                deadline);
+    }
+
+    public Optional<MappingClaim> claim(
+            String engine,
+            String otherEngine,
+            String personalEngine,
+            String grammarEngine,
+            String grammarV32Engine,
+            String grammarV33Engine,
+            Duration lease,
+            Duration deadline) {
         var ids =
                 jdbc.query(
                         """
                 SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "STATUS"='PENDING'
-                AND "ENGINE_VERSION" IN (?,?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1','personal-info-mapping/3.2') OR EXISTS(SELECT 1 FROM "CV_MAPPING_CONFIGS" c WHERE c."ID"="CV_MAPPING_JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="CV_MAPPING_JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
+                AND "ENGINE_VERSION" IN (?,?,?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1','personal-info-mapping/3.2','personal-info-mapping/3.3') OR EXISTS(SELECT 1 FROM "CV_MAPPING_CONFIGS" c WHERE c."ID"="CV_MAPPING_JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="CV_MAPPING_JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
@@ -152,7 +172,8 @@ public class MappingRepository {
                         otherEngine,
                         personalEngine,
                         grammarEngine,
-                        grammarV32Engine);
+                        grammarV32Engine,
+                        grammarV33Engine);
         if (ids.isEmpty()) return Optional.empty();
         long id = ids.getFirst();
         UUID token = UUID.randomUUID();

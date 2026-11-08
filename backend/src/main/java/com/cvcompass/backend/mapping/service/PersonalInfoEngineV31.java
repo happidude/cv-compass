@@ -48,7 +48,7 @@ public class PersonalInfoEngineV31 {
         var personal = new TreeMap<String, PersonalInfoMappingResult.PersonalField>();
         if (rejection == null) personal.putAll(new PersonalInfoGrammar(input, definition).parse());
         else
-            for (String field : PersonalInfoDefinition.FIELD_NAMES) {
+            for (String field : definition.fieldNames()) {
                 boolean enabled = definition.personalFields().get(field).enabled();
                 personal.put(
                         field,
