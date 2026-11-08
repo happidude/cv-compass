@@ -148,6 +148,137 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void associatesTitlesBeforeAndAfterCompanyAnchorsWithoutReusingThem() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Sample Works – Long An ( 02/2019 - 10/2024 )
+                Paint Technician
+                Account Coordinator
+                2017 – 2018 Sample Supply
+                2014 – 2016 Sample Paint
+                Planning Assistant
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample Works", "Sample Supply", "Sample Paint");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Paint Technician", "Account Coordinator", "Planning Assistant");
+        var wrapped =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Sample Works – Long An
+                (December 2013 – April 2017)
+                Paint Technician
+                """)
+                        .experiences();
+        assertThat(wrapped)
+                .singleElement()
+                .satisfies(row -> assertThat(row.title().raw()).isEqualTo("Paint Technician"));
+    }
+
+    @Test
+    void parsesContextHeadingsWithAnIssueAndSkipsOtherContextLines() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        """
+                ADVISORY BOARD / SHARE HOLDER
+                Sales Manager / Sample Advisory 2021 – 2022
+                Sample Unanchored Ltd
+                OTHER PROJECTS
+                Regional Manager 2018 – 2020
+                Sample Projects | Vietnam
+                """);
+        assertThat(result.experiences())
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample Advisory", "Sample Projects");
+        assertThat(result.experiences())
+                .allSatisfy(
+                        row ->
+                                assertThat(row.issues())
+                                        .extracting(issue -> issue.code())
+                                        .contains("ROLE_CONTEXT_UNCLASSIFIED"));
+        assertThat(result.issues())
+                .extracting(issue -> issue.code())
+                .contains("UNCLASSIFIED_EXPERIENCE_CONTEXT");
+    }
+
+    @Test
+    void keepsBookingAndCommaDelimitedDescriptionsOutOfTitles() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                2020 – 2021 Sample Service
+                Booking hotel, restaurants, tickets for managers, director,
+                Coordinating manager schedules
+                                Shipping boxes for the manager
+                Manager,
+                Manager, Analyst, Director
+                Manager for a very large region covering many business offices
+                """)
+                        .experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.title().state()).isEqualTo("NOT_FOUND");
+                            assertThat(row.descriptionRaw())
+                                    .contains("Booking hotel", "Coordinating manager");
+                        });
+    }
+
+    @Test
+    void doesNotMoveAnUnattachedTitleAcrossADescription() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Paint Technician
+                Managed a team from 2017 – 2019.
+                2020 – 2022 Sample Works
+                """)
+                        .experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(row -> assertThat(row.title().state()).isEqualTo("NOT_FOUND"));
+    }
+
+    @Test
+    void handlesBulletLabelsAndKeepsDatedRolesAtOneCompanySeparate() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                2016 – 2017 Sample Metals
+                - Position: Technician
+                2018 – 2020 Sample Metals
+                • Chức danh: Giám sát
+                Manager | 2021 – 2022
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample Metals", "Sample Metals", "Sample Metals");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Technician", "Giám sát", "Manager");
+        assertThat(rows)
+                .extracting(row -> row.period().start().year())
+                .containsExactly(2016, 2018, 2021);
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");

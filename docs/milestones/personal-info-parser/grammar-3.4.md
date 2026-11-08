@@ -19,5 +19,12 @@ trong một phần sẽ bị bỏ khi lấy tên công ty.
 | Jun 2018 - May 2020, dòng sau Logistics Coordinator, rồi SAMPLE LOGISTICS \| Vietnam | Ghép kỳ, chức danh và công ty thành một kinh nghiệm |
 
 Câu mô tả và phần học vấn không tạo kinh nghiệm từ quy tắc dòng tiêu đề.
+Một chức danh ngắn có thể đứng ngay trước hoặc ngay sau tiêu đề công ty.
+Dòng nhãn có bullet như **- Position:** và **• Chức danh:** cũng cung cấp
+chức danh. Các chức danh có kỳ riêng ở cùng một công ty tạo các kinh nghiệm riêng.
+
+Trong section ngữ cảnh như **Advisory Board / Share Holder** và **Other
+Projects**, chỉ dòng tiêu đề hợp lệ mới tạo kinh nghiệm. Mỗi dòng như vậy có
+issue **ROLE_CONTEXT_UNCLASSIFIED** để HR xem lại.
 Digest replay của 3.3 dùng cùng input tổng hợp để kiểm tra tính tương thích với
 kết quả trước khi thêm engine. Các test replay và đánh giá cũ tiếp tục áp dụng.

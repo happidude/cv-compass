@@ -18,6 +18,12 @@ final class ExperienceGrammarRows {
     private static final Pattern ROLE =
             Pattern.compile(
                     "(?iu)\\b(?:engineer|manager|director|developer|analyst|officer|accountant|auditor|supervisor|consultant|specialist|president|CEO|CFO|COO|founder|co-founder|kỹ sư|giám đốc|trưởng phòng|chuyên viên)\\b");
+    private static final Pattern ROLE_V34 =
+            Pattern.compile(
+                    "(?iu)\\b(?:coordinator|executive|technician|assistant|intern|trainee|associate|representative|advisor|buyer|merchandiser|planner|receptionist|purchaser|AGM|GM|head|nhân viên|trưởng nhóm|giám sát|quản lý|kế toán|thực tập sinh)\\b");
+    private static final Pattern GERUND_PROSE =
+            Pattern.compile(
+                    "(?iu)^(?!(?:(?:engineering|marketing|accounting|purchasing|planning|training|operating|manufacturing|recruiting|staffing|shipping|billing|consulting)\\s+(?:manager|director|officer|supervisor|assistant|coordinator|specialist|executive|engineer|analyst|associate)|managing director)\\b)\\p{L}+ing\\b.*");
     private static final Pattern CONTEXT =
             Pattern.compile(
                     "(?iu)^(?:report(?:ing|s)? to|client|supplier|customer|platform|project|brand|group|training|course|certification|study abroad)(?:\\s*[:：]|\\s+)\\s*.*");
@@ -36,7 +42,10 @@ final class ExperienceGrammarRows {
 
     private static final Pattern COMPANY_PREFIX =
             Pattern.compile("(?iu)^(?:công ty|cty|ctcp|tnhh|tập đoàn)\\s+.+");
-    private static final Pattern HEADING_PART = Pattern.compile("\\([^()]*\\)|\\||\\s+[/–—-]\\s+");
+    private static final String HEADING_SEPARATOR = "\\||\\s+[/–—-]\\s+";
+    private static final Pattern HEADING_PART =
+            Pattern.compile("\\([^()]*\\)|" + HEADING_SEPARATOR);
+    private static final Pattern TITLE_SEPARATOR = Pattern.compile(HEADING_SEPARATOR);
     private static final Pattern BULLET = Pattern.compile("^(?:[-–—*•●▪]|\\d+[.)])\\s+.*|^[•●▪].*");
     private static final Set<String> REGIONS =
             Set.of(
@@ -312,6 +321,18 @@ final class ExperienceGrammarRows {
                 false);
     }
 
+    Row contextRow(int index) {
+        var row = anchoredRow(index);
+        return row != null && row.company() != null && !row.periods().isEmpty() && !row.ambiguous()
+                ? row
+                : null;
+    }
+
+    boolean adjacentTitle(int index) {
+        var line = nearbyHeadingText(index, index);
+        return line != null && title(line.text, true);
+    }
+
     private Row anchoredRow(int index) {
         var line = lines.get(index);
         var captures = ExperienceGrammarDates.findAll(line);
@@ -426,7 +447,7 @@ final class ExperienceGrammarRows {
                         && shortHeading(next.text)
                         && !heading(next.text)
                         && !contextHeading(
-                                ExperienceDefinition.key(next.text.replaceFirst("[:：]$", "")))
+                                ExperienceDefinition.key(next.text.replaceFirst("[:：]$", "")), true)
                         && matches(next.text, true).isEmpty()
                         && !next.text.matches("[0-9]{4}")
                         && ExperienceGrammarDates.find(next) == null
@@ -451,6 +472,7 @@ final class ExperienceGrammarRows {
                 && text.split(" ").length <= 14
                 && !text.endsWith(".")
                 && !PROSE.matcher(text).matches()
+                && !GERUND_PROSE.matcher(text).matches()
                 && !BULLET.matcher(text).matches()
                 && !CONTEXT.matcher(text).matches()
                 && !APPLICATION.matcher(text).matches();
@@ -515,8 +537,15 @@ final class ExperienceGrammarRows {
                 || text.contains(":")
                 || text.matches("(?iu).*(?:CEO|CFO|COO).*(?:course|training|program).*"))
             return false;
+        if (v34
+                && (BULLET.matcher(text).matches()
+                        || GERUND_PROSE.matcher(text).matches()
+                        || text.endsWith(",")
+                        || text.indexOf(',') != text.lastIndexOf(',')
+                        || text.split(" ").length > 8 && !TITLE_SEPARATOR.matcher(text).find()))
+            return false;
         return ROLE.matcher(text).find()
-                || v34 && text.matches("(?iu).*\\bcoordinator\\b.*")
+                || v34 && ROLE_V34.matcher(text).find()
                 || config.titles().stream()
                         .anyMatch(
                                 rule ->
@@ -540,8 +569,11 @@ final class ExperienceGrammarRows {
                 .anyMatch(value -> ExperienceDefinition.key(value).equals(key));
     }
 
-    static boolean contextHeading(String key) {
-        return key.matches("(?iu)(?:advisory|consulting|shareholder|co-founder|projects|dự án)");
+    static boolean contextHeading(String key, boolean v34) {
+        return key.matches("(?iu)(?:advisory|consulting|shareholder|co-founder|projects|dự án)")
+                || v34
+                        && key.matches(
+                                "(?iu)(?:advisory board(?:\\s*/\\s*share\\s*holder)?|share holder|other projects)");
     }
 
     private List<Match> matches(String text, boolean v34) {

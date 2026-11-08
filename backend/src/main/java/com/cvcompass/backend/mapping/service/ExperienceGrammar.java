@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** Typed block relationships for 3.1 only; the legacy v2 algorithm is intentionally untouched. */
+/** Typed block relationships for the personal-info grammar engines. */
 final class ExperienceGrammar {
     record Outcome(List<Experience> experiences, List<Issue> issues) {}
 
@@ -64,8 +64,9 @@ final class ExperienceGrammar {
             }
             if (section.equals("STOP")) continue;
             boolean anchored = v34 && (section.equals("DETAIL") || section.equals("SUMMARY"));
-            var row = rows.parse(index, anchored);
-            index = row.consumedThrough();
+            boolean contextual = v34 && section.equals("CONTEXT");
+            var row = contextual ? rows.contextRow(index) : rows.parse(index, anchored);
+            if (row != null) index = row.consumedThrough();
             if (pendingPage != -1 && pendingPage != line.page) {
                 if (!pendingPeriods.isEmpty() || !pendingTitles.isEmpty())
                     issues.add(new Issue("UNLINKED_PAGE_TEXT", "source", List.of(line.whole())));
@@ -73,7 +74,7 @@ final class ExperienceGrammar {
                 pendingTitles.clear();
                 pendingPage = -1;
             }
-            if (section.equals("CONTEXT")) {
+            if (section.equals("CONTEXT") && (!v34 || row == null)) {
                 issues.add(
                         new Issue(
                                 "UNCLASSIFIED_EXPERIENCE_CONTEXT",
@@ -138,6 +139,13 @@ final class ExperienceGrammar {
                     continue;
                 }
                 current = block(row.company(), section.equals("SUMMARY"), line.page, epoch);
+                current.headerEnd = index;
+                if (contextual)
+                    current.issues.add(
+                            new Issue(
+                                    "ROLE_CONTEXT_UNCLASSIFIED",
+                                    "experience",
+                                    List.of(line.whole())));
                 current.titles.addAll(pendingTitles);
                 current.titles.addAll(row.titles());
                 current.periods.addAll(pendingPeriods);
@@ -151,7 +159,24 @@ final class ExperienceGrammar {
             }
             if (!row.titles().isEmpty()) {
                 if (section.equals("UNSCOPED") && current == null) continue;
+                boolean unlabelledTitle =
+                        anchored && row.periods().isEmpty() && rows.adjacentTitle(index);
+                boolean beforeCompany =
+                        unlabelledTitle
+                                && (current == null
+                                        || current.headerEnd != index - 1
+                                        || !current.titles.isEmpty())
+                                && opensCompanyAfterTitle(index, line.page);
+                if (beforeCompany) current = null;
                 if (current == null) {
+                    if (unlabelledTitle && !beforeCompany) {
+                        issues.add(
+                                new Issue(
+                                        "UNRESOLVED_EXPERIENCE_BLOCK",
+                                        "source",
+                                        List.of(line.whole())));
+                        continue;
+                    }
                     pendingTitles.addAll(row.titles());
                     pendingPeriods.addAll(row.periods());
                     pendingPage = line.page;
@@ -163,7 +188,7 @@ final class ExperienceGrammar {
                                             .noneMatch(
                                                     title -> currentKeys.contains(titleKey(title)));
                     if (different) {
-                        if (current.periodBeforeTitle) {
+                        if (current.periodBeforeTitle && (!anchored || row.periods().isEmpty())) {
                             current.issues.add(
                                     new Issue(
                                             "EMPLOYER_PERIOD_NOT_ASSIGNED",
@@ -174,6 +199,7 @@ final class ExperienceGrammar {
                             current.periods.clear();
                         }
                         current = block(current.company, current.summary, line.page, epoch);
+                        current.headerEnd = index;
                     }
                     current.titles.addAll(row.titles());
                     current.periods.addAll(row.periods());
@@ -191,6 +217,7 @@ final class ExperienceGrammar {
                     if (nextCompany) current = null;
                 } else {
                     current.periodBeforeTitle = current.titles.isEmpty();
+                    if (current.headerEnd == index - 1) current.headerEnd = index;
                     current.periods.addAll(row.periods());
                 }
                 continue;
@@ -225,6 +252,17 @@ final class ExperienceGrammar {
         return new Outcome(List.copyOf(result), List.copyOf(issues));
     }
 
+    private boolean opensCompanyAfterTitle(int index, int page) {
+        if (index + 1 >= lines.size()) return false;
+        var next = lines.get(index + 1);
+        if (next.page != page || section(next.text) != null) return false;
+        var nextRow = rows.parse(index + 1, true);
+        return nextRow.company() != null
+                && nextRow.titles().isEmpty()
+                && !nextRow.continued()
+                && !nextRow.ambiguous();
+    }
+
     private Block block(Atom company, boolean summary, int page, int epoch) {
         if (blocks.size() >= 100)
             throw new IllegalArgumentException("Experience count limit exceeded");
@@ -248,7 +286,7 @@ final class ExperienceGrammar {
         String key = key(text.replaceFirst("[:：]$", ""));
         if (contains(config.rules().experienceHeadings(), key)) return "DETAIL";
         if (contains(config.rules().summaryHeadings(), key)) return "SUMMARY";
-        if (ExperienceGrammarRows.contextHeading(key)) return "CONTEXT";
+        if (ExperienceGrammarRows.contextHeading(key, v34)) return "CONTEXT";
         if (contains(config.rules().stopHeadings(), key)) return "STOP";
         return null;
     }
@@ -521,6 +559,7 @@ final class ExperienceGrammar {
         final List<Evidence> evidence = new ArrayList<>();
         final List<Issue> issues = new ArrayList<>();
         int lastPage, descriptionSize;
+        int headerEnd = -2;
         boolean consumed, periodBeforeTitle;
 
         Block(Atom company, boolean summary, int page, int epoch) {
