@@ -5,6 +5,7 @@ import { EvidenceButton } from "./evidence";
 import type { Basic, PersonalInfo, Proposal, evidenceSchema } from "./schema";
 export const personalFields = [
   "fullName",
+  "dateOfBirth",
   "email",
   "phone",
   "location",
@@ -13,6 +14,7 @@ export const personalFields = [
 ] as const;
 const labels: Record<(typeof personalFields)[number], string> = {
   fullName: "Họ tên",
+  dateOfBirth: "Ngày sinh",
   email: "Email",
   phone: "Điện thoại",
   location: "Địa điểm",
@@ -32,7 +34,14 @@ const parserTone = (state?: string) =>
     : state === "INVALID" || state === "AMBIGUOUS"
       ? "warn"
       : "neutral";
+/** ISO dates from the parser (YYYY, YYYY-MM, YYYY-MM-DD) shown day-first. */
+function birthDateLabel(value: string) {
+  const m = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/.exec(value);
+  if (!m) return value;
+  return [m[3], m[2], m[1]].filter(Boolean).join("/");
+}
 function valueLabel(key: string, value: string | null | undefined) {
+  if (key === "dateOfBirth" && value) return birthDateLabel(value);
   return key === "gender" && value === "MALE"
     ? "Nam"
     : key === "gender" && value === "FEMALE"
@@ -213,7 +222,7 @@ export function PersonalForm({
               <input
                 className="input"
                 value={data[key] ?? ""}
-                maxLength={key === "phone" ? 50 : 255}
+                maxLength={key === "phone" || key === "dateOfBirth" ? 50 : 255}
                 onChange={(event) => update(key, event.target.value)}
               />
             )}

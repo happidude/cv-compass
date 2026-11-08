@@ -18,8 +18,12 @@ public record PersonalInfoDefinition(
     public static final String ENGINE_VERSION = "personal-info-mapping/3.0";
     public static final String GRAMMAR_ENGINE_VERSION = "personal-info-mapping/3.1";
     public static final String GRAMMAR_V32_ENGINE_VERSION = "personal-info-mapping/3.2";
+    public static final String GRAMMAR_V33_ENGINE_VERSION = "personal-info-mapping/3.3";
     public static final Set<String> FIELD_NAMES =
             Set.of("fullName", "email", "phone", "location", "summary", "gender");
+    // 3.0-3.2 envelopes stay byte-stable; only 3.3 adds the date of birth field.
+    public static final Set<String> V33_FIELD_NAMES =
+            Set.of("fullName", "email", "phone", "location", "summary", "gender", "dateOfBirth");
     public static final Set<String> SECTIONS =
             Set.of("PERSONAL", "CONTACT", "SUMMARY", "EXPERIENCE", "EDUCATION", "REFERENCE");
     private static final Set<String> PRIORITIES =
@@ -47,7 +51,7 @@ public record PersonalInfoDefinition(
                 || revision == null
                 || !revision.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
                 || experience == null
-                || !personalFields.keySet().equals(FIELD_NAMES)
+                || !personalFields.keySet().equals(fieldNames(engineCompatibility))
                 || !sectionHeadings.keySet().equals(SECTIONS)
                 || excludedRegions.isEmpty()
                 || new HashSet<>(excludedRegions).size() != excludedRegions.size()
@@ -75,7 +79,16 @@ public record PersonalInfoDefinition(
     public static boolean supportsEngine(String engine) {
         return ENGINE_VERSION.equals(engine)
                 || GRAMMAR_ENGINE_VERSION.equals(engine)
-                || GRAMMAR_V32_ENGINE_VERSION.equals(engine);
+                || GRAMMAR_V32_ENGINE_VERSION.equals(engine)
+                || GRAMMAR_V33_ENGINE_VERSION.equals(engine);
+    }
+
+    public static Set<String> fieldNames(String engine) {
+        return GRAMMAR_V33_ENGINE_VERSION.equals(engine) ? V33_FIELD_NAMES : FIELD_NAMES;
+    }
+
+    public Set<String> fieldNames() {
+        return fieldNames(engineCompatibility);
     }
 
     private static void names(List<String> values) {

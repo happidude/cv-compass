@@ -15,6 +15,12 @@ final class PersonalInfoGrammarValidation {
             Pattern.compile(
                     "(?iu)\\b(?:engineer|developer|manager|director|officer|analyst|owner|lead|head|executive|consultant|recruiter|student|coordinator|kỹ sư|giám đốc|chuyên viên|trưởng phòng|nhân viên|sinh viên)\\b");
 
+    // 3.3 only: further role words seen as a second header line under the name. Older grammars keep
+    // the original list so their replay output stays byte-identical.
+    private static final Pattern OCCUPATION_V33 =
+            Pattern.compile(
+                    "(?iu)\\b(?:supervisor|specialist|designer|architect|administrator|accountant|auditor|technician|operator|assistant|intern|leader|scientist|representative|advisor|adviser|associate|buyer|merchandiser|planner|strategist|marketer|sales|president|founder|chief|ceo|cfo|coo|cto|cmo|giám sát|quản lý|trợ lý|kế toán|tổ trưởng)\\b");
+
     private static final Pattern ORGANIZATION =
             Pattern.compile(
                     "(?iu)\\b(?:company|corporation|corp|ltd|limited|inc|llc|jsc|group|công ty|tập đoàn)\\b");
@@ -56,19 +62,38 @@ final class PersonalInfoGrammarValidation {
     }
 
     static Checked check(String field, String raw, String logical, boolean v32) {
+        return check(field, raw, logical, v32, false);
+    }
+
+    static boolean occupation(String text, boolean v33) {
+        return occupation(text) || v33 && OCCUPATION_V33.matcher(text).find();
+    }
+
+    static Checked check(String field, String raw, String logical, boolean v32, boolean v33) {
         String value = Normalizer.normalize(logical, Normalizer.Form.NFC).strip();
         if (!field.equals("summary")) value = value.replaceAll("(?U)\\s+", " ");
         else value = value.replace("\r\n", "\n").replace('\r', '\n');
         int limit =
                 switch (field) {
                     case "fullName", "email", "location" -> 255;
-                    case "phone" -> 50;
+                    case "phone", "dateOfBirth" -> 50;
                     default -> 10000;
                 };
         if (value.isBlank() || value.codePointCount(0, value.length()) > limit)
             return invalid(raw, "VALUE_LENGTH_INVALID");
         return switch (field) {
-            case "summary", "location" -> new Checked(raw, value, null);
+            case "summary" -> new Checked(raw, value, null);
+            case "location" -> {
+                if (!v33) yield new Checked(raw, value, null);
+                var province = PersonalInfoProvinces.find(value);
+                yield province == null
+                        ? new Checked(raw, value, "LOCATION_PROVINCE_UNRECOGNIZED")
+                        : new Checked(raw, province.canonical(), null);
+            }
+            case "dateOfBirth" -> {
+                var parsed = PersonalInfoDates.parse(value);
+                yield new Checked(raw, parsed.normalized(), parsed.issue());
+            }
             case "gender" ->
                     switch (value.toLowerCase(Locale.ROOT)) {
                         case "male", "nam", "m" -> new Checked(raw, "MALE", null);
@@ -90,7 +115,7 @@ final class PersonalInfoGrammarValidation {
                 String cleaned = name(value);
                 if (!cleaned.matches("[\\p{L}\\p{M}][\\p{L}\\p{M} .'’()\\-]*")
                         || cleaned.replaceAll("[()]", " ").strip().split("\\s+").length < 2
-                        || occupation(cleaned)
+                        || occupation(cleaned, v33)
                         || !balanced(cleaned)) yield invalid(raw, "INVALID_NAME");
                 yield new Checked(name(raw), cleaned, null);
             }

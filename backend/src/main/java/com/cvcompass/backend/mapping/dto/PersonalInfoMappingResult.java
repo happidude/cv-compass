@@ -33,7 +33,8 @@ public record PersonalInfoMappingResult(
         if (schemaVersion != 3
                 || !PersonalInfoDefinition.supportsEngine(engineVersion)
                 || personalInfo == null
-                || !personalInfo.keySet().equals(PersonalInfoDefinition.FIELD_NAMES)) invalid();
+                || !personalInfo.keySet().equals(PersonalInfoDefinition.fieldNames(engineVersion)))
+            invalid();
         values = List.copyOf(values);
         experiences = List.copyOf(experiences);
         issues = List.copyOf(issues);

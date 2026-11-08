@@ -328,8 +328,9 @@ test("unverified profile renders text safely and selects correct document/page e
 }) => {
   await setup(page);
   await page.goto("/candidates/1");
+  // No parsed name: the heading falls back to the earliest source file name.
   await expect(
-    page.getByRole("heading", { name: "Ứng viên #1" }),
+    page.getByRole("heading", { name: "Synthetic source.pdf" }),
   ).toBeVisible();
   await expect(
     page

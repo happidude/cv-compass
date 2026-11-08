@@ -82,3 +82,34 @@ it("does not coerce unknown gender raw text or accept unknown proposal kinds", (
     proposalsSchema.safeParse([{ ...personalProposal, kind: "OTHER" }]).success,
   ).toBe(false);
 });
+it("keeps the parsed birth date and falls back to the source file name for display", async () => {
+  const { candidateTitle } = await import("../src/features/candidates/labels");
+  const { pageSchema } = await import("../src/features/candidates/schema");
+  const profile = profileSchema.parse({
+    ...personalProfile,
+    basic: { dateOfBirth: "1990-10-21", location: "Hồ Chí Minh" },
+  });
+  expect(profile.basic).toMatchObject({ dateOfBirth: "1990-10-21" });
+  const page = pageSchema.parse({
+    content: [
+      {
+        id: 7,
+        version: 0,
+        fullName: null,
+        basicState: "UNVERIFIED",
+        importedAt: "2026-11-01T00:00:00Z",
+        sourceFilename: "synthetic-cv.pdf",
+      },
+    ],
+    hasNext: false,
+    nextBeforeId: null,
+  });
+  const row = page.content[0];
+  expect(candidateTitle(row.id, row.fullName, row.sourceFilename)).toBe(
+    "synthetic-cv.pdf",
+  );
+  expect(candidateTitle(row.id, "Synthetic Person", "x.pdf")).toBe(
+    "Synthetic Person",
+  );
+  expect(candidateTitle(row.id, null, null)).toBe("Ứng viên #7");
+});

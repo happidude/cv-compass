@@ -9,7 +9,12 @@ import {
   useDocuments,
 } from "../documents";
 import { useBatches } from "../batches";
-import { stateLabel, stateTone, useCandidates } from "../candidates";
+import {
+  candidateTitle,
+  stateLabel,
+  stateTone,
+  useCandidates,
+} from "../candidates";
 import { date, displayName } from "../../shared/format";
 import {
   Badge,
@@ -174,7 +179,7 @@ function RecentCandidates() {
           {q.data.content.slice(0, SIDE_ROWS).map((row) => (
             <li key={row.id}>
               <Link className="row-link" to={`/candidates/${row.id}`}>
-                {row.fullName || "Ứng viên #" + row.id}
+                {candidateTitle(row.id, row.fullName, row.sourceFilename)}
               </Link>
               <Badge tone={stateTone(row.basicState)} mark>
                 {stateLabel(row.basicState)}

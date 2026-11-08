@@ -246,7 +246,8 @@ it("sparse proposal fields explicitly keep current values", async () => {
   await screen.findByText("Đề xuất thông tin cá nhân từ tài liệu #12");
   expect(
     screen.getAllByText("Giữ nguyên (không có thay đổi đề xuất)"),
-  ).toHaveLength(5);
+    // 7 personal fields (dateOfBirth added) minus the one gender change.
+  ).toHaveLength(6);
 });
 
 it("summary edits preserve internal line breaks and send no untouched personal fields", async () => {

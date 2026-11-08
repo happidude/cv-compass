@@ -11,7 +11,7 @@ import {
   PageHeader,
   Panel,
 } from "../../shared/ui";
-import { stateLabel, stateTone } from "./labels";
+import { candidateTitle, stateLabel, stateTone } from "./labels";
 import { useCandidates } from "./queries";
 export function CandidatesPage() {
   const [before, setBefore] = useState<string>();
@@ -73,7 +73,11 @@ export function CandidatesPage() {
                   <tr key={row.id}>
                     <td>
                       <Link className="row-link" to={"/candidates/" + row.id}>
-                        {row.fullName || "Ứng viên #" + row.id}
+                        {candidateTitle(
+                          row.id,
+                          row.fullName,
+                          row.sourceFilename,
+                        )}
                       </Link>
                     </td>
                     <td>
