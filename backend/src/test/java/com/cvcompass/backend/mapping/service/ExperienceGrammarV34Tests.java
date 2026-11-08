@@ -469,6 +469,222 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void combinedStopRequiresHeadingShape() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Work Experience
+                2011 – 2012 Sample Alpha
+                skills, and behaviors to become effective members of the team
+                2013 – 2014 Sample Beta
+                skills and training
+                2015 – 2016 Sample Gamma
+                Skills & Training.
+                2017 – 2018 Sample Delta
+                Skills and training, practice
+                2019 – 2020 Sample Epsilon
+                Skills and core training for new teams
+                2021 – 2022 Sample Zeta
+                EDUCATION AND CERTIFICATIONS
+                2023 – 2024 Sample Academy
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "Sample Alpha",
+                        "Sample Beta",
+                        "Sample Gamma",
+                        "Sample Delta",
+                        "Sample Epsilon",
+                        "Sample Zeta");
+    }
+
+    @Test
+    void consecutiveDatedSummaryRowsAreIndependentAndMergeWithExactDetails() throws Exception {
+        String summary =
+                """
+                Career Overview
+                01/2010 – 12/2012: CÔNG TY MẪU A
+                01/2013 – 12/2015: CÔNG TY MẪU B
+                01/2016 – 12/2018: CÔNG TY MẪU C
+                """;
+        var rows = parse("3.4", summary).experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("CÔNG TY MẪU A", "CÔNG TY MẪU B", "CÔNG TY MẪU C");
+        assertThat(rows).allSatisfy(row -> assertThat(row.title().raw()).isNull());
+
+        var merged =
+                parse(
+                                "3.4",
+                                summary
+                                        + """
+                Work Experience
+                01/2010 – 12/2012: CÔNG TY MẪU A
+                Sales Director
+                01/2013 – 12/2015: CÔNG TY MẪU B
+                Sales Manager
+                01/2016 – 12/2018: CÔNG TY MẪU C
+                Engineer
+                """)
+                        .experiences();
+        assertThat(merged)
+                .extracting(row -> row.company().raw())
+                .containsExactly("CÔNG TY MẪU A", "CÔNG TY MẪU B", "CÔNG TY MẪU C");
+        assertThat(merged)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Sales Director", "Sales Manager", "Engineer");
+        assertThat(merged)
+                .allSatisfy(
+                        row -> {
+                            assertThat(row.period().state()).isEqualTo("PROPOSED");
+                            assertThat(row.issues())
+                                    .extracting(issue -> issue.code())
+                                    .contains("SUMMARY_DETAIL_MERGED");
+                        });
+    }
+
+    @Test
+    void untitledSummaryDoesNotMergeAcrossDifferentEndDates() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Career Overview
+                01/2010 – 12/2012: CÔNG TY MẪU
+                Work Experience
+                01/2010 – 12/2013: CÔNG TY MẪU
+                Sales Director
+                """)
+                        .experiences();
+        assertThat(rows).extracting(row -> row.period().end().year()).containsExactly(2012, 2013);
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly(null, "Sales Director");
+    }
+
+    @Test
+    void doesNotConsumeACompanyWithItsOwnPeriodLabel() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Work Experience
+                2013 – 2015 Sample One
+                SAMPLE TWO LTD
+                Period: 2016 – 2018
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample One", "SAMPLE TWO LTD");
+        assertThat(rows).extracting(row -> row.period().start().year()).containsExactly(2013, 2016);
+    }
+
+    @Test
+    void doesNotConsumeACompanyWithItsOwnUnlabelledTitle() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Work Experience
+                2013 – 2015 Sample One
+                SAMPLE TWO LTD
+                Engineer
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample One", "SAMPLE TWO LTD");
+        assertThat(rows).extracting(row -> row.title().raw()).containsExactly(null, "Engineer");
+    }
+
+    @Test
+    void keepsTheCompanyOfATitleHeadingBeforeAnIndependentLabelledRow() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Work Experience
+                Engineer 2013 – 2015
+                SAMPLE ONE
+                Company: Sample Two Ltd | Period: 2016 – 2018
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("SAMPLE ONE", "Sample Two Ltd");
+        assertThat(rows).extracting(row -> row.title().raw()).containsExactly("Engineer", null);
+    }
+
+    @Test
+    void periodBoundarySeparatorsDoNotOverrideDashesInsideTheHeading() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Work Experience
+                Sales Director – Sample Asset JSC | 2017 – 2021
+                Sales Manager – Sample Foods (Sample Group) | 2010 – 2012
+                Earlier Career – Sample Vietnam | 1996 – 2007
+                1993 – 1995 / Engineer – Sample Works
+                Founder – GM Division / Sample Services | 1990 – 1992
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "Sample Asset JSC",
+                        "Sample Foods (Sample Group)",
+                        "Sample Vietnam",
+                        "Sample Works",
+                        "Sample Services");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "Sales Director",
+                        "Sales Manager",
+                        null,
+                        "Engineer",
+                        "Founder – GM Division");
+        assertThat(rows)
+                .extracting(row -> row.period().start().year())
+                .containsExactly(2017, 2010, 1996, 1993, 1990);
+    }
+
+    @Test
+    void assignsSeparateDetailTitlesBeforeMergingWithTheSummary() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Career Overview
+                01/2010 – 12/2012: CÔNG TY MẪU A
+                01/2013 – 12/2015: CÔNG TY MẪU B
+                Work Experience
+                01/2010 – 12/2012: CÔNG TY MẪU A
+                Paint Technician
+                Account Coordinator
+                01/2013 – 12/2015: CÔNG TY MẪU B
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("CÔNG TY MẪU A", "CÔNG TY MẪU B");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Paint Technician", "Account Coordinator");
+        assertThat(rows)
+                .allSatisfy(
+                        row ->
+                                assertThat(row.issues())
+                                        .extracting(issue -> issue.code())
+                                        .contains("SUMMARY_DETAIL_MERGED"));
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");
