@@ -39,6 +39,7 @@ export const experienceDataSchema = z
       alternatives: z.array(z.unknown()).optional(),
       evidence,
     }),
+    countInTotal: z.boolean().optional(),
     descriptionRaw: z.string().optional(),
     descriptionEvidence: evidence,
     evidence,
@@ -103,6 +104,14 @@ export const personalInfoSchema = z.object({
 });
 export type PersonalInfo = z.infer<typeof personalInfoSchema>;
 export type Basic = z.infer<typeof basicSchema>;
+const experienceSummarySchema = z.object({
+  totalMonths: countSchema,
+  countedIds: z.array(z.uuid()),
+  skipped: z.array(z.object({ id: z.uuid(), reason: z.string() })),
+  ongoingReferenceDates: z.array(z.iso.date()),
+  hasYearOnlyPeriods: z.boolean(),
+});
+export type ExperienceSummary = z.infer<typeof experienceSummarySchema>;
 export const profileSchema = z.object({
   id: idSchema,
   version: countSchema,
@@ -125,6 +134,7 @@ export const profileSchema = z.object({
   documents: z.array(
     z.object({ id: idSchema, filename: z.string(), importedAt: z.string() }),
   ),
+  experienceSummary: experienceSummarySchema.optional(),
 });
 export const pageSchema = z.object({
   content: z.array(

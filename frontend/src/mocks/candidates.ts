@@ -64,6 +64,7 @@ const experience = {
   evidence: [span(2, "Synthetic Logistics JSC — Senior Backend Engineer")],
   issues: [],
 };
+const experienceId = "11111111-1111-4111-8111-111111111111";
 let profile = {
   id: 1,
   version: 3,
@@ -77,7 +78,7 @@ let profile = {
   extensions: { personalInfo },
   experiences: [
     {
-      id: "11111111-1111-4111-8111-111111111111",
+      id: experienceId,
       state: "UNVERIFIED",
       origin: "MAPPING",
       documentId: 7,
@@ -86,6 +87,13 @@ let profile = {
     },
   ],
   documents: [{ id: 7, filename: "Synthetic_scan.pdf", importedAt: timestamp }],
+  experienceSummary: {
+    totalMonths: 67,
+    countedIds: [experienceId],
+    skipped: [],
+    ongoingReferenceDates: [timestamp.slice(0, 10)],
+    hasYearOnlyPeriods: false,
+  },
 };
 const proposals = [
   {

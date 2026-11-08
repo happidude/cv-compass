@@ -431,6 +431,10 @@
 .xp-card__state {
   display: flex;
 }
+.experience-summary__skipped {
+  list-style: disc;
+  padding-inline-start: var(--sp-5);
+}
 .xp {
   display: grid;
   gap: var(--sp-3);

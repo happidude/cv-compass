@@ -27,10 +27,12 @@ const codes = (value: string) =>
     .filter(Boolean);
 export function ExperienceForm({
   initial,
+  supportsExperienceTotal = false,
   onSave,
   onCancel,
 }: {
   initial?: ExperienceData;
+  supportsExperienceTotal?: boolean;
   onSave: (data: unknown) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -40,6 +42,9 @@ export function ExperienceForm({
   const [end, setEnd] = useState(dateText(initial?.period.end));
   const [ongoing, setOngoing] = useState(
     initial?.period.ongoingAsStated ?? false,
+  );
+  const [countInTotal, setCountInTotal] = useState(
+    initial?.countInTotal ?? true,
   );
   const [functions, setFunctions] = useState(
     initial?.title.functionCodes?.join(", ") ?? "",
@@ -75,6 +80,7 @@ export function ExperienceForm({
               state: "PROPOSED",
             },
             descriptionRaw: description,
+            ...(supportsExperienceTotal ? { countInTotal } : {}),
           });
         } catch {
           setError(
@@ -141,6 +147,16 @@ export function ExperienceForm({
           />
           Đang làm theo nội dung CV
         </label>
+        {supportsExperienceTotal && (
+          <label className="checkbox span-2">
+            <input
+              type="checkbox"
+              checked={countInTotal}
+              onChange={(e) => setCountInTotal(e.target.checked)}
+            />
+            Tính vào tổng kinh nghiệm
+          </label>
+        )}
         <label className="field">
           Mã chuyên môn (phân cách bằng dấu phẩy)
           <input

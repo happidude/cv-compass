@@ -15,6 +15,7 @@ import {
   RouteLine,
 } from "../../shared/ui";
 import { ExperienceForm } from "./experience-form";
+import { ExperienceSummaryNotice } from "./experience-summary";
 import { ExperienceValues, type Evidence } from "./experience";
 import { HistorySection } from "./history";
 import { candidateTitle, firstFilename, stateLabel, stateTone } from "./labels";
@@ -222,8 +223,15 @@ function CandidateContent({ id }: { id: string }) {
               </Button>
             </header>
             <div className="profile-section__body">
+              {p.experienceSummary && (
+                <ExperienceSummaryNotice
+                  summary={p.experienceSummary}
+                  experiences={p.experiences}
+                />
+              )}
               {editing === "new" && (
                 <ExperienceForm
+                  supportsExperienceTotal={p.experienceSummary !== undefined}
                   onSave={(data) =>
                     act("/experiences", "POST", { data, operation: "SAVE" })
                   }
@@ -288,6 +296,9 @@ function CandidateContent({ id }: { id: string }) {
                   {editing === exp.id && (
                     <ExperienceForm
                       initial={exp.data}
+                      supportsExperienceTotal={
+                        p.experienceSummary !== undefined
+                      }
                       onSave={(data) =>
                         act("/experiences", "POST", {
                           experienceId: exp.id,
