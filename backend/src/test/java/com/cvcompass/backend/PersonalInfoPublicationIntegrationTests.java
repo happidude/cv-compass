@@ -213,6 +213,19 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     @Test
+    void v32PublicationKeepsEngineProvenanceOnReplay() throws Exception {
+        var doc = document();
+        long id = result(doc, "Phone: +84 (0)900 000 002", false, "personal-info-mapping/3.2");
+        assertThat(publication.publish(id)).isTrue();
+        var profile = queries.detail(candidate(doc));
+        assertThat(profile.basic().path("phone").asString()).isEqualTo("+84 (0)900 000 002");
+        assertThat(profile.extensions().path("mapping").path("engineVersion").asString())
+                .isEqualTo("personal-info-mapping/3.2");
+        assertThat(publication.publish(id)).isFalse();
+        assertThat(queries.detail(profile.id())).isEqualTo(profile);
+    }
+
+    @Test
     void manualPatchPreservesOmittedFieldsAndRemovesOnlyChangedEvidence() throws Exception {
         var d = document();
         publication.publish(result(d, "Full name: Synthetic Person\nGender: Male", false));

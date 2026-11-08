@@ -19,6 +19,9 @@ final class PersonalInfoGrammarValidation {
             Pattern.compile(
                     "(?iu)\\b(?:company|corporation|corp|ltd|limited|inc|llc|jsc|group|công ty|tập đoàn)\\b");
 
+    private static final Pattern PHONE_TRUNK =
+            Pattern.compile("(?s)^(?:\\+(\\d{1,3})|\\(\\+(\\d{1,3})\\))\\s*\\(0\\)\\s*(.*)$");
+
     record Checked(String raw, String normalized, String issue) {}
 
     static String name(String raw) {
@@ -49,6 +52,10 @@ final class PersonalInfoGrammarValidation {
     }
 
     static Checked check(String field, String raw, String logical) {
+        return check(field, raw, logical, false);
+    }
+
+    static Checked check(String field, String raw, String logical, boolean v32) {
         String value = Normalizer.normalize(logical, Normalizer.Form.NFC).strip();
         if (!field.equals("summary")) value = value.replaceAll("(?U)\\s+", " ");
         else value = value.replace("\r\n", "\n").replace('\r', '\n');
@@ -78,7 +85,7 @@ final class PersonalInfoGrammarValidation {
                                 + value.substring(at + 1).toLowerCase(Locale.ROOT),
                         null);
             }
-            case "phone" -> phone(raw, value);
+            case "phone" -> phone(raw, value, v32);
             case "fullName" -> {
                 String cleaned = name(value);
                 if (!cleaned.matches("[\\p{L}\\p{M}][\\p{L}\\p{M} .'’()\\-]*")
@@ -91,9 +98,21 @@ final class PersonalInfoGrammarValidation {
         };
     }
 
-    private static Checked phone(String raw, String value) {
-        if (value.matches("(?s)^(?:\\+\\d{1,3}|\\(\\+\\d{1,3}\\))\\s*\\(0\\).*$"))
-            return invalid(raw, "PHONE_TRUNK_NOTATION_AMBIGUOUS");
+    private static Checked phone(String raw, String value, boolean v32) {
+        var trunk = PHONE_TRUNK.matcher(value);
+        if (!trunk.matches()) return standardPhone(raw, value);
+        if (!v32) return invalid(raw, "PHONE_TRUNK_NOTATION_AMBIGUOUS");
+        if (!trunk.group(3).matches("[0-9].*")) return invalid(raw, "INVALID_PHONE");
+        boolean vietnamese = "84".equals(trunk.group(1)) || "84".equals(trunk.group(2));
+        var checked = standardPhone(raw, vietnamese ? "0" + trunk.group(3) : value);
+        if (checked.normalized() == null) return checked;
+        return new Checked(
+                raw,
+                checked.normalized(),
+                vietnamese ? "PHONE_TRUNK_NOTATION_NORMALIZED" : "PHONE_TRUNK_NOTATION_KEPT");
+    }
+
+    private static Checked standardPhone(String raw, String value) {
         String compact = value.replaceAll("\\s+", "");
         if (compact.matches(
                 "(?:[12]\\d{3}[-/.][01]?\\d[-/.][0-3]?\\d|[0-3]?\\d[-/.][01]?\\d[-/.][12]\\d{3}|[12]\\d{3}[-/.–—][12]\\d{3})"))

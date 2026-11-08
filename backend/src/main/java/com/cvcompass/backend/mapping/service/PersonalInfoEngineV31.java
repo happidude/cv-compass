@@ -15,9 +15,13 @@ public class PersonalInfoEngineV31 {
     public static final String VERSION = PersonalInfoDefinition.GRAMMAR_ENGINE_VERSION;
 
     public PersonalInfoMappingResult map(MappingClaim claim, Extraction input) {
+        return map(claim, input, VERSION);
+    }
+
+    static PersonalInfoMappingResult map(MappingClaim claim, Extraction input, String version) {
         if (!(claim.definition() instanceof PersonalInfoDefinition definition)
-                || !VERSION.equals(claim.engineVersion())
-                || !VERSION.equals(definition.engineCompatibility())
+                || !version.equals(claim.engineVersion())
+                || !version.equals(definition.engineCompatibility())
                 || claim.extractionId() != input.id())
             throw new IllegalArgumentException("Personal information engine/config/input mismatch");
         definition.validate();
@@ -68,7 +72,7 @@ public class PersonalInfoEngineV31 {
                         input.schemaVersion(),
                         claim.configId(),
                         claim.configRevision(),
-                        VERSION,
+                        version,
                         rejection == null ? "NEEDS_REVIEW" : "UNSUPPORTED_INPUT",
                         incomplete,
                         rejection,

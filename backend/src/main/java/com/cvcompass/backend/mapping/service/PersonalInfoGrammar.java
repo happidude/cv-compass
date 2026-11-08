@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /** Bounded field/block grammar for the opt-in engine; it never infers missing layout. */
@@ -23,6 +24,13 @@ final class PersonalInfoGrammar {
     private static final int MAX_HEADER_CODE_POINTS = 4096;
     private static final Pattern EMAIL =
             Pattern.compile("[\\p{L}\\p{N}._%+'’-]+@[\\p{L}\\p{N}.-]+\\.[\\p{L}]{2,}");
+    private static final Pattern LOCATION_BOUNDARY =
+            Pattern.compile("^(?:[•●▪*–-]|\\p{L}[^:：]*[:：])");
+    private static final Pattern CONTACT_SEGMENT = Pattern.compile("[^|•;]+");
+    private static final Pattern UNLABELED_CONTACT_SEGMENT = Pattern.compile("[^|•●▪;,]+");
+    private static final Set<String> PROTECTED_REGIONS =
+            Set.of("REFERENCE", "RECRUITER", "COMPANY");
+    private static final List<String> CONTACT_FIELDS = List.of("email", "phone");
     private static final Pattern INTRO =
             Pattern.compile(
                     "(?iu)^(?:I am|I have|I bring|I offer|My background|My experience|Tôi|Với hơn)\\b.*");
@@ -32,17 +40,25 @@ final class PersonalInfoGrammar {
 
     private record Value(PersonalInfoGrammarLines.Line line, Evidence evidence) {}
 
+    private record Contact(String field, String logical, Evidence evidence) {}
+
     private final Extraction input;
+    private final boolean v32;
     private final PersonalInfoDefinition config;
     private final PersonalInfoGrammarLabels labels;
     private final List<PersonalInfoGrammarLines.Line> lines;
     private final Map<String, List<Candidate>> candidates = new TreeMap<>();
+    private final List<Candidate> summarySections = new ArrayList<>();
+    private final Set<String> unlabeledFields = new HashSet<>();
     private final Set<Integer> summaryConsumed = new HashSet<>();
     private final Set<Integer> assignedValues = new HashSet<>();
 
     PersonalInfoGrammar(Extraction input, PersonalInfoDefinition config) {
         this.input = input;
         this.config = config;
+        this.v32 =
+                PersonalInfoDefinition.GRAMMAR_V32_ENGINE_VERSION.equals(
+                        config.engineCompatibility());
         this.labels = new PersonalInfoGrammarLabels(config);
         this.lines = PersonalInfoGrammarLines.read(input, config);
         PersonalInfoDefinition.FIELD_NAMES.forEach(
@@ -83,6 +99,10 @@ final class PersonalInfoGrammar {
                     && line.text().split(" ").length >= 6
                     && enabled("summary", "SECTION_CONTEXT")) summary(index, null);
         }
+        if (v32) {
+            mergeSummarySections();
+            unlabeledContacts();
+        }
         headerNames();
         var result = new TreeMap<String, PersonalField>();
         for (String field : PersonalInfoDefinition.FIELD_NAMES)
@@ -105,6 +125,7 @@ final class PersonalInfoGrammar {
                     || !line.personal()
                     || (i > start && line.heading())) break;
             if (line.blank() || line.text().matches("[:：|]")) continue;
+            if (i > start && pending.contains("location") && locationBoundary(line)) break;
             var found = labels.find(line.text());
             if (!found.isEmpty()) {
                 if (!values.isEmpty()
@@ -126,13 +147,13 @@ final class PersonalInfoGrammar {
         if (pending.size() == 1 && !unknownLabel && !values.isEmpty()) {
             if (pending.contains("fullName")
                     && values.size() > 1
-                    && PersonalInfoGrammarValidation.check(
+                    && check(
                                             "fullName",
                                             values.get(0).evidence().text(),
                                             values.get(0).evidence().text())
                                     .normalized()
                             != null
-                    && PersonalInfoGrammarValidation.check(
+                    && check(
                                             "fullName",
                                             values.get(1).evidence().text(),
                                             values.get(1).evidence().text())
@@ -155,9 +176,7 @@ final class PersonalInfoGrammar {
         for (String field : pending) {
             if (!enabled(field, "EXPLICIT_LABEL")) continue;
             for (var value : values) {
-                var checked =
-                        PersonalInfoGrammarValidation.check(
-                                field, value.evidence().text(), value.evidence().text());
+                var checked = check(field, value.evidence().text(), value.evidence().text());
                 boolean typed =
                         List.of("email", "phone", "gender").contains(field)
                                 && checked.normalized() != null;
@@ -219,6 +238,7 @@ final class PersonalInfoGrammar {
                         || line.heading()
                         || !line.personal()
                         || labels.isBoundary(line.text())
+                        || locationBoundary(line)
                         || line.text().contains("@")
                         || line.text().matches("(?iu).*(?:https?://|www\\.).*")) break;
                 evidence.add(line.source().whole());
@@ -228,6 +248,10 @@ final class PersonalInfoGrammar {
         }
         assignedValues.add(value.line().index());
         add(field, evidence, logical, value.line().warning(), null);
+    }
+
+    private boolean locationBoundary(PersonalInfoGrammarLines.Line line) {
+        return v32 && LOCATION_BOUNDARY.matcher(line.text()).find();
     }
 
     private int nextMeaningful(int start, int page, int bound) {
@@ -244,21 +268,84 @@ final class PersonalInfoGrammar {
 
     private void typedContact(PersonalInfoGrammarLines.Line line) {
         if (!List.of("CONTACT", "PERSONAL").contains(line.region())) return;
+        scanContacts(
+                line,
+                CONTACT_SEGMENT,
+                enabled("phone", "SECTION_CONTEXT"),
+                contact -> {
+                    String field = contact.field();
+                    if (!enabled(field, "SECTION_CONTEXT")) return;
+                    if (field.equals("phone")) {
+                        var checked = check(field, contact.logical(), contact.logical());
+                        if (checked.normalized() == null
+                                && !"PHONE_TRUNK_NOTATION_AMBIGUOUS".equals(checked.issue()))
+                            return;
+                    }
+                    add(
+                            field,
+                            List.of(contact.evidence()),
+                            contact.logical(),
+                            line.warning(),
+                            null);
+                });
+    }
+
+    private void unlabeledContacts() {
+        var missing =
+                CONTACT_FIELDS.stream()
+                        .filter(
+                                field ->
+                                        enabled(field, "SECTION_CONTEXT")
+                                                && candidates.get(field).isEmpty())
+                        .toList();
+        if (missing.isEmpty()) return;
+        for (var line : lines) {
+            if (line.blank() || line.noise() || PROTECTED_REGIONS.contains(line.region())) continue;
+            scanContacts(
+                    line,
+                    UNLABELED_CONTACT_SEGMENT,
+                    missing.contains("phone"),
+                    contact -> {
+                        String field = contact.field();
+                        if (missing.contains(field)
+                                && check(field, contact.evidence().text(), contact.logical())
+                                                .normalized()
+                                        != null)
+                            add(field, List.of(contact.evidence()), contact.logical(), false, null);
+                    });
+        }
+        for (String field : missing) {
+            var values = candidates.get(field);
+            long distinct =
+                    values.stream()
+                            .map(value -> check(field, value.raw(), value.logical()).normalized())
+                            .distinct()
+                            .limit(2)
+                            .count();
+            if (distinct != 1) continue;
+            if (values.stream().anyMatch(value -> value.evidence().getFirst().page() == 1))
+                unlabeledFields.add(field);
+            else values.clear();
+        }
+    }
+
+    private void scanContacts(
+            PersonalInfoGrammarLines.Line line,
+            Pattern segments,
+            boolean scanPhone,
+            Consumer<Contact> accept) {
         var email = EMAIL.matcher(line.text());
         var withoutEmail = new StringBuilder(line.text());
         while (email.find()) {
-            if (enabled("email", "SECTION_CONTEXT"))
-                add(
-                        "email",
-                        List.of(line.source().span(email.start(), email.end())),
-                        line.source().span(email.start(), email.end()).text(),
-                        line.warning(),
-                        null);
+            var evidence = line.source().span(email.start(), email.end());
+            accept.accept(new Contact("email", evidence.text(), evidence));
             withoutEmail.replace(
-                    email.start(), email.end(), " ".repeat(email.end() - email.start()));
+                    email.start(),
+                    email.end(),
+                    (v32 ? "|" : " ").repeat(email.end() - email.start()));
         }
-        if (!enabled("phone", "SECTION_CONTEXT")) return;
-        var delimiters = Pattern.compile("[^|•;]+").matcher(withoutEmail);
+        if (!scanPhone) return;
+        var delimiters = segments.matcher(withoutEmail);
         while (delimiters.find()) {
             int from = delimiters.start(), to = delimiters.end();
             while (from < to
@@ -272,10 +359,7 @@ final class PersonalInfoGrammar {
             while (to > from && Character.isWhitespace(line.text().charAt(to - 1))) to--;
             if (from == to) continue;
             String value = withoutEmail.substring(from, to).strip();
-            var checked = PersonalInfoGrammarValidation.check("phone", value, value);
-            if (checked.normalized() != null
-                    || "PHONE_TRUNK_NOTATION_AMBIGUOUS".equals(checked.issue()))
-                add("phone", List.of(line.source().span(from, to)), value, line.warning(), null);
+            accept.accept(new Contact("phone", value, line.source().span(from, to)));
         }
     }
 
@@ -305,7 +389,8 @@ final class PersonalInfoGrammar {
                     summaryConsumed.add(i);
                     continue;
                 }
-                if (line.heading() && !line.region().equals("SUMMARY")) {
+                if (line.heading()
+                        && (!line.region().equals("SUMMARY") || (v32 && !line.continued()))) {
                     bounded = true;
                     break;
                 }
@@ -327,12 +412,25 @@ final class PersonalInfoGrammar {
         if (!bounded && input.pages().stream().anyMatch(value -> value.number() > last))
             uncertain = true;
         String raw = raw(evidence);
-        add(
-                "summary",
-                evidence,
-                raw,
-                uncertain,
-                uncertain ? "SUMMARY_CONTINUATION_UNVERIFIED" : null);
+        var candidate =
+                new Candidate(
+                        raw,
+                        raw,
+                        List.copyOf(evidence),
+                        uncertain,
+                        uncertain ? "SUMMARY_CONTINUATION_UNVERIFIED" : null);
+        add("summary", candidate);
+        if (v32 && (label != null || first.heading())) summarySections.add(candidate);
+    }
+
+    private void mergeSummarySections() {
+        if (summarySections.size() < 2) return;
+        String raw = String.join("\n\n", summarySections.stream().map(Candidate::raw).toList());
+        var evidence =
+                summarySections.stream().flatMap(section -> section.evidence().stream()).toList();
+        boolean uncertain = summarySections.stream().anyMatch(Candidate::uncertain);
+        candidates.get("summary").clear();
+        add("summary", new Candidate(raw, raw, evidence, uncertain, "SUMMARY_MULTI_SECTION"));
     }
 
     private void headerNames() {
@@ -416,10 +514,14 @@ final class PersonalInfoGrammar {
             boolean uncertain,
             String issue) {
         if (evidence.isEmpty() || !config.personalFields().get(field).enabled()) return;
+        add(field, new Candidate(raw(evidence), logical, List.copyOf(evidence), uncertain, issue));
+    }
+
+    private void add(String field, Candidate candidate) {
         var values = candidates.get(field);
         if (values.size() >= 128)
             throw new IllegalArgumentException("Personal candidate limit exceeded");
-        values.add(new Candidate(raw(evidence), logical, List.copyOf(evidence), uncertain, issue));
+        values.add(candidate);
     }
 
     private String raw(List<Evidence> evidence) {
@@ -466,6 +568,10 @@ final class PersonalInfoGrammar {
         return from == to ? null : line.source().span(from, to);
     }
 
+    private PersonalInfoGrammarValidation.Checked check(String field, String raw, String logical) {
+        return PersonalInfoGrammarValidation.check(field, raw, logical, v32);
+    }
+
     private PersonalField select(String field, List<Candidate> values) {
         if (!config.personalFields().get(field).enabled())
             return new PersonalField(
@@ -482,7 +588,7 @@ final class PersonalInfoGrammar {
         boolean uncertain = false;
         String selectedRaw = null;
         for (var value : values) {
-            var checked = PersonalInfoGrammarValidation.check(field, value.raw(), value.logical());
+            var checked = check(field, value.raw(), value.logical());
             var previous = alternatives.get(value.raw());
             var spans = new ArrayList<>(value.evidence());
             if (previous != null) spans.addAll(previous.evidence());
@@ -492,7 +598,7 @@ final class PersonalInfoGrammar {
                             value.raw(), checked.normalized(), spans.stream().distinct().toList()));
             if (checked.issue() != null)
                 issues.add(new Issue(checked.issue(), field, value.evidence()));
-            else {
+            if (checked.normalized() != null) {
                 valid.computeIfAbsent(checked.normalized(), ignored -> new ArrayList<>())
                         .add(value);
                 if (selectedRaw == null) selectedRaw = checked.raw();
@@ -516,6 +622,8 @@ final class PersonalInfoGrammar {
                                 .distinct()
                                 .toList()
                         : List.<Evidence>of();
+        if (unlabeledFields.contains(field))
+            issues.add(new Issue("UNLABELED_SINGLE_VALUE", field, evidence));
         return new PersonalField(
                 true,
                 state.equals("PROPOSED") ? selectedRaw : null,
