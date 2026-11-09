@@ -43,6 +43,19 @@ final class ExperienceGrammarRows {
     private static final Pattern STATEMENT =
             Pattern.compile(
                     "(?iu)^(?:worked at|working at|have been working at|làm việc tại)\\s+(.+?)\\s+(?:from|từ)\\s+.+$");
+    private static final String LABEL_MODIFIER = "(?:current|last|previous|former|present|recent)";
+    private static final Pattern LABEL_MODIFIER_WORD =
+            Pattern.compile("(?iu)^" + LABEL_MODIFIER + "$");
+    private static final Pattern LEADING_LABEL_MODIFIER =
+            Pattern.compile("(?iu)^" + LABEL_MODIFIER + "\\s+");
+    private static final Pattern EXPERIENCE_INTRO =
+            Pattern.compile(
+                    "(?iu)^(?:positions?\\s+and\\s+experiences?\\s+(?:in|at)|experience\\s+at)\\s+\\S.*[:：]$");
+    private static final Pattern CONTEXT_LABEL_V34 =
+            Pattern.compile("(?iu)^(?:location|category|report\\s+to|industry|địa chỉ)\\s*[:：].*");
+    private static final Pattern BULLET_PREFIX = Pattern.compile("^(?:[-–—*•●▪]|\\d+[.)])\\s*");
+    private static final Pattern TITLE_SENTENCE =
+            Pattern.compile("(?iu)^work(?:ing)?\\s+as\\s+(.+?)\\s+in\\s+\\S.*$");
     private static final Pattern APPLICATION =
             Pattern.compile(
                     "(?iu)^(?:application for|application to|applying for|ứng tuyển|position applied for)\\b.*");
@@ -77,7 +90,11 @@ final class ExperienceGrammarRows {
                     "sea",
                     "apac");
 
-    record Atom(String raw, String text, List<Evidence> evidence) {
+    record Atom(String raw, String text, List<Evidence> evidence, String originalTitle) {
+        Atom(String raw, String text, List<Evidence> evidence) {
+            this(raw, text, evidence, null);
+        }
+
         Atom {
             evidence = List.copyOf(evidence);
         }
@@ -103,13 +120,16 @@ final class ExperienceGrammarRows {
     private final List<Label> labels;
 
     private final ExperienceGrammarDates dates;
+    private final boolean v34;
 
     ExperienceGrammarRows(
             Extraction input,
             ExperienceDefinition config,
             List<SourceLine> lines,
-            ExperienceGrammarDates dates) {
+            ExperienceGrammarDates dates,
+            boolean v34) {
         this.dates = dates;
+        this.v34 = v34;
         this.input = input;
         this.config = config;
         this.lines = lines;
@@ -137,8 +157,15 @@ final class ExperienceGrammarRows {
         var line = lines.get(index);
         if (CONTEXT.matcher(line.text).matches()
                 || APPLICATION.matcher(line.text).matches()
+                || v34
+                        && (CONTEXT_LABEL_V34.matcher(withoutBullet(line.text)).matches()
+                                || experienceIntro(line.text))
                 || anchored && streetAddressWithoutLeadingPeriod(line.text))
             return new Row(line, null, List.of(), List.of(), index, false, false, true);
+        if (anchored && !dates.hasRange(line.text) && TITLE_SENTENCE.matcher(line.text).matches()) {
+            var value = titleValue(line, atom(line, 0, line.text.length()), 0);
+            return new Row(line, null, List.of(value), List.of(), index, false, false, false);
+        }
         var statement = STATEMENT.matcher(line.text);
         var statementPeriod = dates.find(line);
         if (statement.matches() && statementPeriod != null) {
@@ -263,7 +290,13 @@ final class ExperienceGrammarRows {
                                 consumed++;
                             }
                         }
-                        titles.add(value);
+                        titles.add(
+                                v34
+                                        ? titleValue(
+                                                valueLine,
+                                                value,
+                                                valueLine == line ? label.valueStart() : 0)
+                                        : value);
                     }
                 }
             }
@@ -522,6 +555,21 @@ final class ExperienceGrammarRows {
                     false);
         }
 
+        if (companies.size() > 1
+                && separator == PRIMARY_SEPARATOR
+                && hasOutsideSeparator(line, 0, start, DASH_SEPARATOR)) {
+            var legal = companies.stream().filter(value -> legalName(value.text())).toList();
+            if (legal.size() == 1) {
+                companies.retainAll(legal);
+            } else if (legal.isEmpty()
+                    && after == null
+                    && !titles.isEmpty()
+                    && companies.getLast() == parts.getLast()) {
+                var nearest = companies.getLast();
+                companies.clear();
+                companies.add(nearest);
+            }
+        }
         var company = companies.size() == 1 ? companies.getFirst() : null;
         int consumed = index;
         if (companies.isEmpty() && !titles.isEmpty()) {
@@ -648,12 +696,29 @@ final class ExperienceGrammarRows {
         var separators = separator.matcher(line.text).region(start, end);
         while (separators.find()) {
             if (insideParentheses(line.text, separators.start())) continue;
-            var part = atom(line, start, separators.start());
-            if (part != null) parts.add(part);
+            addHeadingPart(line, start, separators.start(), separator, parts);
             start = separators.end();
         }
-        var last = atom(line, start, end);
-        if (last != null) parts.add(last);
+        addHeadingPart(line, start, end, separator, parts);
+    }
+
+    private void addHeadingPart(
+            SourceLine line, int start, int end, Pattern separator, List<Atom> parts) {
+        var part = atom(line, start, end);
+        if (part == null) return;
+        if (separator == PRIMARY_SEPARATOR
+                && hasOutsideSeparator(line, start, end, DASH_SEPARATOR)) {
+            var pair = new ArrayList<Atom>();
+            headingParts(line, start, end, DASH_SEPARATOR, pair);
+            if (pair.size() == 2
+                    && (legalName(pair.getFirst().text()) && title(pair.getLast().text(), true)
+                            || title(pair.getFirst().text(), true)
+                                    && legalName(pair.getLast().text()))) {
+                parts.addAll(pair);
+                return;
+            }
+        }
+        parts.add(part);
     }
 
     private void datedHeadingParts(
@@ -717,6 +782,8 @@ final class ExperienceGrammarRows {
                 && !GERUND_PROSE.matcher(text).matches()
                 && !BULLET.matcher(text).matches()
                 && !CONTEXT.matcher(text).matches()
+                && !CONTEXT_LABEL_V34.matcher(withoutBullet(text)).matches()
+                && !experienceIntro(text)
                 && !APPLICATION.matcher(text).matches();
     }
 
@@ -739,8 +806,16 @@ final class ExperienceGrammarRows {
         return STREET_ADDRESS.matcher(text).matches() && !dates.startsWithRange(text);
     }
 
+    private static boolean legalName(String text) {
+        return LEGAL_SUFFIX.matcher(outsideParentheses(text)).matches();
+    }
+
+    private static String outsideParentheses(String text) {
+        return text.replaceAll("\\([^()]*\\)", "").strip();
+    }
+
     private static boolean companyTextAllowed(String text) {
-        String outside = text.replaceAll("\\([^()]*\\)", "").strip();
+        String outside = outsideParentheses(text);
         boolean longText = WORD.matcher(outside).results().limit(9).count() > 8;
         return !STREET_ADDRESS.matcher(text).matches()
                 && !GENERIC_EMPLOYER.matcher(outside).matches()
@@ -844,7 +919,9 @@ final class ExperienceGrammarRows {
 
     static String flexibleSection(String text) {
         String key = ExperienceDefinition.key(text.replaceFirst("[:：]$", ""));
-        if (text.endsWith(".")
+        if (experienceIntro(text)
+                || key.matches("^position and experiences? in .*")
+                || text.endsWith(".")
                 || BULLET.matcher(text).matches()
                 || WORD.matcher(key).results().limit(7).count() > 6
                 || key.codePoints().anyMatch(Character::isDigit)
@@ -885,7 +962,8 @@ final class ExperienceGrammarRows {
         for (var label : labels) {
             var matcher = label.pattern().matcher(text);
             while (matcher.find()) {
-                if (v34 && insideParentheses(text, matcher.start())) continue;
+                if ((v34 || this.v34) && insideParentheses(text, matcher.start())
+                        || this.v34 && !atLabelBoundary(text, matcher.start())) continue;
                 if (result.stream()
                         .noneMatch(
                                 old ->
@@ -899,6 +977,35 @@ final class ExperienceGrammarRows {
         }
         result.sort(Comparator.comparingInt(Match::start));
         return result;
+    }
+
+    private boolean atLabelBoundary(String text, int start) {
+        String prefix = withoutBullet(text.substring(0, start)).strip();
+        if (prefix.isEmpty() || LABEL_MODIFIER_WORD.matcher(prefix).matches()) return true;
+        // Preserve explicit pipe-delimited fields after a leading label.
+        if (!prefix.endsWith("|")) return false;
+        String first = LEADING_LABEL_MODIFIER.matcher(withoutBullet(text)).replaceFirst("");
+        return labels.stream().anyMatch(label -> label.pattern().matcher(first).lookingAt());
+    }
+
+    static boolean experienceIntro(String text) {
+        return EXPERIENCE_INTRO.matcher(withoutBullet(text)).matches();
+    }
+
+    private static String withoutBullet(String text) {
+        return BULLET_PREFIX.matcher(text).replaceFirst("");
+    }
+
+    private Atom titleValue(SourceLine line, Atom value, int searchStart) {
+        var sentence = TITLE_SENTENCE.matcher(value.text());
+        if (!sentence.matches()) return value;
+        int start = line.text.indexOf(value.text(), searchStart);
+        if (start < 0) return value;
+        var title = atom(line, start + sentence.start(1), start + sentence.end(1));
+        if (title == null) return value;
+        var evidence = new ArrayList<>(title.evidence());
+        evidence.addAll(value.evidence());
+        return new Atom(title.raw(), title.text(), evidence, value.raw());
     }
 
     private static boolean insideParentheses(String text, int end) {

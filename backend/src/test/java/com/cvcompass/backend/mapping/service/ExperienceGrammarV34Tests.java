@@ -1116,6 +1116,205 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void ignoresMidSentenceLabelsAndContextButFindsTheThirdLinePosition() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                Worked at Sample Foundry from Jan 2010 to Feb 2011
+                Position and experiences in Sample Company:
+                Location: SAMPLE CITY LTD
+                - Position: Working as Paint Technician in a synthetic facility
+                Category: SAMPLE CATEGORY LTD
+                Report to: SAMPLE OFFICE LTD
+                Industry: SAMPLE INDUSTRY LTD
+                Địa chỉ: SAMPLE ADDRESS LTD
+                """);
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("Sample Foundry");
+                            assertThat(row.period().start().year()).isEqualTo(2010);
+                            assertThat(row.title().raw()).isEqualTo("Paint Technician");
+                            assertThat(row.title().alternatives())
+                                    .contains(
+                                            "Working as Paint Technician in a synthetic facility");
+                        });
+        var standalone =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                2012 – 2014 Sample Works
+                Work as Sales Manager in a synthetic unit
+                """);
+        assertThat(standalone.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.title().raw()).isEqualTo("Sales Manager");
+                            assertThat(row.title().alternatives())
+                                    .contains("Work as Sales Manager in a synthetic unit");
+                        });
+    }
+
+    @Test
+    void keepsParentheticalLabelsLiteralOutsideAnExperienceSection() throws Exception {
+        var rows = parse("3.4", "Company: Sample Ltd (A | Position: X)").experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw())
+                                    .isEqualTo("Sample Ltd (A | Position: X)");
+                            assertThat(row.title().state()).isEqualTo("NOT_FOUND");
+                        });
+    }
+
+    @Test
+    void resolvesMixedDashAndPipeHeadingsWithLegalAndPeriodAdjacentEmployers() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Regional Division – Northeast | Sales Director | SAMPLE ASSET JSC | 2017 – 2021
+                Southern Division – Plant | Engineer | SAMPLE WORKS | 2013 – 2016
+                Paint Technician – Sample Asset JSC | North Division | 2008 – 2011
+                Earlier Career – Sample Vietnam | 1996 – 2007
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "SAMPLE ASSET JSC", "SAMPLE WORKS", "Sample Asset JSC", "Sample Vietnam");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Sales Director", "Engineer", "Paint Technician", null);
+    }
+
+    @Test
+    void readsSingleLabelModifiersInFourBlocksAcrossThreePages() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        List.of(
+                                new Page(
+                                        1,
+                                        "ok",
+                                        "Experience\n"
+                                                + labelledEmployer(
+                                                        "From", "Current", "A", "Position")),
+                                new Page(
+                                        2,
+                                        "ok",
+                                        labelledEmployer(
+                                                        "Recent Period",
+                                                        "Last",
+                                                        "B",
+                                                        "Previous Position")
+                                                + labelledEmployer(
+                                                        "From", "Former", "C", "Position")),
+                                new Page(
+                                        3,
+                                        "ok",
+                                        labelledEmployer("From", "Present", "D", "Position"))));
+        assertThat(result.experiences())
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "SAMPLE A CO LTD.",
+                        "SAMPLE B CO LTD.",
+                        "SAMPLE C CO LTD.",
+                        "SAMPLE D CO LTD.");
+        assertThat(result.experiences())
+                .allSatisfy(
+                        row -> {
+                            assertThat(row.title().raw()).isEqualTo("Division Manager");
+                            assertThat(row.period().state()).isEqualTo("PROPOSED");
+                            assertThat(row.period().start().year()).isEqualTo(2016);
+                            assertThat(row.period().start().month()).isEqualTo(4);
+                            assertThat(row.period().end().year()).isEqualTo(2017);
+                            assertThat(row.period().end().month()).isEqualTo(2);
+                        });
+    }
+
+    private static String labelledEmployer(
+            String period, String modifier, String sample, String title) {
+        return """
+                %s: Apr - 2016 to Feb – 2017 :
+                %s Company : SAMPLE %s CO LTD.
+                Location : SAMPLE CITY
+                Category : SAMPLE CATEGORY
+                Report to : SAMPLE TEAM
+                %s : Division Manager
+                """
+                .formatted(period, modifier, sample, title);
+    }
+
+    @Test
+    void rejectsMultipleOrUnlistedModifiersAndMidSentenceLabels() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                Worked at SAMPLE FOUNDRY from Jan 2010 to Feb 2011
+                Current Previous Company: SAMPLE UNRELATED LTD.
+                Future Company: SAMPLE OTHER LTD.
+                Coordinated meetings with the previous company: SAMPLE THIRD LTD.
+                Position: Division Manager
+                """);
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("SAMPLE FOUNDRY");
+                            assertThat(row.title().raw()).isEqualTo("Division Manager");
+                        });
+    }
+
+    @Test
+    void keepsEmploymentIntroductionsWithTheirPrecedingStatements() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                Worked at SAMPLE A from July 2022 to Oct 2023.
+                Position and experiences in SAMPLE A Company:
+                Position: Program Manager.
+                - Prepared synthetic reports.
+                Worked at SAMPLE B from July 2022 to Oct 2023.
+                Positions and experience at SAMPLE B Company:
+                Location: SAMPLE CITY
+                Category: SAMPLE CATEGORY
+                Position: Account Manager.
+                - Reviewed synthetic reports.
+                Worked at SAMPLE C from July 2022 to Oct 2023.
+                Experience at SAMPLE C 2018–2020 Company:
+                Position: Sales Manager.
+                - Filed synthetic reports.
+                """);
+        assertThat(result.experiences())
+                .extracting(row -> row.company().raw())
+                .containsExactly("SAMPLE A", "SAMPLE B", "SAMPLE C");
+        assertThat(result.experiences())
+                .extracting(row -> row.title().raw())
+                .containsExactly("Program Manager.", "Account Manager.", "Sales Manager.");
+        assertThat(result.experiences())
+                .allSatisfy(
+                        row -> {
+                            assertThat(row.period().state()).isEqualTo("PROPOSED");
+                            assertThat(row.period().start().year()).isEqualTo(2022);
+                            assertThat(row.period().start().month()).isEqualTo(7);
+                            assertThat(row.period().end().year()).isEqualTo(2023);
+                            assertThat(row.period().end().month()).isEqualTo(10);
+                        });
+    }
+
+    @Test
     void dottedSummaryTitlesMergeWithOngoingDetailOfTheSameEmployer() throws Exception {
         String summary =
                 """
