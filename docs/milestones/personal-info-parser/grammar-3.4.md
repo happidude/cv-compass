@@ -24,6 +24,8 @@ mô tả dài có dấu phẩy không được nhận là công ty.
 
 Câu mô tả và phần học vấn không tạo kinh nghiệm từ quy tắc dòng tiêu đề.
 Một chức danh ngắn có thể đứng ngay trước hoặc ngay sau tiêu đề công ty.
+Giữa hai tiêu đề có kỳ, chức danh thuộc công ty phía trước nếu công ty đó
+chưa có chức danh, kể cả khi có dòng mô tả xen giữa trong cùng khối.
 Dòng nhãn có bullet như **- Position:** và **• Chức danh:** cũng cung cấp
 chức danh. Các chức danh có kỳ riêng ở cùng một công ty tạo các kinh nghiệm riêng.
 

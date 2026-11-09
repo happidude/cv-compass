@@ -162,11 +162,7 @@ final class ExperienceGrammar {
                 boolean unlabelledTitle =
                         anchored && row.periods().isEmpty() && rows.adjacentTitle(index);
                 boolean beforeCompany =
-                        unlabelledTitle
-                                && (current == null
-                                        || current.headerEnd != index - 1
-                                        || !current.titles.isEmpty())
-                                && opensCompanyAfterTitle(index, line.page);
+                        unlabelledTitle && opensCompanyAfterTitle(index, line.page, current);
                 if (beforeCompany) current = null;
                 if (current == null) {
                     if (unlabelledTitle && !beforeCompany) {
@@ -252,12 +248,18 @@ final class ExperienceGrammar {
         return new Outcome(List.copyOf(result), List.copyOf(issues));
     }
 
-    private boolean opensCompanyAfterTitle(int index, int page) {
-        if (index + 1 >= lines.size()) return false;
+    private boolean opensCompanyAfterTitle(int index, int page, Block preceding) {
+        boolean precedingNeedsTitle = preceding != null && preceding.titles.isEmpty();
+        if (index + 1 >= lines.size() || precedingNeedsTitle && preceding.headerEnd == index - 1)
+            return false;
         var next = lines.get(index + 1);
         if (next.page != page || section(next.text) != null) return false;
         var nextRow = rows.parse(index + 1, true);
-        return nextRow.company() != null
+        // Between dated headings, fill the preceding employer's title first.
+        boolean anchoredToPreceding =
+                precedingNeedsTitle && !preceding.periods.isEmpty() && !nextRow.periods().isEmpty();
+        return !anchoredToPreceding
+                && nextRow.company() != null
                 && nextRow.titles().isEmpty()
                 && !nextRow.continued()
                 && !nextRow.ambiguous();
