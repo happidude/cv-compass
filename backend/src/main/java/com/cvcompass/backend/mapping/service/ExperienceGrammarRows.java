@@ -342,7 +342,7 @@ final class ExperienceGrammarRows {
         return range == null
                 || label.field().equals("period")
                         && range.proposal().state().equals("PROPOSED")
-                        && ExperienceGrammarDates.dateOnly(line);
+                        && (ExperienceGrammarDates.dateOnly(line) || wrappedPeriod(line));
     }
 
     private Row anchoredRow(int index) {

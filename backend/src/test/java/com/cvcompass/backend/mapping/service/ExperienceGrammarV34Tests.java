@@ -613,6 +613,24 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void explicitPeriodCanReadAValidWrappedRangeOnTheNextLine() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                "Work Experience\nCompany: Sample Ltd\nPeriod:\n"
+                                        + "(2010 – 2012)\nEngineer")
+                        .experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("Sample Ltd");
+                            assertThat(row.period().start().year()).isEqualTo(2010);
+                            assertThat(row.title().raw()).isEqualTo("Engineer");
+                        });
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");
