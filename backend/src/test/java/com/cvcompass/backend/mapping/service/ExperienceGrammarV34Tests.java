@@ -1402,6 +1402,29 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void doesNotReuseTheTitleOrPeriodOfARejectedEmployer() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                2012 – 2014 SAMPLE PREVIOUS LTD
+                2017 – 2020 Freelance - Sales Director
+                2021 – 2022 SAMPLE FOLLOWING LTD
+                2023 Oct – Dec 2023 REMOTE. Sales Director.
+                2024 – 2025 SAMPLE LAST LTD
+                """);
+        assertThat(result.experiences())
+                .extracting(row -> row.company().raw())
+                .containsExactly("SAMPLE PREVIOUS LTD", "SAMPLE FOLLOWING LTD", "SAMPLE LAST LTD");
+        assertThat(result.experiences())
+                .allSatisfy(row -> assertThat(row.title().state()).isEqualTo("NOT_FOUND"));
+        assertThat(result.issues())
+                .filteredOn(issue -> issue.code().equals("AMBIGUOUS_EXPERIENCE_ROW"))
+                .hasSize(2);
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");

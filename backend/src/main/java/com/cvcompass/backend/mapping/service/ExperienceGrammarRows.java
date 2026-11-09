@@ -515,6 +515,7 @@ final class ExperienceGrammarRows {
         datedHeadingParts(line, end, line.text.length(), separator, shortDotted, parts, titles);
         boolean hasDottedTitle = !titles.isEmpty();
         var companies = new ArrayList<Atom>();
+        boolean rejectedCompany = false;
         for (var part : parts) {
             if (location(part.text())
                     || part == parts.getFirst()
@@ -522,7 +523,10 @@ final class ExperienceGrammarRows {
                 continue;
             if (!hasDottedTitle && title(part.text(), true)) titles.add(part);
             else if (companyTextAllowed(part.text())) companies.add(part);
+            else rejectedCompany = true;
         }
+        if (companies.isEmpty() && rejectedCompany)
+            return new Row(line, null, List.of(), List.of(), index, false, true, false);
         boolean ownCompany =
                 companies.size() == 1
                         && (hasDottedTitle || company(companies.getFirst().text(), true));
