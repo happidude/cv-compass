@@ -3,7 +3,12 @@
   Full local gate on the current checkout's HEAD: backend, frontend and worker (docs/VERIFICATION.md).
 
 .DESCRIPTION
-  Usage: scripts\full-gate.ps1
+  Usage: scripts\full-gate.ps1 [-JavaHome <jdk-dir>]
+
+  -JavaHome defaults to $env:JAVA_HOME, then to the developer JDK 25 below. It is passed only to
+  the backend Gradle child process; the caller's and the system environment stay unchanged.
+  TEST_DB_URL/TEST_DB_USERNAME/TEST_DB_PASSWORD are read only from the environment; only their
+  presence is checked and their values are never printed or written by this script.
 
   Logs go to build\gate\<sha>\<timestamp>\ of this checkout (one fresh folder per run, never
   overwritten). Prints at most 15 lines. Exit code is non-zero when any part fails or is blocked.
@@ -13,7 +18,9 @@
   Cleanup-only always runs after verify, even when verify fails.
 #>
 [CmdletBinding()]
-param()
+param(
+    [string]$JavaHome = $env:JAVA_HOME
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -23,6 +30,10 @@ $prevConsoleEncoding = [Console]::OutputEncoding
 
 $Distro = 'CVCompass-Ubuntu-24.04'
 $WslGateClone = '~/cv-compass-gate'
+$DefaultJavaHome = 'C:\Users\NguyenVanHoang\.jdks\ms-25.0.4.1'
+$TestDbVars = @('TEST_DB_URL', 'TEST_DB_USERNAME', 'TEST_DB_PASSWORD')
+if ([string]::IsNullOrWhiteSpace($JavaHome)) { $JavaHome = $DefaultJavaHome }
+$JavaHome = $JavaHome.Trim().TrimEnd('\', '/')
 
 $root = (& git -C $PSScriptRoot rev-parse --show-toplevel)
 if ($LASTEXITCODE -ne 0) { Write-Output 'full-gate: not inside a git repository'; exit 1 }
@@ -70,13 +81,19 @@ function Get-JUnitSummary([string]$dir) {
 # --- Backend -------------------------------------------------------------------------------
 $start = Get-Date
 $backend = Join-Path $root 'backend'
-if (-not $env:TEST_DB_PASSWORD) {
-    # Only presence is checked; the value is never read into logs.
-    Add-Result 'backend' 'BLOCKED' 'TEST_DB_PASSWORD not set in this shell' $start
+# Only presence is checked; values stay in the environment and are never read into output or logs.
+$missingDb = @($TestDbVars | Where-Object { [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($_, 'Process')) })
+if ($missingDb.Count -gt 0) {
+    Add-Result 'backend' 'BLOCKED' "not set in this shell: $($missingDb -join ', ')" $start
+} elseif (-not (Test-Path -LiteralPath (Join-Path $JavaHome 'bin\java.exe') -PathType Leaf)) {
+    Add-Result 'backend' 'BLOCKED' 'JDK not found at -JavaHome (bin\java.exe missing)' $start
 } else {
-    $code = Invoke-Logged $backend '.\gradlew.bat check --rerun-tasks --console=plain' (Join-Path $logDir 'backend-check.log')
+    # `set` inside cmd.exe scopes JAVA_HOME to the Gradle child only.
+    $gradle = "set `"JAVA_HOME=$JavaHome`" && .\gradlew.bat check --rerun-tasks --console=plain"
+    $code = Invoke-Logged $backend $gradle (Join-Path $logDir 'backend-check.log')
     $junit = Get-JUnitSummary (Join-Path $backend 'build\test-results\test')
-    Add-Result 'backend' $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }) "gradlew check --rerun-tasks exit=$code; $junit" $start
+    $jdk = Split-Path $JavaHome -Leaf
+    Add-Result 'backend' $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }) "gradlew check --rerun-tasks exit=$code jdk=$jdk; $junit" $start
 }
 
 # --- Frontend ------------------------------------------------------------------------------

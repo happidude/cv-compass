@@ -109,6 +109,22 @@ $call = $previousCalls + 1
 $events = Join-Path $outDir "events-$call.jsonl"
 $stderrLog = Join-Path $outDir "stderr-$call.log"
 $last = Join-Path $outDir 'last.txt'
+# The dependency guard compares against the worktree HEAD recorded before the first call, so
+# commits made by Codex are caught as well as uncommitted and untracked files.
+$baseFile = Join-Path $outDir 'base-sha.txt'
+if ($isResume) {
+    if (-not (Test-Path $baseFile)) { Fail 'no recorded base SHA for this task; cannot guard dependency files' }
+    $baseSha = (Read-Utf8 $baseFile).Trim()
+} else {
+    $baseSha = (& git -C $worktree rev-parse HEAD)
+    if ($LASTEXITCODE -ne 0) { Fail 'cannot resolve worktree HEAD' }
+    $baseSha = $baseSha.Trim()
+}
+if ($baseSha -notmatch '^[0-9a-f]{40}$') { Fail 'recorded base SHA is malformed' }
+# --verify --quiet reports a missing commit through the exit code only, never on stderr.
+$null = & git -C $worktree rev-parse --verify --quiet "$baseSha^{commit}"
+if ($LASTEXITCODE -ne 0) { Fail 'recorded base SHA is not a commit in the worktree' }
+if (-not $isResume) { [System.IO.File]::WriteAllText($baseFile, $baseSha, $utf8) }
 
 $codex = (Get-Command codex.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1)
 if (-not $codex) { Fail 'codex.exe not found on PATH' }
@@ -141,6 +157,7 @@ foreach ($name in $names) {
         [Environment]::SetEnvironmentVariable($name, $null, 'Process')
     }
 }
+$testDbPresent = @($removed.Keys | Where-Object { $_ -like 'TEST_DB_*' }).Count -gt 0
 if (Test-Path $last) { Remove-Item -LiteralPath $last }
 $exitCode = $null
 $timedOut = $false
@@ -163,6 +180,8 @@ try {
 $lines = New-Object System.Collections.Generic.List[string]
 $mode = if ($isResume) { 'resume' } else { 'initial' }
 $lines.Add("codex-task $TaskId call $call/$MaxCalls ($mode) exit=$exitCode$(if ($timedOut) { ' TIMEOUT' })")
+# Names and values are never printed; only whether TEST_DB_* existed and was withheld.
+$lines.Add("env: withheld $($removed.Count) sensitive var(s); TEST_DB_* $(if ($testDbPresent) { 'present, withheld' } else { 'absent' })")
 $result = 0
 
 $eventLines = @()
@@ -227,10 +246,19 @@ if (Test-Path $last) {
     $result = 1
 }
 
-$changed = @(& git -C $worktree status --porcelain=v1 -uall | ForEach-Object { ($_.Substring(3) -split ' -> ')[-1].Trim('"') })
-$lines.Add("worktree changes: $($changed.Count) path(s)")
+# Committed + staged + unstaged since base (renames split into delete/add), plus untracked files.
+$committedOrTracked = @(& git -C $worktree -c core.quotepath=off diff --name-only --no-renames $baseSha)
+$diffOk = $LASTEXITCODE -eq 0
+$untracked = @(& git -C $worktree -c core.quotepath=off ls-files --others --exclude-standard)
+$diffOk = $diffOk -and ($LASTEXITCODE -eq 0)
+$changed = @(($committedOrTracked + $untracked) | Where-Object { $_ } | Sort-Object -Unique)
+$lines.Add("changes since base $($baseSha.Substring(0, 12)): $($changed.Count) path(s)")
 $deps = @($changed | Where-Object { ($_ -replace '\\', '/') -match $DependencyPattern })
-if ($deps.Count -gt 0) {
+if (-not $diffOk) {
+    # Keep the summary of the call already spent; an unverified guard is treated like a hit.
+    $lines.Add('HIGH: dependency guard NOT VERIFIED (git diff/ls-files failed) - stop and ask the owner')
+    $result = 3
+} elseif ($deps.Count -gt 0) {
     $lines.Add("HIGH: dependency files touched ($($deps -join ', ')) - stop and ask the owner")
     $result = 3
 }
