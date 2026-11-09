@@ -145,3 +145,32 @@ Check: npm exec prettier -- --write src tests; npm run check; npm run test:brows
 
 Chạy mapping 3.4 trên bộ CV thử, ghi vào PR **chỉ số tổng hợp** (không tên công ty/ứng viên):
 số kinh nghiệm thực tế / parser tìm được / đúng cả công ty + kỳ / đúng chức danh; tổng năm parser so với tự tính tay.
+
+---
+
+## Prompt đợt 2 — E5 → E6 → E7 → E-eval (chạy liên tiếp)
+
+Dùng sau khi chuỗi #34–#37 đã sửa theo review và [round-2.md](round-2.md) được duyệt.
+
+```text
+Làm liên tiếp E5 → E6 → E7 → E-eval theo docs/milestones/experience-mapping/round-2.md (đã duyệt) và spec.md.
+Tuân thủ AGENTS.md + backend/AGENTS.md. Mức 3 (E-eval mức 2).
+- Mọi hành vi mới chỉ chạy ở engine personal-info-mapping/3.4 (chưa kích hoạt ở đâu nên không tạo version mới;
+  nếu chủ dự án báo 3.4 đã kích hoạt thì DỪNG và hỏi). Output 3.0–3.3 phải giữ nguyên (replay/digest test).
+- Branch nối tiếp: E5 tách từ head mới nhất của feature/experience-total-ui (hoặc main nếu chuỗi #34–#37 đã merge);
+  E6 từ E5; E7 từ E6; E-eval từ E7. Mỗi slice một Draft PR, base = branch slice trước.
+- Mỗi slice: test tổng hợp đúng tiêu chí trong bảng round-2.md (tên công ty/người giả) → check affected
+  (.\gradlew.bat spotlessApply; test --tests "*ExperienceGrammar*" "*PersonalInfoGrammar*" "*ExperienceEvaluation*"
+  "*MappingVersions*") → commit → push → Draft PR → slice sau. Full gate .\gradlew.bat check --rerun-tasks một lần ở cuối.
+- E-eval: class trong src/test (không vào jar), chỉ chạy khi có biến môi trường CV_EVAL_DIR, in số tổng hợp, không in
+  hay log nội dung CV; có test với fixture tổng hợp; không chạy trong CI.
+- Việc tồn đọng từ review chuỗi #34–#37 (làm trong E5, có test tổng hợp):
+  (a) company có dấu phẩy + ngoặc dài, vd. "MM/YYYY – MM/YYYY: SAMPLE CO., LTD (SAMPLE JEWELRY JOINT STOCK COMPANY)"
+      đang bị luật "có phẩy và > 8 từ" loại → chỉ áp luật đó cho phần ngoài ngoặc và khi không có hậu tố pháp lý;
+  (b) summary + detail cùng công ty + kỳ nhưng detail mất title do ngắt trang vẫn phải gộp thành 1 dòng
+      (title lấy từ summary), không tạo dòng trùng.
+- Open Questions trong round-2.md: Q1 làm theo khuyến nghị (chấp nhận tiền tố tháng + issue MONTH_ABBREVIATION_NONSTANDARD)
+  trừ khi chủ dự án ghi khác trong PR #38; Q2, Q3 KHÔNG làm.
+- Không merge, không push main, không sửa Flyway, không xóa/làm yếu test, không dùng CV thật/PII.
+Kết thúc: link 4 Draft PR, PASS/FAIL/NOT VERIFIED từng check, Open Questions.
+```
