@@ -19,6 +19,21 @@ Report full `tests/run_checks.py --xml <fresh-path>` mới trong verifier;
 Prerequisite/resource theo README component; kiểm biến test có đặt, không in giá trị/đọc private env.
 Dữ liệu test theo policy; thiếu prerequisite báo BLOCKED/check NOT VERIFIED và bước tiếp.
 
+## Full gate và chuỗi PR
+
+`scripts/full-gate.ps1` chạy trên HEAD của checkout hiện tại: backend `.\gradlew.bat check --rerun-tasks`,
+frontend `npm run check` + `npm run test:browser`, worker builder/verifier/cleanup-only ở trên qua
+`wsl -d CVCompass-Ubuntu-24.04` (clone riêng của script, đúng SHA, build dir mới mỗi lượt).
+Log ở `build/gate/<sha>/<timestamp>/`, in ≤ 15 dòng; exit ≠ 0 khi có phần FAIL/BLOCKED hoặc tree bẩn.
+Thiếu `TEST_DB_PASSWORD`/Docker/`node_modules` báo BLOCKED, không coi là PASS.
+
+Chuỗi PR (PR sau dựa trên PR trước):
+
+- PR giữa chuỗi chỉ chạy affected check theo bảng trên.
+- Full gate **một lần** trên head của PR cuối chuỗi.
+- Chuỗi được merge cùng lúc, theo đúng thứ tự.
+- Muốn merge lẻ một PR giữa chuỗi thì phải chạy full gate trên head PR đó trước.
+
 ## Bằng chứng
 
 CI là nguồn sự thật về gate CI; không viết lại report dài. Log ra file, đọc tóm tắt/đuôi,
