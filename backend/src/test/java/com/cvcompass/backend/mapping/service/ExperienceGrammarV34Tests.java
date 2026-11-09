@@ -1116,6 +1116,93 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void dottedSummaryTitlesMergeWithOngoingDetailOfTheSameEmployer() throws Exception {
+        String summary =
+                """
+                Experience in Summary
+                2023 Oct – Dec 2023 SAMPLE PACKING LTD. Sales Director.
+                2022 Oct – Dec 2022 SAMPLE FABRICATION LTD. Engineer.
+                2021 Oct – Dec 2021 SAMPLE WORKS. Scrum Master.
+                2020 Oct – Dec 2020 SAMPLE NETWORK JSC. Logistics Coordinator.
+                2019 Oct – Dec 2019 SAMPLE TOOLS CO. Analyst.
+                2018 Oct – Dec 2018 SAMPLE PAINT CORP. Sales Manager.
+                """;
+        var overview = parse("3.4", summary).experiences();
+        assertThat(overview)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "SAMPLE PACKING LTD.",
+                        "SAMPLE FABRICATION LTD.",
+                        "SAMPLE WORKS",
+                        "SAMPLE NETWORK JSC.",
+                        "SAMPLE TOOLS CO.",
+                        "SAMPLE PAINT CORP.");
+        assertThat(overview)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "Sales Director",
+                        "Engineer",
+                        "Scrum Master",
+                        "Logistics Coordinator",
+                        "Analyst",
+                        "Sales Manager");
+        var merged =
+                parse(
+                                "3.4",
+                                summary
+                                        + """
+                Experience in Details
+                2023 Oct – Present SAMPLE PACKING CO., LTD.
+                2022 Oct – Present SAMPLE FABRICATION LTD.
+                2021 Oct – Present SAMPLE WORKS
+                2020 Oct – Present SAMPLE NETWORK JSC.
+                2019 Oct – Present SAMPLE TOOLS CO.
+                2018 Oct – Present SAMPLE PAINT CORP.
+                """)
+                        .experiences();
+        assertThat(merged).hasSize(6);
+        assertThat(merged)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "Sales Director",
+                        "Engineer",
+                        "Scrum Master",
+                        "Logistics Coordinator",
+                        "Analyst",
+                        "Sales Manager");
+        assertThat(merged.getFirst().company().raw()).isEqualTo("SAMPLE PACKING CO., LTD.");
+        assertThat(merged)
+                .allSatisfy(
+                        row -> {
+                            assertThat(row.period().state()).isEqualTo("PROPOSED");
+                            assertThat(row.period().ongoingAsStated()).isTrue();
+                            assertThat(row.issues())
+                                    .extracting(issue -> issue.code())
+                                    .contains("SUMMARY_DETAIL_MERGED");
+                        });
+    }
+
+    @Test
+    void reportsGenericOrDescriptiveEmployersWithoutCreatingExperience() throws Exception {
+        for (String text :
+                List.of(
+                        "Project-based",
+                        "Freelance",
+                        "Remote",
+                        "Full-time",
+                        "Part-time",
+                        "Contract",
+                        "coordinated many sample reports and weekly meetings for the internal team",
+                        "Coordinated many sample reports and weekly meetings for the internal team")) {
+            var result = parse("3.4", "Experience\n2020 – 2021 " + text);
+            assertThat(result.experiences()).as(text).isEmpty();
+            assertThat(result.issues())
+                    .extracting(issue -> issue.code())
+                    .contains("AMBIGUOUS_EXPERIENCE_ROW");
+        }
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");
