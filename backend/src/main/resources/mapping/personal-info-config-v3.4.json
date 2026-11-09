@@ -61,6 +61,7 @@
       "periodLabels": [
         "Period",
         "Dates",
+        "From",
         "Thời gian"
       ],
       "continuationMarkers": [

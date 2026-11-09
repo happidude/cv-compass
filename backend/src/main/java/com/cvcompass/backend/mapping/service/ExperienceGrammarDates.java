@@ -83,6 +83,10 @@ final class ExperienceGrammarDates {
                 : capture.start();
     }
 
+    boolean isV34() {
+        return v34;
+    }
+
     boolean hasNonstandardMonth(String raw) {
         return v34 && NONSTANDARD_MONTH.matcher(raw).find();
     }
