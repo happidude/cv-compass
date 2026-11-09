@@ -58,6 +58,8 @@ public class PublicationService {
                                 || "personal-info-mapping/3.2"
                                         .equals(body.path("engineVersion").asString())
                                 || "personal-info-mapping/3.3"
+                                        .equals(body.path("engineVersion").asString())
+                                || "personal-info-mapping/3.4"
                                         .equals(body.path("engineVersion").asString()));
         var personal = PersonalInfoMapper.patch(body, json.createObjectNode());
         boolean usable =

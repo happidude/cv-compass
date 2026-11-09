@@ -25,7 +25,14 @@ final class ExperienceGrammar {
     private final List<Block> blocks = new ArrayList<>();
     private final List<Issue> issues = new ArrayList<>();
 
+    private final boolean v34;
+
     ExperienceGrammar(Extraction input, ExperienceDefinition config) {
+        this(input, config, false);
+    }
+
+    ExperienceGrammar(Extraction input, ExperienceDefinition config, boolean v34) {
+        this.v34 = v34;
         this.input = input;
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
@@ -39,6 +46,7 @@ final class ExperienceGrammar {
         String section = "UNSCOPED";
         int epoch = 0;
         int pendingPage = -1;
+        SourceLine rejectedRange = null;
         for (int index = 0; index < lines.size(); index++) {
             if (pendingPeriods.size() + pendingTitles.size() > 8)
                 throw new IllegalArgumentException("Unresolved experience anchor limit exceeded");
@@ -51,12 +59,39 @@ final class ExperienceGrammar {
                 if (!heading.equals(section)) epoch++;
                 section = heading;
                 current = null;
+                rejectedRange = null;
                 pendingPeriods.clear();
                 pendingTitles.clear();
                 continue;
             }
             if (section.equals("STOP")) continue;
-            var row = rows.parse(index);
+            boolean anchored = v34 && (section.equals("DETAIL") || section.equals("SUMMARY"));
+            var range = anchored ? ExperienceGrammarDates.find(line) : null;
+            var row =
+                    range != null && range.proposal().state().equals("INVALID")
+                            ? null
+                            : rows.parse(index, anchored);
+            if (range != null && (row == null || row.ambiguous() || row.contextOnly())) {
+                issues.add(new Issue("AMBIGUOUS_EXPERIENCE_ROW", "source", List.of(line.whole())));
+                current = null;
+                pendingPeriods.clear();
+                pendingTitles.clear();
+                rejectedRange = line;
+                continue;
+            }
+            if (rejectedRange != null
+                    && rejectedRange.page == line.page
+                    && row.company() == null
+                    && row.periods().isEmpty()
+                    && !row.titles().isEmpty()) {
+                var evidence = new ArrayList<Evidence>();
+                evidence.add(rejectedRange.whole());
+                row.titles().forEach(title -> evidence.addAll(title.evidence()));
+                issues.add(new Issue("UNRESOLVED_EXPERIENCE_BLOCK", "source", evidence));
+                index = row.consumedThrough();
+                continue;
+            }
+            rejectedRange = null;
             index = row.consumedThrough();
             if (pendingPage != -1 && pendingPage != line.page) {
                 if (!pendingPeriods.isEmpty() || !pendingTitles.isEmpty())
@@ -176,7 +211,7 @@ final class ExperienceGrammar {
                 boolean nextCompany =
                         index + 1 < lines.size()
                                 && lines.get(index + 1).page == line.page
-                                && rows.parse(index + 1).company() != null;
+                                && rows.parse(index + 1, anchored).company() != null;
                 if (current == null || nextCompany && !current.periods.isEmpty()) {
                     pendingPeriods.addAll(row.periods());
                     pendingPage = line.page;
@@ -240,9 +275,8 @@ final class ExperienceGrammar {
         String key = key(text.replaceFirst("[:：]$", ""));
         if (contains(config.rules().experienceHeadings(), key)) return "DETAIL";
         if (contains(config.rules().summaryHeadings(), key)) return "SUMMARY";
-        if (key.matches("(?iu)(?:advisory|consulting|shareholder|co-founder|projects|dự án)"))
-            return "CONTEXT";
-        if (contains(config.rules().stopHeadings(), key)) return "STOP";
+        if (ExperienceGrammarRows.contextHeading(key)) return "CONTEXT";
+        if (rows.stopHeading(text, v34)) return "STOP";
         return null;
     }
 
@@ -256,8 +290,13 @@ final class ExperienceGrammar {
                                             !detail.summary
                                                     && companyKey(summary.company)
                                                             .equals(companyKey(detail.company))
-                                                    && compatibleTitle(summary, detail)
-                                                    && compatibleStart(summary, detail))
+                                                    && (compatibleTitle(summary, detail)
+                                                                    && compatibleStart(
+                                                                            summary, detail)
+                                                            || v34
+                                                                    && summary.titles.isEmpty()
+                                                                    && sameResolvedPeriod(
+                                                                            summary, detail)))
                             .toList();
             if (matches.size() == 1) {
                 var detail = matches.getFirst();
@@ -271,7 +310,8 @@ final class ExperienceGrammar {
             } else if (matches.size() > 1) {
                 issues.add(
                         new Issue("AMBIGUOUS_SUMMARY_LINK", "experiences", allEvidence(summary)));
-            } else if (summary.titles.isEmpty()
+            } else if (!v34
+                    && summary.titles.isEmpty()
                     && blocks.stream()
                             .anyMatch(
                                     detail ->
@@ -291,6 +331,18 @@ final class ExperienceGrammar {
                 && !right.titles.isEmpty()
                 && left.titles.stream()
                         .anyMatch(title -> currentTitleKeys(right).contains(titleKey(title)));
+    }
+
+    private static boolean sameResolvedPeriod(Block left, Block right) {
+        var first = period(left);
+        var second = period(right);
+        return first.state().equals("PROPOSED")
+                && second.state().equals("PROPOSED")
+                && first.start() != null
+                && first.start().equals(second.start())
+                && (first.end() != null || first.ongoingAsStated())
+                && Objects.equals(first.end(), second.end())
+                && first.ongoingAsStated() == second.ongoingAsStated();
     }
 
     private static boolean compatibleStart(Block left, Block right) {

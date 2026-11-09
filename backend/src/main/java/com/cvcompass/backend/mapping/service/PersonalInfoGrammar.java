@@ -70,9 +70,13 @@ final class PersonalInfoGrammar {
     PersonalInfoGrammar(Extraction input, PersonalInfoDefinition config) {
         this.input = input;
         this.config = config;
-        this.v33 =
-                PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(
+        boolean v34 =
+                PersonalInfoDefinition.GRAMMAR_V34_ENGINE_VERSION.equals(
                         config.engineCompatibility());
+        this.v33 =
+                v34
+                        || PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(
+                                config.engineCompatibility());
         this.v32 =
                 v33
                         || PersonalInfoDefinition.GRAMMAR_V32_ENGINE_VERSION.equals(
