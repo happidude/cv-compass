@@ -31,6 +31,19 @@ class ExperienceGrammarV34Tests {
             SAMPLE LOGISTICS | Vietnam
             """;
 
+    private static final String R2B_SUMMARY =
+            """
+            Career Overview
+            01/2010 – 12/2012: CÔNG TY MẪU A
+            Sales Director
+            01/2013 – 12/2015: CÔNG TY MẪU B
+            Logistics Coordinator
+            01/2016 – 12/2018: CÔNG TY MẪU C
+            Paint Technician
+            01/2019 – 12/2021: CÔNG TY MẪU D
+            Engineering Manager
+            """;
+
     @Test
     void anchorsConsecutiveHeadingsAndPreservesTheirSourceValues() throws Exception {
         var rows = parse("3.4", HEADINGS).experiences();
@@ -682,6 +695,89 @@ class ExperienceGrammarV34Tests {
                                 assertThat(row.issues())
                                         .extracting(issue -> issue.code())
                                         .contains("SUMMARY_DETAIL_MERGED"));
+    }
+
+    @Test
+    void attachesAlternatingTitlesToFourPrecedingDatedEmployers() throws Exception {
+        var rows = parse("3.4", R2B_SUMMARY).experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "CÔNG TY MẪU A", "CÔNG TY MẪU B", "CÔNG TY MẪU C", "CÔNG TY MẪU D");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "Sales Director",
+                        "Logistics Coordinator",
+                        "Paint Technician",
+                        "Engineering Manager");
+    }
+
+    @Test
+    void retainsThePrecedingUntitledDatedEmployerThroughNoiseAndMergesUppercaseDetails()
+            throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                R2B_SUMMARY
+                                        + """
+                Work Experience
+                01/2010 – 12/2012: CÔNG TY MẪU A
+                Page 1
+                SALES DIRECTOR
+                01/2013 – 12/2015: CÔNG TY MẪU B
+                - Prepared synthetic team reports.
+                LOGISTICS COORDINATOR
+                01/2016 – 12/2018: CÔNG TY MẪU C
+                PAINT TECHNICIAN
+                01/2019 – 12/2021: CÔNG TY MẪU D
+                ENGINEERING MANAGER
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "CÔNG TY MẪU A", "CÔNG TY MẪU B", "CÔNG TY MẪU C", "CÔNG TY MẪU D");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "SALES DIRECTOR",
+                        "LOGISTICS COORDINATOR",
+                        "PAINT TECHNICIAN",
+                        "ENGINEERING MANAGER");
+        assertThat(rows)
+                .extracting(row -> row.period().start().year())
+                .containsExactly(2010, 2013, 2016, 2019);
+        assertThat(rows)
+                .allSatisfy(
+                        row -> {
+                            assertThat(row.title().state()).isEqualTo("PROPOSED");
+                            assertThat(row.period().state()).isEqualTo("PROPOSED");
+                            assertThat(row.issues())
+                                    .extracting(issue -> issue.code())
+                                    .contains("SUMMARY_DETAIL_MERGED");
+                        });
+    }
+
+    @Test
+    void keepsThePrecedingTitleLayoutForAnUndatedEmployer() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Work Experience
+                2013 – 2015 Sample One
+                - Prepared synthetic team reports.
+                Paint Technician
+                SAMPLE TWO LTD
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("Sample One", "SAMPLE TWO LTD");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly(null, "Paint Technician");
     }
 
     @Test
