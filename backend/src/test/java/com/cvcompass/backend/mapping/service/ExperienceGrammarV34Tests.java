@@ -1116,6 +1116,71 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void ignoresMidSentenceLabelsAndContextButFindsTheThirdLinePosition() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                Worked at Sample Foundry from Jan 2010 to Feb 2011
+                Position and experiences in Sample Company:
+                Location: SAMPLE CITY LTD
+                - Position: Working as Paint Technician in a synthetic facility
+                Category: SAMPLE CATEGORY LTD
+                Report to: SAMPLE OFFICE LTD
+                Industry: SAMPLE INDUSTRY LTD
+                Địa chỉ: SAMPLE ADDRESS LTD
+                """);
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("Sample Foundry");
+                            assertThat(row.period().start().year()).isEqualTo(2010);
+                            assertThat(row.title().raw()).isEqualTo("Paint Technician");
+                            assertThat(row.title().alternatives())
+                                    .contains(
+                                            "Working as Paint Technician in a synthetic facility");
+                        });
+        var standalone =
+                parse(
+                        "3.4",
+                        """
+                Experience
+                2012 – 2014 Sample Works
+                Work as Sales Manager in a synthetic unit
+                """);
+        assertThat(standalone.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.title().raw()).isEqualTo("Sales Manager");
+                            assertThat(row.title().alternatives())
+                                    .contains("Work as Sales Manager in a synthetic unit");
+                        });
+    }
+
+    @Test
+    void resolvesMixedDashAndPipeHeadingsWithLegalAndPeriodAdjacentEmployers() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                """
+                Experience
+                Regional Division – Northeast | Sales Director | SAMPLE ASSET JSC | 2017 – 2021
+                Southern Division – Plant | Engineer | SAMPLE WORKS | 2013 – 2016
+                Earlier Career – Sample Vietnam | 1996 – 2007
+                """)
+                        .experiences();
+        assertThat(rows)
+                .extracting(row -> row.company().raw())
+                .containsExactly("SAMPLE ASSET JSC", "SAMPLE WORKS", "Sample Vietnam");
+        assertThat(rows)
+                .extracting(row -> row.title().raw())
+                .containsExactly("Sales Director", "Engineer", null);
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");

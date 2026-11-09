@@ -40,7 +40,7 @@ final class ExperienceGrammar {
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
         this.dates = new ExperienceGrammarDates(v34);
-        this.rows = new ExperienceGrammarRows(input, config, lines, dates);
+        this.rows = new ExperienceGrammarRows(input, config, lines, dates, v34);
         this.repeatedMargins = v34 ? PersonalInfoGrammarLines.repeatedMargins(lines) : Set.of();
     }
 
@@ -519,7 +519,17 @@ final class ExperienceGrammar {
                                 : "PROPOSED",
                         titleRule == null ? null : titleRule.seniorityCode(),
                         titleEvidence,
-                        rawTitles);
+                        block.titles.stream()
+                                .flatMap(
+                                        titleAtom ->
+                                                titleAtom.originalTitle() == null
+                                                        ? java.util.stream.Stream.of(
+                                                                titleAtom.raw())
+                                                        : java.util.stream.Stream.of(
+                                                                titleAtom.raw(),
+                                                                titleAtom.originalTitle()))
+                                .distinct()
+                                .toList());
         var period = period(block);
         var notes = new ArrayList<>(block.issues);
         if (period.alternatives().stream()
