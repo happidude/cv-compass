@@ -1161,6 +1161,19 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void keepsParentheticalLabelsLiteralOutsideAnExperienceSection() throws Exception {
+        var rows = parse("3.4", "Company: Sample Ltd (A | Position: X)").experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw())
+                                    .isEqualTo("Sample Ltd (A | Position: X)");
+                            assertThat(row.title().state()).isEqualTo("NOT_FOUND");
+                        });
+    }
+
+    @Test
     void resolvesMixedDashAndPipeHeadingsWithLegalAndPeriodAdjacentEmployers() throws Exception {
         var rows =
                 parse(
@@ -1169,15 +1182,17 @@ class ExperienceGrammarV34Tests {
                 Experience
                 Regional Division – Northeast | Sales Director | SAMPLE ASSET JSC | 2017 – 2021
                 Southern Division – Plant | Engineer | SAMPLE WORKS | 2013 – 2016
+                Paint Technician – Sample Asset JSC | North Division | 2008 – 2011
                 Earlier Career – Sample Vietnam | 1996 – 2007
                 """)
                         .experiences();
         assertThat(rows)
                 .extracting(row -> row.company().raw())
-                .containsExactly("SAMPLE ASSET JSC", "SAMPLE WORKS", "Sample Vietnam");
+                .containsExactly(
+                        "SAMPLE ASSET JSC", "SAMPLE WORKS", "Sample Asset JSC", "Sample Vietnam");
         assertThat(rows)
                 .extracting(row -> row.title().raw())
-                .containsExactly("Sales Director", "Engineer", null);
+                .containsExactly("Sales Director", "Engineer", "Paint Technician", null);
     }
 
     @Test

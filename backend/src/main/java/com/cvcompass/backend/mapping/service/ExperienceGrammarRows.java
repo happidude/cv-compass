@@ -659,12 +659,29 @@ final class ExperienceGrammarRows {
         var separators = separator.matcher(line.text).region(start, end);
         while (separators.find()) {
             if (insideParentheses(line.text, separators.start())) continue;
-            var part = atom(line, start, separators.start());
-            if (part != null) parts.add(part);
+            addHeadingPart(line, start, separators.start(), separator, parts);
             start = separators.end();
         }
-        var last = atom(line, start, end);
-        if (last != null) parts.add(last);
+        addHeadingPart(line, start, end, separator, parts);
+    }
+
+    private void addHeadingPart(
+            SourceLine line, int start, int end, Pattern separator, List<Atom> parts) {
+        var part = atom(line, start, end);
+        if (part == null) return;
+        if (separator == PRIMARY_SEPARATOR
+                && hasOutsideSeparator(line, start, end, DASH_SEPARATOR)) {
+            var pair = new ArrayList<Atom>();
+            headingParts(line, start, end, DASH_SEPARATOR, pair);
+            if (pair.size() == 2
+                    && (legalName(pair.getFirst().text()) && title(pair.getLast().text(), true)
+                            || title(pair.getFirst().text(), true)
+                                    && legalName(pair.getLast().text()))) {
+                parts.addAll(pair);
+                return;
+            }
+        }
+        parts.add(part);
     }
 
     private static boolean shortHeading(String text) {
@@ -836,7 +853,7 @@ final class ExperienceGrammarRows {
         for (var label : labels) {
             var matcher = label.pattern().matcher(text);
             while (matcher.find()) {
-                if (v34 && insideParentheses(text, matcher.start())
+                if ((v34 || this.v34) && insideParentheses(text, matcher.start())
                         || this.v34 && !atLabelBoundary(text, matcher.start())) continue;
                 if (result.stream()
                         .noneMatch(
