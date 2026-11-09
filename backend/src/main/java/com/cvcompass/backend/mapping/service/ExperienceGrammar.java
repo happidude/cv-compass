@@ -23,6 +23,7 @@ final class ExperienceGrammar {
     private final ExperienceDefinition config;
     private final List<SourceLine> lines;
     private final ExperienceGrammarRows rows;
+    private final ExperienceGrammarDates dates;
     private final List<Block> blocks = new ArrayList<>();
     private final List<Issue> issues = new ArrayList<>();
 
@@ -38,7 +39,8 @@ final class ExperienceGrammar {
         this.input = input;
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
-        this.rows = new ExperienceGrammarRows(input, config, lines);
+        this.dates = new ExperienceGrammarDates(v34);
+        this.rows = new ExperienceGrammarRows(input, config, lines, dates);
         this.repeatedMargins = v34 ? PersonalInfoGrammarLines.repeatedMargins(lines) : Set.of();
     }
 
@@ -82,9 +84,11 @@ final class ExperienceGrammar {
             if (section.equals("STOP")) continue;
             boolean anchored = v34 && (section.equals("DETAIL") || section.equals("SUMMARY"));
             boolean contextual = v34 && section.equals("CONTEXT");
-            var range = anchored ? ExperienceGrammarDates.find(line) : null;
+            var range = anchored ? dates.find(line) : null;
             var row =
-                    range != null && range.proposal().state().equals("INVALID")
+                    range != null
+                                    && range.proposal().state().equals("INVALID")
+                                    && !rows.hasExplicitPeriod(line)
                             ? null
                             : contextual ? rows.contextRow(index) : rows.parse(index, anchored);
             if (range != null && (row == null || row.ambiguous() || row.contextOnly())) {
@@ -348,7 +352,7 @@ final class ExperienceGrammar {
         if (contains(config.rules().summaryHeadings(), key)) return "SUMMARY";
         if (ExperienceGrammarRows.contextHeading(key, v34)) return "CONTEXT";
         if (rows.stopHeading(text, v34)) return "STOP";
-        return null;
+        return v34 ? ExperienceGrammarRows.flexibleSection(text) : null;
     }
 
     private void mergeOverview() {
@@ -359,23 +363,37 @@ final class ExperienceGrammar {
                             .filter(
                                     detail ->
                                             !detail.summary
-                                                    && companyKey(summary.company)
-                                                            .equals(companyKey(detail.company))
-                                                    && (compatibleTitle(summary, detail)
-                                                                    && compatibleStart(
+                                                    && (v34
+                                                                    && summaryPrecedesOngoingDetail(
                                                                             summary, detail)
-                                                            || v34
-                                                                    && (summary.titles.isEmpty()
-                                                                            || detail.titles
-                                                                                    .isEmpty())
-                                                                    && sameResolvedPeriod(
-                                                                            summary, detail)))
+                                                            || companyKey(summary.company)
+                                                                            .equals(
+                                                                                    companyKey(
+                                                                                            detail.company))
+                                                                    && (compatibleTitle(
+                                                                                            summary,
+                                                                                            detail)
+                                                                                    && compatibleStart(
+                                                                                            summary,
+                                                                                            detail)
+                                                                            || v34
+                                                                                    && (summary
+                                                                                                    .titles
+                                                                                                    .isEmpty()
+                                                                                            || detail
+                                                                                                    .titles
+                                                                                                    .isEmpty())
+                                                                                    && sameResolvedPeriod(
+                                                                                            summary,
+                                                                                            detail))))
                             .toList();
             if (matches.size() == 1) {
                 var detail = matches.getFirst();
                 detail.evidence.addAll(summary.evidence);
                 detail.evidence.addAll(summary.company.evidence());
-                detail.periods.addAll(summary.periods);
+                if (!v34 || !summaryPrecedesOngoingDetail(summary, detail))
+                    detail.periods.addAll(summary.periods);
+                else summary.periods.forEach(value -> detail.evidence.addAll(value.evidence()));
                 detail.titles.addAll(summary.titles);
                 detail.issues.add(
                         new Issue("SUMMARY_DETAIL_MERGED", "experience", allEvidence(summary)));
@@ -404,6 +422,23 @@ final class ExperienceGrammar {
                 && !right.titles.isEmpty()
                 && left.titles.stream()
                         .anyMatch(title -> currentTitleKeys(right).contains(titleKey(title)));
+    }
+
+    private boolean summaryPrecedesOngoingDetail(Block summary, Block detail) {
+        var earlier = period(summary);
+        var ongoing = period(detail);
+        if (!"PROPOSED".equals(earlier.state())
+                || !"PROPOSED".equals(ongoing.state())
+                || earlier.start() == null
+                || !earlier.start().equals(ongoing.start())
+                || earlier.end() == null
+                || !ongoing.ongoingAsStated()
+                || !detail.titles.isEmpty()
+                        && !summary.titles.isEmpty()
+                        && !compatibleTitle(summary, detail)) return false;
+        if (companyKey(summary.company).equals(companyKey(detail.company))) return true;
+        return ExperienceGrammarRows.limitedEmployerKey(summary.company.text())
+                .equals(ExperienceGrammarRows.limitedEmployerKey(detail.company.text()));
     }
 
     private static boolean sameResolvedPeriod(Block left, Block right) {
@@ -518,6 +553,9 @@ final class ExperienceGrammar {
                         rawTitles);
         var period = period(block);
         var notes = new ArrayList<>(block.issues);
+        if (period.alternatives().stream()
+                .anyMatch(value -> dates.hasNonstandardMonth(value.raw())))
+            notes.add(new Issue("MONTH_ABBREVIATION_NONSTANDARD", "period", period.evidence()));
         if (title.state().equals("NOT_FOUND"))
             notes.add(new Issue("TITLE_NOT_FOUND", "title", List.of()));
         if (title.state().equals("AMBIGUOUS"))
