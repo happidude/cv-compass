@@ -98,7 +98,7 @@ môi trường `core`, bỏ qua user config); kết quả theo `scripts/codex-re
   Vẫn chưa đạt thì BLOCKED, giữ bằng chứng và hỏi chủ dự án.
 - Brief/follow-up theo mẫu brief ở trên; không chứa CV thật, PII, secret hay giá trị env.
   Script không truyền `TEST_DB_*` hoặc biến dạng secret/token/key vào môi trường Codex.
-- Cấm thêm/xóa/nâng dependency. Diff chạm `build.gradle*`, `package*.json`, `pyproject*`, `requirements*`
-  là **High**: script trả exit 3, Primary dừng và hỏi chủ dự án, không tự chấp nhận.
+- Cấm thêm/xóa/nâng dependency. Diff chạm `build.gradle*`, `settings.gradle*`, `gradle-wrapper.properties`,
+  `package*.json`, `pyproject*`, `requirements*` là **High**: script trả exit 3, Primary dừng và hỏi chủ dự án, không tự chấp nhận.
 - Primary đọc `status`/`files_changed`/`open_questions` rồi tự đọc diff; `checks_run` của Codex không
   thay verifier. Full gate: `scripts/full-gate.ps1` (xem [kiểm chứng](VERIFICATION.md#full-gate-và-chuỗi-pr)).

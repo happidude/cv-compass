@@ -30,7 +30,7 @@ $prevConsoleEncoding = [Console]::OutputEncoding
 
 $MaxCalls = 2
 # Dependency changes need the project owner's approval (AGENT_WORKFLOW: High, stop and ask).
-$DependencyPattern = '(^|/)(build\.gradle[^/]*|package[^/]*\.json|pyproject[^/]*|requirements[^/]*)$'
+$DependencyPattern = '(^|/)(build\.gradle[^/]*|settings\.gradle[^/]*|gradle-wrapper\.properties|package[^/]*\.json|pyproject\.toml|requirements[^/]*\.(txt|lock|in))$'
 # Never hand test DB settings or anything credential-like to the Codex process. Codex itself
 # authenticates through its own login (CODEX_HOME/auth.json), not through environment keys.
 $SensitiveEnvPattern = '^(TEST_DB_.*|.*(SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|PRIVATE_KEY|API_KEY|ACCESS_KEY).*)$'
@@ -51,6 +51,12 @@ function ConvertTo-NativeArg([string]$value) {
 
 function Get-FullPath([string]$path) {
     return [System.IO.Path]::GetFullPath($path).TrimEnd('\', '/')
+}
+
+function Get-Prop($object, [string]$name) {
+    if ($null -eq $object) { return $null }
+    $p = $object.PSObject.Properties[$name]
+    if ($p) { return $p.Value } else { return $null }
 }
 
 function Read-Utf8([string]$path) {
@@ -190,10 +196,14 @@ if (-not $sessionId) {
         $lines.Add('sandbox: NOT VERIFIED (turn_context not found)')
         if ($result -eq 0) { $result = 2 }
     } else {
-        $sp = $turn.sandbox_policy
-        $cwdOk = (Get-FullPath ([string]$turn.cwd)) -eq $worktree
-        $ok = ($sp.type -eq 'workspace-write') -and ($sp.network_access -eq $false) -and $cwdOk
-        $lines.Add("sandbox: $(if ($ok) { 'OK' } else { 'MISMATCH' }) type=$($sp.type) network=$($sp.network_access) cwd=$(if ($cwdOk) { 'worktree' } else { 'OTHER' })")
+        # StrictMode throws on missing properties; other sandbox modes omit network_access.
+        $sp = Get-Prop $turn 'sandbox_policy'
+        $spType = Get-Prop $sp 'type'
+        $spNet = Get-Prop $sp 'network_access'
+        $cwd = [string](Get-Prop $turn 'cwd')
+        $cwdOk = $cwd -and ((Get-FullPath $cwd) -eq $worktree)
+        $ok = ($spType -eq 'workspace-write') -and ($spNet -eq $false) -and $cwdOk
+        $lines.Add("sandbox: $(if ($ok) { 'OK' } else { 'MISMATCH' }) type=$spType network=$spNet cwd=$(if ($cwdOk) { 'worktree' } else { 'OTHER' })")
         if (-not $ok -and $result -eq 0) { $result = 2 }
     }
 }

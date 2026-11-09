@@ -32,7 +32,8 @@ $short = $sha.Substring(0, 12)
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logDir = Join-Path $root "build\gate\$sha\$stamp"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-$dirty = @(& git -C $root status --porcelain=v1 -uno).Count -gt 0
+# Untracked (not ignored) files also reach gradle/npm, so they make the evidence differ from HEAD.
+$dirty = @(& git -C $root status --porcelain=v1 -unormal).Count -gt 0
 
 $results = New-Object System.Collections.Generic.List[object]
 
@@ -87,8 +88,16 @@ if (-not (Test-Path (Join-Path $frontend 'node_modules'))) {
     $code = Invoke-Logged $frontend 'npm run check' (Join-Path $logDir 'frontend-check.log')
     Add-Result 'frontend-check' $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }) "npm run check exit=$code" $start
     $start = Get-Date
-    $code = Invoke-Logged $frontend 'npm run test:browser' (Join-Path $logDir 'frontend-browser.log')
-    Add-Result 'frontend-browser' $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }) "npm run test:browser exit=$code" $start
+    $browserLog = Join-Path $logDir 'frontend-browser.log'
+    $code = Invoke-Logged $frontend 'npm run test:browser' $browserLog
+    $status = if ($code -eq 0) { 'PASS' } else { 'FAIL' }
+    $detail = "npm run test:browser exit=$code"
+    # A missing Playwright browser binary is an environment prerequisite, not a test failure.
+    if ($code -ne 0 -and (Select-String -LiteralPath $browserLog -SimpleMatch "Executable doesn't exist" -Quiet)) {
+        $status = 'BLOCKED'
+        $detail = 'Playwright browser not installed (npx playwright install)'
+    }
+    Add-Result 'frontend-browser' $status $detail $start
 }
 
 # --- Worker (WSL) --------------------------------------------------------------------------
@@ -120,8 +129,12 @@ echo "RESULT build=`$b verify=`$v cleanup=`$c"
 [ `$b -eq 0 ] && [ `$v -eq 0 ] && [ `$c -eq 0 ]
 "@
 [System.IO.File]::WriteAllText($workerScript, ($sh -replace "`r`n", "`n"), $utf8)
-$wslScript = (& wsl.exe -d $Distro -- wslpath -a ($workerScript -replace '\\', '/'))
-if ($LASTEXITCODE -ne 0 -or -not $wslScript) {
+$wslScript = $null
+if (Get-Command wsl.exe -CommandType Application -ErrorAction SilentlyContinue) {
+    $wslScript = (& wsl.exe -d $Distro -- wslpath -a ($workerScript -replace '\\', '/'))
+    if ($LASTEXITCODE -ne 0) { $wslScript = $null }
+}
+if (-not $wslScript) {
     Add-Result 'worker' 'BLOCKED' "WSL distro $Distro unavailable" $start
 } else {
     $code = Invoke-Logged $root "wsl.exe -d $Distro -- bash `"$($wslScript.Trim())`"" $workerLog
@@ -135,7 +148,7 @@ if ($LASTEXITCODE -ne 0 -or -not $wslScript) {
 $failed = @($results | Where-Object { $_.Status -ne 'PASS' }).Count
 $overall = if ($failed -eq 0 -and -not $dirty) { 'PASS' } else { 'FAIL' }
 $out = New-Object System.Collections.Generic.List[string]
-$out.Add("full-gate $overall source=$sha$(if ($dirty) { ' DIRTY (tracked changes not in HEAD)' })")
+$out.Add("full-gate $overall source=$sha$(if ($dirty) { ' DIRTY (changes or untracked files not in HEAD)' })")
 foreach ($r in $results) { $out.Add(('{0,-17} {1,-8} {2,5}s  {3}' -f $r.Name, $r.Status, $r.Secs, $r.Detail)) }
 $out.Add("logs: $logDir")
 $out | Select-Object -First 15 | ForEach-Object { Write-Output $_ }

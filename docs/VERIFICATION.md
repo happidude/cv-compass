@@ -24,10 +24,11 @@ Dữ liệu test theo policy; thiếu prerequisite báo BLOCKED/check NOT VERIFI
 `scripts/full-gate.ps1` chạy trên HEAD của checkout hiện tại: backend `.\gradlew.bat check --rerun-tasks`,
 frontend `npm run check` + `npm run test:browser`, worker builder/verifier/cleanup-only ở trên qua
 `wsl -d CVCompass-Ubuntu-24.04` (clone riêng của script, đúng SHA, build dir mới mỗi lượt).
-Log ở `build/gate/<sha>/<timestamp>/`, in ≤ 15 dòng; exit ≠ 0 khi có phần FAIL/BLOCKED hoặc tree bẩn.
-Thiếu `TEST_DB_PASSWORD`/Docker/`node_modules` báo BLOCKED, không coi là PASS.
+Log ở `build/gate/<sha>/<timestamp>/`, in ≤ 15 dòng; exit ≠ 0 khi có phần FAIL/BLOCKED hoặc tree bẩn
+(kể cả file untracked chưa ignore). BLOCKED (không coi là PASS) khi thiếu `TEST_DB_PASSWORD`,
+`node_modules`, Playwright browser, WSL distro hoặc Docker cho worker; backend thiếu DB/Docker lúc chạy là FAIL.
 
-Chuỗi PR (PR sau dựa trên PR trước):
+Chuỗi PR (PR sau dựa trên PR trước); agent chạy gate và báo kết quả, **con người merge**:
 
 - PR giữa chuỗi chỉ chạy affected check theo bảng trên.
 - Full gate **một lần** trên head của PR cuối chuỗi.
