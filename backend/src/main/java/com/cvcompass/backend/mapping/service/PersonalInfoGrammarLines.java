@@ -193,7 +193,7 @@ final class PersonalInfoGrammarLines {
         return value.contains("column") || value.contains("reading") || value.contains("order");
     }
 
-    private static Set<Integer> repeatedMargins(List<SourceLine> lines) {
+    static Set<Integer> repeatedMargins(List<SourceLine> lines) {
         var byPage = new HashMap<Integer, List<Integer>>();
         for (int i = 0; i < lines.size(); i++)
             if (!lines.get(i).text.isEmpty())

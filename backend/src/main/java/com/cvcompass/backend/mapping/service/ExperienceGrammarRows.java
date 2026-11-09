@@ -15,6 +15,9 @@ final class ExperienceGrammarRows {
     private static final Pattern COMPANY =
             Pattern.compile(
                     "(?iu).+\\b(?:ltd\\.?|limited|inc\\.?|corporation|corp\\.?|company|group|llc|jsc|co\\.?)(?:\\s*\\([^)]{1,80}\\))?$");
+    private static final Pattern LEGAL_SUFFIX =
+            Pattern.compile(
+                    "(?iu).+\\b(?:ltd\\.?|limited|inc\\.?|corporation|corp\\.?|llc|jsc|co\\.)$");
     private static final Pattern ROLE =
             Pattern.compile(
                     "(?iu)\\b(?:engineer|manager|director|developer|analyst|officer|accountant|auditor|supervisor|consultant|specialist|president|CEO|CFO|COO|founder|co-founder|kỹ sư|giám đốc|trưởng phòng|chuyên viên)\\b");
@@ -357,6 +360,17 @@ final class ExperienceGrammarRows {
                 : null;
     }
 
+    boolean hasExplicitLabel(SourceLine line) {
+        return !matches(line.text, true).isEmpty();
+    }
+
+    boolean structuredMargin(SourceLine line) {
+        return ExperienceGrammarDates.hasRange(line.text)
+                || !matches(line.text, true).isEmpty()
+                || company(line.text, true)
+                || title(line.text, true);
+    }
+
     boolean adjacentTitle(int index) {
         var line = nearbyHeadingText(index, index);
         return line != null && title(line.text, true);
@@ -641,8 +655,11 @@ final class ExperienceGrammarRows {
     }
 
     private static boolean companyTextAllowed(String text) {
+        String outside = text.replaceAll("\\([^()]*\\)", "").strip();
         return !STREET_ADDRESS.matcher(text).matches()
-                && (!text.contains(",") || text.split(" ").length <= 8);
+                && (!outside.contains(",")
+                        || outside.split(" ").length <= 8
+                        || LEGAL_SUFFIX.matcher(outside).matches());
     }
 
     private boolean company(String text, boolean v34) {

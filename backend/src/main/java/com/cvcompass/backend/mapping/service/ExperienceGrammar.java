@@ -13,6 +13,7 @@ import com.cvcompass.backend.mapping.service.ExperienceGrammarRows.Atom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** Typed block relationships for the personal-info grammar engines. */
 final class ExperienceGrammar {
@@ -26,6 +27,7 @@ final class ExperienceGrammar {
     private final List<Issue> issues = new ArrayList<>();
 
     private final boolean v34;
+    private final Set<Integer> repeatedMargins;
 
     ExperienceGrammar(Extraction input, ExperienceDefinition config) {
         this(input, config, false);
@@ -37,6 +39,7 @@ final class ExperienceGrammar {
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
         this.rows = new ExperienceGrammarRows(input, config, lines);
+        this.repeatedMargins = v34 ? PersonalInfoGrammarLines.repeatedMargins(lines) : Set.of();
     }
 
     Outcome parse() {
@@ -44,6 +47,8 @@ final class ExperienceGrammar {
         var pendingPeriods = new ArrayList<PeriodProposal>();
         var pendingTitles = new ArrayList<Atom>();
         String section = "UNSCOPED";
+        String sectionHeading = null;
+        int contentPage = -1;
         int epoch = 0;
         int pendingPage = -1;
         SourceLine rejectedRange = null;
@@ -55,7 +60,17 @@ final class ExperienceGrammar {
                     "(?iu)(?:page\\s+\\d+(?:\\s+of\\s+\\d+)?|\\d{1,3}|private and confidential|confidential)"))
                 continue;
             String heading = section(line.text);
+            if (heading == null && repeatedMargins.contains(index) && !rows.structuredMargin(line))
+                continue;
+            boolean firstOnPage = line.page != contentPage;
+            contentPage = line.page;
             if (heading != null) {
+                String headingKey = key(line.text.replaceFirst("[:：]$", ""));
+                if (v34
+                        && firstOnPage
+                        && heading.equals(section)
+                        && headingKey.equals(sectionHeading)) continue;
+                sectionHeading = headingKey;
                 if (!heading.equals(section)) epoch++;
                 section = heading;
                 current = null;
@@ -144,11 +159,27 @@ final class ExperienceGrammar {
                 continue;
             }
             if (current != null && current.lastPage != line.page) {
-                if (row.company() == null)
-                    issues.add(new Issue("UNLINKED_PAGE_TEXT", "source", List.of(line.whole())));
-                current = null;
-                pendingPeriods.clear();
-                pendingTitles.clear();
+                if (anchored
+                        && current.lastPage + 1 == line.page
+                        && row.company() == null
+                        && (row.titles().isEmpty()
+                                || row.periods().isEmpty()
+                                || rows.hasExplicitLabel(line))) {
+                    current.lastPage = line.page;
+                    current.headerEnd = index - 1;
+                    current.issues.add(
+                            new Issue(
+                                    "PAGE_CONTINUATION_ASSUMED",
+                                    "experience",
+                                    List.of(line.whole())));
+                } else {
+                    if (row.company() == null)
+                        issues.add(
+                                new Issue("UNLINKED_PAGE_TEXT", "source", List.of(line.whole())));
+                    current = null;
+                    pendingPeriods.clear();
+                    pendingTitles.clear();
+                }
             }
             if (row.contextOnly()) {
                 if (current != null) describe(current, line);
@@ -334,7 +365,9 @@ final class ExperienceGrammar {
                                                                     && compatibleStart(
                                                                             summary, detail)
                                                             || v34
-                                                                    && summary.titles.isEmpty()
+                                                                    && (summary.titles.isEmpty()
+                                                                            || detail.titles
+                                                                                    .isEmpty())
                                                                     && sameResolvedPeriod(
                                                                             summary, detail)))
                             .toList();
