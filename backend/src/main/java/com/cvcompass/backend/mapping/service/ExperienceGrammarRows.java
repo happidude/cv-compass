@@ -120,7 +120,7 @@ final class ExperienceGrammarRows {
         var line = lines.get(index);
         if (CONTEXT.matcher(line.text).matches()
                 || APPLICATION.matcher(line.text).matches()
-                || anchored && STREET_ADDRESS.matcher(line.text).matches())
+                || anchored && streetAddressWithoutLeadingPeriod(line.text))
             return new Row(line, null, List.of(), List.of(), index, false, false, true);
         var statement = STATEMENT.matcher(line.text);
         var statementPeriod = ExperienceGrammarDates.find(line);
@@ -150,7 +150,8 @@ final class ExperienceGrammarRows {
                     var next = lines.get(index + 1);
                     if (next.page == line.page
                             && matches(next.text, anchored).isEmpty()
-                            && !heading(next.text, anchored)) {
+                            && !heading(next.text, anchored)
+                            && (!anchored || canContinueLabel(label, next))) {
                         value = atom(next, 0, next.text.length());
                         valueLine = next;
                         consumed = index + 1;
@@ -217,7 +218,8 @@ final class ExperienceGrammarRows {
                             var next = lines.get(consumed + 1);
                             if (next.page == line.page
                                     && company(value.text() + " " + next.text, anchored)
-                                    && matches(next.text, anchored).isEmpty()) {
+                                    && matches(next.text, anchored).isEmpty()
+                                    && (!anchored || !ExperienceGrammarDates.hasRange(next.text))) {
                                 var spans = new ArrayList<>(value.evidence());
                                 spans.add(next.whole());
                                 value = atom(spans);
@@ -231,7 +233,8 @@ final class ExperienceGrammarRows {
                             var next = lines.get(consumed + 1);
                             if (next.page == line.page
                                     && title(next.text, anchored)
-                                    && matches(next.text, anchored).isEmpty()) {
+                                    && matches(next.text, anchored).isEmpty()
+                                    && (!anchored || !ExperienceGrammarDates.hasRange(next.text))) {
                                 var spans = new ArrayList<>(value.evidence());
                                 spans.add(next.whole());
                                 value = atom(spans);
@@ -305,7 +308,9 @@ final class ExperienceGrammarRows {
                 else if (MODIFIER.matcher(value.text()).matches()
                         && index + 1 < lines.size()
                         && lines.get(index + 1).page == line.page
-                        && title(lines.get(index + 1).text, anchored)) {
+                        && title(lines.get(index + 1).text, anchored)
+                        && (!anchored
+                                || !ExperienceGrammarDates.hasRange(lines.get(index + 1).text))) {
                     titles.add(
                             atom(
                                     List.of(
@@ -342,7 +347,12 @@ final class ExperienceGrammarRows {
 
     Row contextRow(int index) {
         var row = anchoredRow(index);
-        return row != null && row.company() != null && !row.periods().isEmpty() && !row.ambiguous()
+        return row != null
+                        && row.company() != null
+                        && !row.periods().isEmpty()
+                        && !row.ambiguous()
+                        && row.periods().stream()
+                                .noneMatch(period -> period.state().equals("INVALID"))
                 ? row
                 : null;
     }
@@ -350,6 +360,14 @@ final class ExperienceGrammarRows {
     boolean adjacentTitle(int index) {
         var line = nearbyHeadingText(index, index);
         return line != null && title(line.text, true);
+    }
+
+    private static boolean canContinueLabel(Match label, SourceLine line) {
+        var range = ExperienceGrammarDates.find(line);
+        return range == null
+                || label.field().equals("period")
+                        && range.proposal().state().equals("PROPOSED")
+                        && (ExperienceGrammarDates.dateOnly(line) || wrappedPeriod(line));
     }
 
     private Row anchoredRow(int index) {
@@ -542,7 +560,7 @@ final class ExperienceGrammarRows {
         var neighbor = lines.get(index);
         if (neighbor.page != page
                 || heading(neighbor.text, true)
-                || STREET_ADDRESS.matcher(neighbor.text).matches()) return false;
+                || streetAddressWithoutLeadingPeriod(neighbor.text)) return false;
         if (matches(neighbor.text, true).stream()
                 .anyMatch(label -> label.field().equals("period") || label.field().equals("title")))
             return true;
@@ -615,6 +633,11 @@ final class ExperienceGrammarRows {
 
     private static Atom empty() {
         return new Atom("", "", List.of());
+    }
+
+    private static boolean streetAddressWithoutLeadingPeriod(String text) {
+        return STREET_ADDRESS.matcher(text).matches()
+                && !ExperienceGrammarDates.startsWithRange(text);
     }
 
     private static boolean companyTextAllowed(String text) {
