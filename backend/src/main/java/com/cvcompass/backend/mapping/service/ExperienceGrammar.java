@@ -46,6 +46,7 @@ final class ExperienceGrammar {
         String section = "UNSCOPED";
         int epoch = 0;
         int pendingPage = -1;
+        SourceLine rejectedRange = null;
         for (int index = 0; index < lines.size(); index++) {
             if (pendingPeriods.size() + pendingTitles.size() > 8)
                 throw new IllegalArgumentException("Unresolved experience anchor limit exceeded");
@@ -58,13 +59,39 @@ final class ExperienceGrammar {
                 if (!heading.equals(section)) epoch++;
                 section = heading;
                 current = null;
+                rejectedRange = null;
                 pendingPeriods.clear();
                 pendingTitles.clear();
                 continue;
             }
             if (section.equals("STOP")) continue;
             boolean anchored = v34 && (section.equals("DETAIL") || section.equals("SUMMARY"));
-            var row = rows.parse(index, anchored);
+            var range = anchored ? ExperienceGrammarDates.find(line) : null;
+            var row =
+                    range != null && range.proposal().state().equals("INVALID")
+                            ? null
+                            : rows.parse(index, anchored);
+            if (range != null && (row == null || row.ambiguous() || row.contextOnly())) {
+                issues.add(new Issue("AMBIGUOUS_EXPERIENCE_ROW", "source", List.of(line.whole())));
+                current = null;
+                pendingPeriods.clear();
+                pendingTitles.clear();
+                rejectedRange = line;
+                continue;
+            }
+            if (rejectedRange != null
+                    && rejectedRange.page == line.page
+                    && row.company() == null
+                    && row.periods().isEmpty()
+                    && !row.titles().isEmpty()) {
+                var evidence = new ArrayList<Evidence>();
+                evidence.add(rejectedRange.whole());
+                row.titles().forEach(title -> evidence.addAll(title.evidence()));
+                issues.add(new Issue("UNRESOLVED_EXPERIENCE_BLOCK", "source", evidence));
+                index = row.consumedThrough();
+                continue;
+            }
+            rejectedRange = null;
             index = row.consumedThrough();
             if (pendingPage != -1 && pendingPage != line.page) {
                 if (!pendingPeriods.isEmpty() || !pendingTitles.isEmpty())

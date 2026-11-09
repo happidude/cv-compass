@@ -42,6 +42,10 @@ final class ExperienceGrammarDates {
 
     record Capture(PeriodProposal proposal, int start, int end) {}
 
+    static boolean startsWithRange(String text) {
+        return RANGE.matcher(text).lookingAt();
+    }
+
     static boolean hasRange(String text) {
         return RANGE.matcher(text).find();
     }
