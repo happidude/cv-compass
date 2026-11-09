@@ -164,6 +164,11 @@ Tuân thủ AGENTS.md + backend/AGENTS.md. Mức 3 (E-eval mức 2).
   "*MappingVersions*") → commit → push → Draft PR → slice sau. Full gate .\gradlew.bat check --rerun-tasks một lần ở cuối.
 - E-eval: class trong src/test (không vào jar), chỉ chạy khi có biến môi trường CV_EVAL_DIR, in số tổng hợp, không in
   hay log nội dung CV; có test với fixture tổng hợp; không chạy trong CI.
+- Việc tồn đọng từ review chuỗi #34–#37 (làm trong E5, có test tổng hợp):
+  (a) company có dấu phẩy + ngoặc dài, vd. "MM/YYYY – MM/YYYY: SAMPLE CO., LTD (SAMPLE JEWELRY JOINT STOCK COMPANY)"
+      đang bị luật "có phẩy và > 8 từ" loại → chỉ áp luật đó cho phần ngoài ngoặc và khi không có hậu tố pháp lý;
+  (b) summary + detail cùng công ty + kỳ nhưng detail mất title do ngắt trang vẫn phải gộp thành 1 dòng
+      (title lấy từ summary), không tạo dòng trùng.
 - Open Questions trong round-2.md: Q1 làm theo khuyến nghị (chấp nhận tiền tố tháng + issue MONTH_ABBREVIATION_NONSTANDARD)
   trừ khi chủ dự án ghi khác trong PR #38; Q2, Q3 KHÔNG làm.
 - Không merge, không push main, không sửa Flyway, không xóa/làm yếu test, không dùng CV thật/PII.
