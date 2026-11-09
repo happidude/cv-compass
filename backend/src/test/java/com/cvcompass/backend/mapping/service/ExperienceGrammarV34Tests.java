@@ -781,6 +781,123 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void acceptsLeadingPeriodsBeforeCommaEmployersAndMergesUppercaseDetails() throws Exception {
+        String rows =
+                """
+                05/2018 – 09/2019: SAMPLE CO., LTD
+                Sales Director
+                11/2007 – 01/2011: SAMPLE B CO., LTD - HCM
+                Sales Manager
+                01/2006 – 10/2007: SAMPLE C CO., LTD
+                Engineer
+                02/2003 – 12/2005: SAMPLE D
+                Analyst
+                01/2001 – 12/2002: SAMPLE E
+                Logistics Coordinator
+                """;
+        String summary = "Career Overview\n" + rows;
+        var overview = parse("3.4", summary).experiences();
+        assertThat(overview)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "SAMPLE CO., LTD",
+                        "SAMPLE B CO., LTD",
+                        "SAMPLE C CO., LTD",
+                        "SAMPLE D",
+                        "SAMPLE E");
+        assertThat(overview)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "Sales Director",
+                        "Sales Manager",
+                        "Engineer",
+                        "Analyst",
+                        "Logistics Coordinator");
+        var merged =
+                parse(
+                                "3.4",
+                                summary
+                                        + "Work Experience\n"
+                                        + rows.toUpperCase(java.util.Locale.ROOT))
+                        .experiences();
+        assertThat(merged)
+                .extracting(row -> row.company().raw())
+                .containsExactly(
+                        "SAMPLE CO., LTD",
+                        "SAMPLE B CO., LTD",
+                        "SAMPLE C CO., LTD",
+                        "SAMPLE D",
+                        "SAMPLE E");
+        assertThat(merged)
+                .extracting(row -> row.title().raw())
+                .containsExactly(
+                        "SALES DIRECTOR",
+                        "SALES MANAGER",
+                        "ENGINEER",
+                        "ANALYST",
+                        "LOGISTICS COORDINATOR");
+        assertThat(merged)
+                .allSatisfy(
+                        row ->
+                                assertThat(row.issues())
+                                        .extracting(issue -> issue.code())
+                                        .contains("SUMMARY_DETAIL_MERGED"));
+    }
+
+    @Test
+    void rejectedRangeDoesNotLendItsTitleToAnotherEmployer() throws Exception {
+        for (String rejected :
+                List.of(
+                        "05/2019 – 0/2020: SAMPLE X",
+                        "Employer:\n05/2019 – 0/2020: SAMPLE X",
+                        "2014 – 2015 Vietnam",
+                        "Managed synthetic work in 2014 – 2015.")) {
+            var result =
+                    parse(
+                            "3.4",
+                            "Work Experience\n2012 – 2013 Sample Previous\n"
+                                    + rejected
+                                    + "\nEngineer\n2021 – 2022 Sample Next\nAnalyst");
+            assertThat(result.experiences())
+                    .as(rejected)
+                    .extracting(row -> row.company().raw())
+                    .containsExactly("Sample Previous", "Sample Next");
+            assertThat(result.experiences())
+                    .extracting(row -> row.title().raw())
+                    .containsExactly(null, "Analyst");
+            assertThat(result.issues())
+                    .filteredOn(issue -> issue.code().equals("UNRESOLVED_EXPERIENCE_BLOCK"))
+                    .singleElement()
+                    .satisfies(
+                            issue ->
+                                    assertThat(issue.evidence())
+                                            .extracting(span -> span.text())
+                                            .containsExactly(
+                                                    rejected.substring(
+                                                            rejected.lastIndexOf('\n') + 1),
+                                                    "Engineer"));
+        }
+    }
+
+    @Test
+    void explicitPeriodCanReadAValidWrappedRangeOnTheNextLine() throws Exception {
+        var rows =
+                parse(
+                                "3.4",
+                                "Work Experience\nCompany: Sample Ltd\nPeriod:\n"
+                                        + "(2010 – 2012)\nEngineer")
+                        .experiences();
+        assertThat(rows)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("Sample Ltd");
+                            assertThat(row.period().start().year()).isEqualTo(2010);
+                            assertThat(row.title().raw()).isEqualTo("Engineer");
+                        });
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");
