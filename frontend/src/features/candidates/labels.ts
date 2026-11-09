@@ -37,6 +37,31 @@ export function dateLabel(value: ExperienceData["period"]["start"]) {
     " (ngày)"
   );
 }
+export function formatExperienceMonths(months: number) {
+  return months === 0
+    ? "Chưa tính được"
+    : `${Math.floor(months / 12)} năm ${months % 12} tháng`;
+}
+
+export function experienceSkipReasonLabel(reason: string) {
+  switch (reason) {
+    case "MISSING_START":
+      return "Thiếu ngày bắt đầu";
+    case "MISSING_END":
+      return "Thiếu ngày kết thúc";
+    case "PERIOD_UNRESOLVED":
+      return "Kỳ kinh nghiệm chưa xác định";
+    case "EXCLUDED_BY_USER":
+      return "Đã bỏ khỏi tổng";
+    case "NO_REFERENCE_DATE":
+      return "Chưa có ngày nhập CV để tham chiếu";
+    case "START_AFTER_REFERENCE":
+      return "Ngày bắt đầu sau ngày nhập CV";
+    default:
+      return "Lý do chưa xác định";
+  }
+}
+
 export const periodStateLabel = (state: string) =>
   state === "PROPOSED"
     ? "Đề xuất"

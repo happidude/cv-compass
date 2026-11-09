@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import type { ExperienceSummary } from "../../src/features/candidates/schema";
 import { m11Pdf } from "../fixtures/m11-pdf";
 test("document association conflict keeps its own safe message", async ({
   page,
@@ -36,6 +37,7 @@ test("unknown title can remain empty when a USER adds an employer", async ({
   await page
     .getByLabel("Công ty", { exact: true })
     .fill("Synthetic employer without title");
+  await expect(page.getByLabel("Tính vào tổng kinh nghiệm")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Lưu kinh nghiệm", exact: true })
     .click();
@@ -136,6 +138,13 @@ const experience = {
 };
 const key = "11111111-1111-4111-8111-111111111111";
 const proposalKey = "22222222-2222-4222-8222-222222222222";
+const experienceSummary: ExperienceSummary = {
+  totalMonths: 105,
+  countedIds: [key],
+  skipped: [],
+  ongoingReferenceDates: ["2026-10-28"],
+  hasYearOnlyPeriods: true,
+};
 function profile() {
   return {
     id: 1,
@@ -170,10 +179,15 @@ function profile() {
 }
 async function setup(
   page: Page,
-  options: { loggedIn?: boolean; missingPdf?: boolean } = {},
+  options: {
+    loggedIn?: boolean;
+    missingPdf?: boolean;
+    withExperienceSummary?: boolean;
+  } = {},
 ) {
   let loggedIn = options.loggedIn ?? true;
   let current: Omit<ReturnType<typeof profile>, "experiences"> & {
+    experienceSummary?: ExperienceSummary;
     experiences: (Omit<
       ReturnType<typeof profile>["experiences"][number],
       "documentId" | "resultId" | "data"
@@ -182,7 +196,12 @@ async function setup(
       resultId: number | null;
       data: unknown;
     })[];
-  } = profile();
+  } = {
+    ...profile(),
+    experienceSummary: options.withExperienceSummary
+      ? experienceSummary
+      : undefined,
+  };
   let proposals = [
     {
       id: proposalKey,
@@ -263,6 +282,18 @@ async function setup(
                 old.id === body.experienceId ? value : old,
               )
             : [...current.experiences, value];
+          if (options.withExperienceSummary && body.experienceId === key) {
+            current.experienceSummary =
+              body.data.countInTotal === false
+                ? {
+                    totalMonths: 0,
+                    countedIds: [],
+                    skipped: [{ id: key, reason: "EXCLUDED_BY_USER" }],
+                    ongoingReferenceDates: [],
+                    hasYearOnlyPeriods: false,
+                  }
+                : experienceSummary;
+          }
         } else if (body.operation === "DELETE")
           current.experiences = current.experiences.filter(
             (old) => old.id !== body.experienceId,
@@ -310,6 +341,56 @@ async function setup(
   });
   return { writes };
 }
+test("profile shows the estimate and saves the HR exclusion", async ({
+  page,
+}) => {
+  const state = await setup(page, { withExperienceSummary: true });
+  await page.goto("/candidates/1");
+  const section = page.getByRole("region", {
+    name: "Kinh nghiệm",
+    exact: true,
+  });
+  await expect(
+    section.getByText("Tổng kinh nghiệm: 8 năm 9 tháng"),
+  ).toBeVisible();
+  await expect(
+    section.getByText(/ước tính · tính đến 28\/10\/2026/),
+  ).toBeVisible();
+  await expect(section.getByText(/Có kỳ chỉ ghi năm/)).toBeVisible();
+
+  const edit = section.getByRole("button", {
+    name: "Sửa kinh nghiệm",
+    exact: true,
+  });
+  const countInTotal = section.getByRole("checkbox", {
+    name: "Tính vào tổng kinh nghiệm",
+  });
+  await edit.click();
+  await expect(countInTotal).toBeChecked();
+  await countInTotal.uncheck();
+  await section
+    .getByRole("button", { name: "Lưu kinh nghiệm", exact: true })
+    .click();
+  await expect(
+    section.getByText("Tổng kinh nghiệm: Chưa tính được"),
+  ).toBeVisible();
+  await expect(
+    section.getByText(
+      "Synthetic Devices · Engineering Manager · Đã bỏ khỏi tổng",
+    ),
+  ).toBeVisible();
+  expect(state.writes).toEqual([
+    expect.objectContaining({
+      version: 1,
+      experienceId: key,
+      operation: "SAVE",
+      data: expect.objectContaining({ countInTotal: false }),
+    }),
+  ]);
+  await edit.click();
+  await expect(countInTotal).not.toBeChecked();
+});
+
 test("login, candidate list and CSRF logout", async ({ page }) => {
   await setup(page, { loggedIn: false });
   await page.goto("/candidates");
