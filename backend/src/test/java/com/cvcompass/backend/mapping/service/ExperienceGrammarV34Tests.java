@@ -898,6 +898,136 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void continuesOneDatedEmployerAcrossFourAdjacentPages() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        List.of(
+                                new Page(
+                                        1,
+                                        "ok",
+                                        "SYNTHETIC DOSSIER\nNgười Mẫu\nEXPERIENCE IN DETAILS\n"
+                                                + "2018 – 2020 Sample Fabrication\nSample footer"),
+                                new Page(
+                                        2,
+                                        "ok",
+                                        "Page 2\nNgười Mẫu\nEXPERIENCE IN DETAILS\n"
+                                                + "Paint Technician\n- Prepared synthetic parts.\nSample footer"),
+                                new Page(
+                                        3,
+                                        "ok",
+                                        "SYNTHETIC DOSSIER\nNgười Mẫu\nEXPERIENCE IN DETAILS\n"
+                                                + "- Inspected synthetic parts.\nSample footer"),
+                                new Page(
+                                        4,
+                                        "ok",
+                                        "Page 4\nNgười Mẫu\nEXPERIENCE IN DETAILS\n"
+                                                + "- Packed synthetic parts.\nSample footer")));
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("Sample Fabrication");
+                            assertThat(row.title().raw()).isEqualTo("Paint Technician");
+                            assertThat(row.period().start().year()).isEqualTo(2018);
+                            assertThat(row.descriptionEvidence())
+                                    .extracting(span -> span.page())
+                                    .containsExactly(2, 3, 4);
+                            assertThat(row.issues())
+                                    .filteredOn(
+                                            issue ->
+                                                    issue.code()
+                                                            .equals("PAGE_CONTINUATION_ASSUMED"))
+                                    .hasSize(3);
+                        });
+    }
+
+    @Test
+    void doesNotAssignANewDatedTitleToThePreviousPageEmployer() throws Exception {
+        var result =
+                parse(
+                        "3.4",
+                        List.of(
+                                new Page(
+                                        1,
+                                        "ok",
+                                        "Experience in Details\n2018 – 2020 Sample Fabrication"),
+                                new Page(
+                                        2,
+                                        "ok",
+                                        "2022 – 2024 Paint Technician\n- Synthetic detail.")));
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.period().start().year()).isEqualTo(2018);
+                            assertThat(row.title().state()).isEqualTo("NOT_FOUND");
+                            assertThat(row.issues())
+                                    .extracting(issue -> issue.code())
+                                    .doesNotContain("PAGE_CONTINUATION_ASSUMED");
+                        });
+    }
+
+    @Test
+    void failedOrUnprocessedPagesBreakAssumedContinuation() throws Exception {
+        for (String status : List.of("failed", "not_processed")) {
+            var result =
+                    parse(
+                            "3.4",
+                            List.of(
+                                    new Page(
+                                            1,
+                                            "ok",
+                                            "EXPERIENCE IN DETAILS\n2018 – 2020 Sample Fabrication"),
+                                    new Page(2, status, ""),
+                                    new Page(
+                                            3,
+                                            "ok",
+                                            "EXPERIENCE IN DETAILS\nPaint Technician\n- Synthetic detail.")));
+            assertThat(result.experiences())
+                    .singleElement()
+                    .satisfies(
+                            row -> {
+                                assertThat(row.title().state()).isEqualTo("NOT_FOUND");
+                                assertThat(row.issues())
+                                        .extracting(issue -> issue.code())
+                                        .doesNotContain("PAGE_CONTINUATION_ASSUMED");
+                            });
+            assertThat(result.issues())
+                    .extracting(issue -> issue.code())
+                    .contains("UNLINKED_PAGE_TEXT");
+        }
+    }
+
+    @Test
+    void retainsLongParentheticalEmployerAndUsesSummaryTitleWhenDetailHasNone() throws Exception {
+        String company = "SAMPLE CO., LTD (SAMPLE JEWELRY JOINT STOCK COMPANY)";
+        var result =
+                parse(
+                        "3.4",
+                        List.of(
+                                new Page(
+                                        1,
+                                        "ok",
+                                        "Career Overview\n05/2018 – 09/2019: "
+                                                + company
+                                                + "\nSales Manager\nEXPERIENCE IN DETAILS\n05/2018 – 09/2019: "
+                                                + company),
+                                new Page(2, "failed", ""),
+                                new Page(3, "ok", "Sales Manager")));
+        assertThat(result.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo(company);
+                            assertThat(row.title().raw()).isEqualTo("Sales Manager");
+                            assertThat(row.issues())
+                                    .extracting(issue -> issue.code())
+                                    .contains("SUMMARY_DETAIL_MERGED");
+                        });
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");
