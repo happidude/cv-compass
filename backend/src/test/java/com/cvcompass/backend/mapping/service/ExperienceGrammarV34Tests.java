@@ -1028,6 +1028,94 @@ class ExperienceGrammarV34Tests {
     }
 
     @Test
+    void recognizesFlexibleHeadingsAndMergesSummaryAndDetail() throws Exception {
+        for (String heading :
+                List.of(
+                        "Experience in Details",
+                        "Employment History",
+                        "Career History",
+                        "Working History",
+                        "Experiences",
+                        "Quá trình công tác",
+                        "Relevant Employment")) {
+            String line = "Sales Manager | SAMPLE LTD | 2012 Sep – 2018 Dec\n";
+            var rows =
+                    parse("3.4", "Overview of Employment\n" + line + heading + "\n" + line)
+                            .experiences();
+            assertThat(rows)
+                    .as(heading)
+                    .singleElement()
+                    .satisfies(
+                            row ->
+                                    assertThat(row.issues())
+                                            .extracting(issue -> issue.code())
+                                            .contains("SUMMARY_DETAIL_MERGED"));
+        }
+    }
+
+    @Test
+    void parsesExtendedDatesWithoutCorrectingMisspellings() throws Exception {
+        record Example(
+                String period,
+                int year,
+                int month,
+                Integer endMonth,
+                boolean ongoing,
+                boolean prefix) {}
+        for (var sample :
+                List.of(
+                        new Example("2023 Oct", 2023, 10, null, false, false),
+                        new Example("2012 Sep – 2018 Dec", 2012, 9, 12, false, false),
+                        new Example("2000 June- 2001 Mar", 2000, 6, 3, false, false),
+                        new Example("Feb – 2017", 2017, 2, null, false, false),
+                        new Example("Sep’- 2010", 2010, 9, null, false, false),
+                        new Example("Tháng 3/ 2020", 2020, 3, null, false, false),
+                        new Example("From Jan 2010 to Feb 2011", 2010, 1, 2, false, false),
+                        new Example("From Mar 2011 until present", 2011, 3, null, true, false),
+                        new Example("Decem 2010 – Septem 2011", 2010, 12, 9, false, true),
+                        new Example("Octo 2010 – Nov 2011", 2010, 10, 11, false, true))) {
+            var row =
+                    parse(
+                                    "3.4",
+                                    "Experience in Summary\nEmployer: SAMPLE LTD\nPeriod: "
+                                            + sample.period())
+                            .experiences()
+                            .getFirst();
+            assertThat(row.period().state()).as(sample.period()).isEqualTo("PROPOSED");
+            assertThat(row.period().start().year()).isEqualTo(sample.year());
+            assertThat(row.period().start().month()).isEqualTo(sample.month());
+            assertThat(row.period().end() == null ? null : row.period().end().month())
+                    .isEqualTo(sample.endMonth());
+            assertThat(row.period().ongoingAsStated()).isEqualTo(sample.ongoing());
+            assertThat(
+                            row.issues().stream()
+                                    .anyMatch(
+                                            issue ->
+                                                    issue.code()
+                                                            .equals(
+                                                                    "MONTH_ABBREVIATION_NONSTANDARD")))
+                    .isEqualTo(sample.prefix());
+        }
+        var invalid =
+                parse("3.4", "Experience\nEmployer: SAMPLE LTD\nPeriod: Arp 2017 – May 2018")
+                        .experiences()
+                        .getFirst();
+        assertThat(invalid.period().state()).isEqualTo("INVALID");
+        assertThat(parse("3.4", "Experience\nSample Ltd Arp 2017 – May 2018").experiences())
+                .isEmpty();
+        var inline =
+                parse("3.4", "Experience\nFrom Jan 2010 to Feb 2011: Sample Ltd").experiences();
+        assertThat(inline)
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.company().raw()).isEqualTo("Sample Ltd");
+                            assertThat(row.period().start().month()).isEqualTo(1);
+                            assertThat(row.period().end().month()).isEqualTo(2);
+                        });
+    }
+
+    @Test
     void legacyV33ReplaysSameInputByteForByte() throws Exception {
         assertThat(MappingDigests.sha256(MappingDigests.canonical(parse("3.3", HEADINGS))))
                 .isEqualTo("2b65808003a5dcd4aa4d59ddedb13999456aaae37212d56cc1b8afa3f0df6433");

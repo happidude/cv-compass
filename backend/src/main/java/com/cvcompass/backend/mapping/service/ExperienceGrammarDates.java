@@ -18,13 +18,75 @@ final class ExperienceGrammarDates {
                     + "\\s+[0-9]{4}|"
                     + MONTH
                     + "[\\s-]+[0-9]{4}|tháng\\s+[0-9]{1,2}/[0-9]{4}|[0-9]{4})";
-    private static final Pattern RANGE =
-            Pattern.compile(
-                    "(?iu)(?<![\\p{L}0-9])("
-                            + DATE
-                            + ")\\s*(?:[-–—]|to\\b|until\\b|đến\\b)\\s*("
-                            + DATE
-                            + "|now\\b|present\\b|current\\b|nay\\b|hiện tại\\b)(?![\\p{L}0-9])");
+    private static final List<String> MONTH_NAMES =
+            List.of(
+                    "january",
+                    "february",
+                    "march",
+                    "april",
+                    "may",
+                    "june",
+                    "july",
+                    "august",
+                    "september",
+                    "october",
+                    "november",
+                    "december");
+    private static final String NONSTANDARD =
+            String.join(
+                    "|",
+                    MONTH_NAMES.stream()
+                            .flatMap(
+                                    name ->
+                                            java.util.stream.IntStream.range(3, name.length())
+                                                    .mapToObj(length -> name.substring(0, length)))
+                            .filter(prefix -> !prefix.matches("(?i)" + MONTH))
+                            .toList());
+    private static final String MONTH_V34 = "(?:" + MONTH + "|" + NONSTANDARD + ")";
+    private static final Pattern NONSTANDARD_MONTH =
+            Pattern.compile("(?i)\\b(?:" + NONSTANDARD + ")\\b");
+    private static final String DATE_V34 =
+            "(?:[0-9]{4}\\s+"
+                    + MONTH_V34
+                    + "\\b|(?:[0-9]{1,2}\\s+)?"
+                    + MONTH_V34
+                    + "(?:[’']?\\s*[-–—]\\s*|\\s+)[0-9]{4}"
+                    + "|tháng\\s+[0-9]{1,2}/\\s*[0-9]{4}|"
+                    + DATE
+                    + ")";
+    private static final Pattern RANGE = rangePattern(DATE);
+    private static final Pattern RANGE_V34 = rangePattern(DATE_V34);
+
+    private static Pattern rangePattern(String dateToken) {
+        return Pattern.compile(
+                "(?iu)(?<![\\p{L}0-9])("
+                        + dateToken
+                        + ")\\s*(?:[-–—]|to\\b|until\\b|đến\\b)\\s*("
+                        + dateToken
+                        + "|now\\b|present\\b|current\\b|nay\\b|hiện tại\\b)(?![\\p{L}0-9])");
+    }
+
+    private final boolean v34;
+    private final Pattern range;
+
+    ExperienceGrammarDates(boolean v34) {
+        this.v34 = v34;
+        this.range = v34 ? RANGE_V34 : RANGE;
+    }
+
+    int withoutLeadingRangeConnector(SourceLine line, Capture capture) {
+        return v34
+                ? line.text
+                        .substring(0, capture.start())
+                        .replaceFirst("(?iu)(?:^|\\s|(?<=\\())(?:from|từ)\\s+$", "")
+                        .length()
+                : capture.start();
+    }
+
+    boolean hasNonstandardMonth(String raw) {
+        return v34 && NONSTANDARD_MONTH.matcher(raw).find();
+    }
+
     private static final Map<String, Integer> MONTHS =
             Map.ofEntries(
                     Map.entry("jan", 1),
@@ -40,24 +102,37 @@ final class ExperienceGrammarDates {
                     Map.entry("nov", 11),
                     Map.entry("dec", 12));
 
+    private static final Pattern MONTH_SLOT_BEFORE_YEAR =
+            Pattern.compile(
+                    "(?i)(?:^|[|:]\\s*|\\b(?:ltd\\.?|limited|inc\\.?|corp\\.?|corporation|llc|jsc|co\\.)\\s+)([a-z]{3})\\s+$");
+
     record Capture(PeriodProposal proposal, int start, int end) {}
 
-    static boolean startsWithRange(String text) {
-        return RANGE.matcher(text).lookingAt();
+    private static boolean transposedMonthInDateSlot(String prefix) {
+        var match = MONTH_SLOT_BEFORE_YEAR.matcher(prefix);
+        if (!match.find()) return false;
+        String token = match.group(1).toLowerCase(Locale.ROOT);
+        if (MONTHS.containsKey(token)) return false;
+        return MONTHS.containsKey("" + token.charAt(1) + token.charAt(0) + token.charAt(2))
+                || MONTHS.containsKey("" + token.charAt(0) + token.charAt(2) + token.charAt(1));
     }
 
-    static boolean hasRange(String text) {
-        return RANGE.matcher(text).find();
+    boolean startsWithRange(String text) {
+        return range.matcher(text).lookingAt();
     }
 
-    static Capture find(SourceLine line) {
+    boolean hasRange(String text) {
+        return range.matcher(text).find();
+    }
+
+    Capture find(SourceLine line) {
         var values = findAll(line);
         return values.isEmpty() ? null : values.getFirst();
     }
 
-    static List<Capture> findAll(SourceLine line) {
+    List<Capture> findAll(SourceLine line) {
         var values = new java.util.ArrayList<Capture>();
-        var match = RANGE.matcher(line.text);
+        var match = range.matcher(line.text);
         while (match.find()) {
             boolean ongoing =
                     List.of("now", "present", "current", "nay", "hiện tại")
@@ -69,7 +144,14 @@ final class ExperienceGrammarDates {
                             || !ongoing && end == null
                             || start != null
                                     && end != null
-                                    && start.earliest().isAfter(end.latest());
+                                    && start.earliest().isAfter(end.latest())
+                            || v34
+                                    && start != null
+                                    && "YEAR".equals(start.precision())
+                                    && end != null
+                                    && "MONTH".equals(end.precision())
+                                    && transposedMonthInDateSlot(
+                                            line.text.substring(0, match.start()));
             var evidence = line.span(match.start(), match.end());
             values.add(
                     new Capture(
@@ -86,9 +168,17 @@ final class ExperienceGrammarDates {
         return List.copyOf(values);
     }
 
-    static PeriodProposal labelled(SourceLine line, int start, int end) {
+    PeriodProposal labelled(SourceLine line, int start, int end) {
         var found = find(line);
-        if (found != null && found.start() >= start && found.end() <= end) return found.proposal();
+        if (found != null
+                && found.start() >= start
+                && found.end() <= end
+                && (!v34
+                        || line.text
+                                        .substring(start, found.start())
+                                        .matches("(?iu)\\s*\\(?\\s*(?:from|từ)?\\s*")
+                                && line.text.substring(found.end(), end).matches("[\\s().:：|/]*")))
+            return found.proposal();
         while (start < end && Character.isWhitespace(line.text.charAt(start))) start++;
         while (end > start && Character.isWhitespace(line.text.charAt(end - 1))) end--;
         var evidence = line.span(start, end);
@@ -102,7 +192,7 @@ final class ExperienceGrammarDates {
                 List.of(evidence));
     }
 
-    static boolean dateOnly(SourceLine line) {
+    boolean dateOnly(SourceLine line) {
         var capture = find(line);
         if (capture != null)
             return line.text.substring(0, capture.start()).matches("(?iu)(?:from|từ)?\\s*:?\\s*")
@@ -110,9 +200,17 @@ final class ExperienceGrammarDates {
         return line.text.matches("[0-9]{4}");
     }
 
-    private static PartialDate date(String token) {
+    private PartialDate date(String token) {
         try {
             String value = token.strip().toLowerCase(Locale.ROOT).replaceFirst("^tháng\\s+", "");
+            if (v34) {
+                value =
+                        value.replaceFirst("(?i)^([0-9]{4})\\s+(" + MONTH_V34 + ")$", "$2 $1")
+                                .replaceFirst(
+                                        "(?i)^(" + MONTH_V34 + ")[’']?\\s*[-–—]\\s*([0-9]{4})$",
+                                        "$1 $2")
+                                .replaceFirst("^([0-9]{1,2}/)\\s+([0-9]{4})$", "$1$2");
+            }
             int year;
             Integer month = null, day = null;
             if (value.matches("[0-9]{4}")) year = Integer.parseInt(value);
@@ -130,7 +228,8 @@ final class ExperienceGrammarDates {
                 var parts = value.split("[/.]");
                 year = Integer.parseInt(parts[1]);
                 month = Integer.valueOf(parts[0]);
-            } else if (value.matches("(?iu)(?:[0-9]{1,2}\\s+)?" + MONTH + "[\\s-]+[0-9]{4}")) {
+            } else if (value.matches(
+                    "(?iu)(?:[0-9]{1,2}\\s+)?" + (v34 ? MONTH_V34 : MONTH) + "[\\s-]+[0-9]{4}")) {
                 var parts = value.replace('-', ' ').split("\\s+");
                 String name = parts[parts.length - 2];
                 month = MONTHS.get(name.substring(0, 3));
