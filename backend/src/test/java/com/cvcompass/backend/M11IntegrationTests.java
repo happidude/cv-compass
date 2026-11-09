@@ -467,6 +467,154 @@ class M11IntegrationTests {
     }
 
     @Test
+    void profileExperienceSummaryUpdatesAfterPublishAndHrExclusion() throws Exception {
+        var doc = document();
+        jdbc.update(
+                "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"=CAST(? AS timestamptz) WHERE \"ID\"=?",
+                "2021-06-30T23:59:59Z",
+                doc.getId());
+        long mapped = result(doc, raw().replace("2018 - 2021", "January 2020 – Now"), false);
+        assertThat(publication.publish(mapped)).isTrue();
+
+        var profile = queries.detail(candidate(doc));
+        var newerDoc = document();
+        jdbc.update(
+                "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"=CAST(? AS timestamptz) WHERE \"ID\"=?",
+                "2024-06-30T23:59:59Z",
+                newerDoc.getId());
+        profile =
+                candidates.attach(
+                        profile.id(), profile.version(), newerDoc.getId(), "synthetic-user");
+        var experience = profile.experiences().getFirst();
+        var login = login();
+        String path = "/api/candidates/" + profile.id();
+        mvc.perform(get(path).session(login.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.experienceSummary.totalMonths").value(18))
+                .andExpect(
+                        jsonPath("$.experienceSummary.countedIds[0]")
+                                .value(experience.id().toString()))
+                .andExpect(
+                        jsonPath("$.experienceSummary.ongoingReferenceDates[0]")
+                                .value("2021-06-30"))
+                .andExpect(jsonPath("$.experienceSummary.skipped").isEmpty());
+
+        var data = (ObjectNode) experience.data().deepCopy();
+        var command =
+                json.createObjectNode()
+                        .put("version", profile.version())
+                        .put("experienceId", experience.id().toString())
+                        .put("operation", "SAVE");
+        command.set("data", data);
+        data.put("countInTotal", "false");
+        mvc.perform(
+                        post(path + "/experiences")
+                                .session(login.session())
+                                .cookie(login.cookie())
+                                .header("X-XSRF-TOKEN", login.token())
+                                .contentType("application/json")
+                                .content(command.toString()))
+                .andExpect(status().isBadRequest());
+
+        data.put("countInTotal", false);
+        mvc.perform(
+                        post(path + "/experiences")
+                                .session(login.session())
+                                .cookie(login.cookie())
+                                .header("X-XSRF-TOKEN", login.token())
+                                .contentType("application/json")
+                                .content(command.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(profile.version() + 1));
+
+        mvc.perform(get(path).session(login.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.experienceSummary.totalMonths").value(0))
+                .andExpect(jsonPath("$.experienceSummary.countedIds").isEmpty())
+                .andExpect(jsonPath("$.experienceSummary.ongoingReferenceDates").isEmpty())
+                .andExpect(
+                        jsonPath("$.experienceSummary.skipped[0].id")
+                                .value(experience.id().toString()))
+                .andExpect(
+                        jsonPath("$.experienceSummary.skipped[0].reason").value("EXCLUDED_BY_USER"))
+                .andExpect(jsonPath("$.experiences[0].data.countInTotal").value(false));
+        var history = revisions.history(profile.id(), null, 1).getFirst();
+        assertThat(history.before().has("experienceSummary")).isFalse();
+        assertThat(history.after().has("experienceSummary")).isFalse();
+
+        command.put("version", profile.version() + 1);
+        data.put("countInTotal", true);
+        mvc.perform(
+                        post(path + "/experiences")
+                                .session(login.session())
+                                .cookie(login.cookie())
+                                .header("X-XSRF-TOKEN", login.token())
+                                .contentType("application/json")
+                                .content(command.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.experienceSummary.totalMonths").value(18))
+                .andExpect(
+                        jsonPath("$.experienceSummary.ongoingReferenceDates[0]")
+                                .value("2021-06-30"))
+                .andExpect(jsonPath("$.experiences[0].documentId").value(doc.getId().intValue()))
+                .andExpect(jsonPath("$.experiences[0].resultId").isEmpty())
+                .andExpect(jsonPath("$.experiences[0].data.evidence").doesNotExist());
+    }
+
+    @Test
+    void acceptingAReplacementKeepsTheHrExclusionOnTheSameExperience() throws Exception {
+        var doc = document();
+        var initial = published(doc);
+        var old = initial.experiences().getFirst();
+        var data = (ObjectNode) old.data().deepCopy();
+        data.put("countInTotal", false);
+        var excluded =
+                candidates.editExperience(
+                        initial.id(), initial.version(), old.id(), data, "SAVE", "synthetic-user");
+        assertThat(excluded.experienceSummary().skipped())
+                .singleElement()
+                .satisfies(row -> assertThat(row.reason().name()).isEqualTo("EXCLUDED_BY_USER"));
+
+        long mappingId =
+                result(
+                        doc,
+                        raw().replace("Northstar Devices", "Sample Replacement Devices"),
+                        false);
+        assertThat(publication.publish(mappingId)).isTrue();
+        var profile = queries.detail(initial.id());
+        var proposal = queries.proposals(initial.id(), null, 100).getFirst();
+        assertThat(proposal.data().has("countInTotal")).isFalse();
+
+        var accepted =
+                reviews.decide(
+                        profile.id(),
+                        profile.version(),
+                        proposal.id(),
+                        "ACCEPT",
+                        old.id(),
+                        null,
+                        "synthetic-user");
+        assertThat(accepted.experiences())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.id()).isEqualTo(old.id());
+                            assertThat(row.data().path("company").path("raw").asString())
+                                    .isEqualTo("Sample Replacement Devices");
+                            assertThat(row.data().path("countInTotal").isBoolean()).isTrue();
+                            assertThat(row.data().path("countInTotal").asBoolean()).isFalse();
+                        });
+        assertThat(accepted.experienceSummary().totalMonths()).isZero();
+        assertThat(accepted.experienceSummary().skipped())
+                .singleElement()
+                .satisfies(
+                        row -> {
+                            assertThat(row.id()).isEqualTo(old.id());
+                            assertThat(row.reason().name()).isEqualTo("EXCLUDED_BY_USER");
+                        });
+    }
+
+    @Test
     void actualOcrMappingPublicationIsIdempotentAndPreservesRawSource() throws Exception {
         var doc = document();
         long r = result(doc, raw(), false);

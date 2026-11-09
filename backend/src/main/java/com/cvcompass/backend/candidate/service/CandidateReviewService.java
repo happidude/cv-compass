@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 public class CandidateReviewService {
@@ -79,6 +80,13 @@ public class CandidateReviewService {
                                                     new CandidateFailure(
                                                             404, "EXPERIENCE_NOT_FOUND"));
             var data = "EDIT".equals(decision) ? validator.userExperience(edited) : proposal.data();
+            if ("ACCEPT".equals(decision)
+                    && old != null
+                    && old.data().path("countInTotal").isBoolean()) {
+                var replacement = (ObjectNode) data.deepCopy();
+                replacement.set("countInTotal", old.data().get("countInTotal"));
+                data = replacement;
+            }
             String origin = "EDIT".equals(decision) ? "USER" : "MAPPING";
             String state = "EDIT".equals(decision) ? "EDITED" : "CONFIRMED";
             if (old == null)

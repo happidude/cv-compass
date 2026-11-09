@@ -2,11 +2,13 @@ package com.cvcompass.backend.candidate.repository;
 
 import com.cvcompass.backend.candidate.dto.BasicValues;
 import com.cvcompass.backend.candidate.dto.Experience;
+import com.cvcompass.backend.candidate.dto.ExperienceReadRow;
 import com.cvcompass.backend.candidate.dto.ExperienceValues;
 import com.cvcompass.backend.candidate.dto.History;
 import com.cvcompass.backend.candidate.dto.ProfileCore;
 import com.cvcompass.backend.candidate.dto.Proposal;
 import com.cvcompass.backend.candidate.dto.Summary;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -59,20 +61,27 @@ public class CandidateProfileRepository {
                 id);
     }
 
-    public List<Experience> experiences(long id) {
+    public List<ExperienceReadRow> experiences(long id) {
         return jdbc.query(
                 """
-   SELECT "ID","STATE","ORIGIN","DOCUMENT_ID","RESULT_ID","DATA"::text
+   SELECT "ID","STATE","ORIGIN","DOCUMENT_ID","RESULT_ID","DATA"::text,
+          "START_DATE","START_PRECISION","END_DATE","END_PRECISION","ONGOING_AS_STATED"
    FROM "CANDIDATE_EXPERIENCES" WHERE "CANDIDATE_ID"=? AND NOT "DELETED" ORDER BY "ID"
    """,
                 (rs, n) ->
-                        new Experience(
-                                rs.getObject(1, UUID.class),
-                                rs.getString(2),
-                                rs.getString(3),
-                                (Long) rs.getObject(4),
-                                (Long) rs.getObject(5),
-                                parse(rs.getString(6))),
+                        new ExperienceReadRow(
+                                new Experience(
+                                        rs.getObject(1, UUID.class),
+                                        rs.getString(2),
+                                        rs.getString(3),
+                                        (Long) rs.getObject(4),
+                                        (Long) rs.getObject(5),
+                                        parse(rs.getString(6))),
+                                rs.getObject(7, LocalDate.class),
+                                rs.getString(8),
+                                rs.getObject(9, LocalDate.class),
+                                rs.getString(10),
+                                rs.getBoolean(11)),
                 id);
     }
 
