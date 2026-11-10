@@ -106,6 +106,21 @@ def stop_tree(process):
     process.wait(timeout=5)
 
 
+def _size(path):
+    # A temp file may vanish between listing and stat; count it as 0 bytes.
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
+def _usage(root):
+    sizes = [(p, _size(p)) for p in root.rglob('*') if p.is_file()]
+    document_bytes = sum(_size(p) for p in root.parent.rglob('*') if p.is_file())
+    engine_bytes = sum(n for p, n in sizes if p.suffix in ('.txt', '.tsv', '.log'))
+    return document_bytes, engine_bytes
+
+
 def run_child(task, root, config, timeout, *, cancelled=None):
     """One native child at a time; no pickle from an engine process."""
     if config.adapter == 'docker':
@@ -137,12 +152,7 @@ def run_child(task, root, config, timeout, *, cancelled=None):
             while True:
                 if cancelled is not None and cancelled.is_set():
                     failure = 'INTERNAL_ERROR'
-                files = list(root.rglob('*'))
-                sizes = [(p, p.stat().st_size) for p in files if p.is_file()]
-                document_bytes = sum(
-                    p.stat().st_size for p in root.parent.rglob('*') if p.is_file()
-                )
-                engine_bytes = sum(n for p, n in sizes if p.suffix in ('.txt', '.tsv', '.log'))
+                document_bytes, engine_bytes = _usage(root)
                 if document_bytes > config.max_temp_bytes:
                     failure = 'TEMP_LIMIT'
                 elif engine_bytes > config.max_engine_output_bytes:
