@@ -145,7 +145,7 @@ def remove_container(name):
 
 def remove_container_if_present(name):
     """Remove after a failed create; a container that never existed is already clean."""
-    found = command(['ps', '-a', '--filter', 'name=^' + name + '$', '--format', '{{.Names}}'])
+    found = command(['ps', '-a', '--filter', 'name=' + name, '--format', '{{.Names}}'])
     if name in found.decode().split():
         remove_container(name)
 

@@ -17,12 +17,14 @@ class Recorder:
         self.calls = []
         self.ps_output = ps_output
         self.fail_on = fail_on
+        self.ps_args = None
 
     def __call__(self, args, timeout=20):
         self.calls.append(list(args))
         if args[0] == self.fail_on:
             raise ChildFailure('INTERNAL_ERROR')
         if args[0] == 'ps':
+            self.ps_args = list(args)
             return self.ps_output() if callable(self.ps_output) else self.ps_output
         if args[0] == 'inspect':
             return json.dumps([{'State': {'Running': False, 'Status': 'created'}}]).encode()
@@ -45,6 +47,10 @@ class CreateCleanupTests(unittest.TestCase):
     def test_failed_create_scope_is_not_cleanup_failure(self):
         fake = Recorder()
         exc = self.run_with(fake, create_scope, config())
+        self.assertEqual(fake.ps_args[:4], ['ps', '-a', '--filter', fake.ps_args[3]])
+        self.assertTrue(fake.ps_args[3].startswith('name=cvcompass-ocr-'))
+        self.assertNotIn('^', fake.ps_args[3])
+        self.assertEqual(fake.ps_args[-2:], ['--format', '{{.Names}}'])
         self.assertEqual(exc.code, 'INTERNAL_ERROR')
         self.assertFalse(getattr(exc, 'cleanup_failed', False))
         self.assertNotIn('inspect', fake.verbs())
