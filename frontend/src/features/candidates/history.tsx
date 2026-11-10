@@ -1,4 +1,5 @@
 import { Button, Empty, ErrorNotice, Loading } from "../../shared/ui";
+import { date } from "../../shared/format";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { historySchema } from "./schema";
@@ -41,7 +42,7 @@ export function HistorySection({
                     <details>
                       <summary>
                         v{item.version} · {item.actor} · {item.action} ·{" "}
-                        {new Date(item.at).toLocaleString("vi-VN")}
+                        {date(item.at)}
                       </summary>
                       <div className="timeline__diff">
                         <div>

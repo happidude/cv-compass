@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link2 } from "lucide-react";
+import { day } from "../../shared/format";
 import { validRouteId } from "../../shared/schema";
 import { Button, Empty } from "../../shared/ui";
 import { PdfPane } from "./pdf-pane";
@@ -40,8 +41,7 @@ export function SourcePane({
           >
             {documents.map((doc) => (
               <option key={doc.id} value={doc.id}>
-                {doc.filename} · nhập hệ thống{" "}
-                {new Date(doc.importedAt).toLocaleDateString("vi-VN")}
+                {doc.filename} · nhập hệ thống {day(doc.importedAt)}
               </option>
             ))}
           </select>
