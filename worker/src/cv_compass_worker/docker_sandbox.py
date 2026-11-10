@@ -143,6 +143,13 @@ def remove_container(name):
     command(['rm', '-f', name])
 
 
+def remove_container_if_present(name):
+    """Remove after a failed create; a container that never existed is already clean."""
+    found = command(['ps', '-a', '--filter', 'name=^' + name + '$', '--format', '{{.Names}}'])
+    if name in found.decode().split():
+        remove_container(name)
+
+
 def create_scope(config, volume=None):
     with docker_session():
         return _create_scope(config, volume)
@@ -226,7 +233,7 @@ def _create_scope(config, volume):
         return name
     except Exception as exc:
         try:
-            remove_container(name)
+            remove_container_if_present(name)
         except Exception:
             record_cleanup(None, [name], primary=exc)
         raise
@@ -348,7 +355,7 @@ for p in root.iterdir(): p.chmod(0o444)
     finally:
         if writer_attempted:
             try:
-                remove_container(name)
+                remove_container_if_present(name)
             except Exception:
                 leftovers.append(name)
         if process is not None:
