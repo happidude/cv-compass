@@ -47,7 +47,11 @@ public class PersonalInfoEngineV31 {
                         : (PersonalInfoEngineV34.VERSION.equals(version)
                                         ? new ExperienceGrammar(
                                                 input, definition.experience(), true)
-                                        : new ExperienceGrammar(input, definition.experience()))
+                                        : PersonalInfoEngineV35.VERSION.equals(version)
+                                                ? new ExperienceGrammar(
+                                                        input, definition.experience(), true, true)
+                                                : new ExperienceGrammar(
+                                                        input, definition.experience()))
                                 .parse();
         var personal = new TreeMap<String, PersonalInfoMappingResult.PersonalField>();
         if (rejection == null) personal.putAll(new PersonalInfoGrammar(input, definition).parse());

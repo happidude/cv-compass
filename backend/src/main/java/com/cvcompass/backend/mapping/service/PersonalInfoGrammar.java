@@ -71,8 +71,10 @@ final class PersonalInfoGrammar {
         this.input = input;
         this.config = config;
         boolean v34 =
-                PersonalInfoDefinition.GRAMMAR_V34_ENGINE_VERSION.equals(
-                        config.engineCompatibility());
+                PersonalInfoDefinition.GRAMMAR_V35_ENGINE_VERSION.equals(
+                                config.engineCompatibility())
+                        || PersonalInfoDefinition.GRAMMAR_V34_ENGINE_VERSION.equals(
+                                config.engineCompatibility());
         this.v33 =
                 v34
                         || PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(

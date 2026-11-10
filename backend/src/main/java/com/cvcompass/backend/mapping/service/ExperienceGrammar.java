@@ -35,12 +35,16 @@ final class ExperienceGrammar {
     }
 
     ExperienceGrammar(Extraction input, ExperienceDefinition config, boolean v34) {
+        this(input, config, v34, false);
+    }
+
+    ExperienceGrammar(Extraction input, ExperienceDefinition config, boolean v34, boolean v35) {
         this.v34 = v34;
         this.input = input;
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
         this.dates = new ExperienceGrammarDates(v34);
-        this.rows = new ExperienceGrammarRows(input, config, lines, dates, v34);
+        this.rows = new ExperienceGrammarRows(input, config, lines, dates, v34, v35);
         this.repeatedMargins = v34 ? PersonalInfoGrammarLines.repeatedMargins(lines) : Set.of();
     }
 

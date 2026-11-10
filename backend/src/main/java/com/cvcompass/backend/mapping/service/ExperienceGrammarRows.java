@@ -37,6 +37,11 @@ final class ExperienceGrammarRows {
     private static final Pattern CONTEXT =
             Pattern.compile(
                     "(?iu)^(?:report(?:ing|s)? to|client|supplier|customer|platform|project|brand|group|training|course|certification|study abroad)(?:\\s*[:：]|\\s+)\\s*.*");
+    // 3.5: "group" is a context label only with a colon, so "Group Finance Director" is a title.
+    private static final Pattern CONTEXT_V35 =
+            Pattern.compile(
+                    "(?iu)^(?:report(?:ing|s)? to|client|supplier|customer|platform|project|brand|training|course|certification|study abroad)(?:\\s*[:：]|\\s+)\\s*.*|^group\\s*[:：].*");
+    private static final Pattern LIST_NUMBER = Pattern.compile("^\\d{1,2}[.)]\\s+");
     private static final Pattern PROSE =
             Pattern.compile(
                     "(?iu)^(?:worked|working|managed|manage|led|built|responsible|supported|cooperated|collaborated|studied|reported|reporting|developed)\\b.*");
@@ -121,15 +126,18 @@ final class ExperienceGrammarRows {
 
     private final ExperienceGrammarDates dates;
     private final boolean v34;
+    private final boolean v35;
 
     ExperienceGrammarRows(
             Extraction input,
             ExperienceDefinition config,
             List<SourceLine> lines,
             ExperienceGrammarDates dates,
-            boolean v34) {
+            boolean v34,
+            boolean v35) {
         this.dates = dates;
         this.v34 = v34;
+        this.v35 = v35;
         this.input = input;
         this.config = config;
         this.lines = lines;
@@ -155,7 +163,7 @@ final class ExperienceGrammarRows {
 
     Row parse(int index, boolean anchored) {
         var line = lines.get(index);
-        if (CONTEXT.matcher(line.text).matches()
+        if (context(line.text)
                 || APPLICATION.matcher(line.text).matches()
                 || v34
                         && (CONTEXT_LABEL_V34.matcher(withoutBullet(line.text)).matches()
@@ -222,7 +230,7 @@ final class ExperienceGrammarRows {
                         periods.add(dates.labelled(valueLine, valueStart, valueEnd));
                     else captures.forEach(capture -> periods.add(capture.proposal()));
                 } else {
-                    if (CONTEXT.matcher(value.text()).matches()) continue;
+                    if (context(value.text())) continue;
                     var captures = dates.findAll(valueLine);
                     int start = valueLine == line ? label.valueStart() : 0;
                     int valueEnd = valueLine == line ? end : valueLine.text.length();
@@ -276,7 +284,7 @@ final class ExperienceGrammarRows {
                             }
                         }
                         companies.add(value);
-                    } else if (!CONTEXT.matcher(value.text()).matches()) {
+                    } else if (!context(value.text())) {
                         if (MODIFIER.matcher(value.text()).matches()
                                 && consumed + 1 < lines.size()) {
                             var next = lines.get(consumed + 1);
@@ -454,6 +462,7 @@ final class ExperienceGrammarRows {
         if (captures.size() != 1)
             return new Row(line, null, List.of(), List.of(), index, false, true, false);
 
+        int from = 0;
         int start = dates.withoutLeadingRangeConnector(line, capture);
         int end = capture.end();
         // Strip only parentheses enclosing the period, including inner whitespace.
@@ -465,6 +474,9 @@ final class ExperienceGrammarRows {
                 && line.text.charAt(right) == ')') {
             start = left - 1;
             end = right + 1;
+            // 3.5: a leading list number ("1. ") belongs to the list, not to the company name.
+            var number = v35 ? LIST_NUMBER.matcher(line.text) : null;
+            if (number != null && number.find()) from = number.end();
         }
         if (dates.dateOnly(line) || start == 0 && line.text.substring(end).isBlank()) {
             var next = nearbyHeadingText(index, index + 1);
@@ -486,8 +498,10 @@ final class ExperienceGrammarRows {
         }
 
         start = trimAtomEnd(line.text, 0, start);
+        // Keep the number offset only while real text remains between it and the period.
+        if (from > 0 && trimAtomEnd(line.text, from, start) <= from) from = 0;
         end = trimAtomStart(line.text, end, line.text.length());
-        var before = atom(line, 0, start);
+        var before = atom(line, from, start);
         var after = atom(line, end, line.text.length());
         String remainder =
                 ((before == null ? "" : before.text()) + " " + (after == null ? "" : after.text()))
@@ -498,20 +512,20 @@ final class ExperienceGrammarRows {
                         && shortHeading(remainder.substring(0, remainder.length() - 1));
         if ((!shortHeading(remainder) && !shortDotted)
                 || STREET_ADDRESS.matcher(remainder).matches()
-                || BULLET.matcher(line.text).matches())
+                || from == 0 && BULLET.matcher(line.text).matches())
             return new Row(line, null, List.of(), List.of(), index, false, false, true);
 
         if (remainder.isEmpty())
             return new Row(
                     line, null, List.of(), List.of(capture.proposal()), index, false, false, false);
         var separator =
-                hasPrimarySeparator(line, 0, start)
+                hasPrimarySeparator(line, from, start)
                                 || hasPrimarySeparator(line, end, line.text.length())
                         ? PRIMARY_SEPARATOR
                         : DASH_SEPARATOR;
         var parts = new ArrayList<Atom>();
         var titles = new ArrayList<Atom>();
-        datedHeadingParts(line, 0, start, separator, shortDotted, parts, titles);
+        datedHeadingParts(line, from, start, separator, shortDotted, parts, titles);
         datedHeadingParts(line, end, line.text.length(), separator, shortDotted, parts, titles);
         boolean hasDottedTitle = !titles.isEmpty();
         var companies = new ArrayList<Atom>();
@@ -557,7 +571,7 @@ final class ExperienceGrammarRows {
 
         if (companies.size() > 1
                 && separator == PRIMARY_SEPARATOR
-                && hasOutsideSeparator(line, 0, start, DASH_SEPARATOR)) {
+                && hasOutsideSeparator(line, from, start, DASH_SEPARATOR)) {
             var legal = companies.stream().filter(value -> legalName(value.text())).toList();
             if (legal.size() == 1) {
                 companies.retainAll(legal);
@@ -774,17 +788,21 @@ final class ExperienceGrammarRows {
         headingParts(line, start, end, separator, parts);
     }
 
-    private static boolean shortHeading(String text) {
+    private boolean shortHeading(String text) {
         return text.length() <= 160
                 && text.split(" ").length <= 14
                 && !text.endsWith(".")
                 && !PROSE.matcher(text).matches()
                 && !GERUND_PROSE.matcher(text).matches()
                 && !BULLET.matcher(text).matches()
-                && !CONTEXT.matcher(text).matches()
+                && !context(text)
                 && !CONTEXT_LABEL_V34.matcher(withoutBullet(text)).matches()
                 && !experienceIntro(text)
                 && !APPLICATION.matcher(text).matches();
+    }
+
+    private boolean context(String text) {
+        return (v35 ? CONTEXT_V35 : CONTEXT).matcher(text).matches();
     }
 
     private static boolean location(String text) {
@@ -852,7 +870,7 @@ final class ExperienceGrammarRows {
         String companyText = v34 ? text.replaceAll("\\([^()]*\\)", "") : text;
         return configured
                 || !PROSE.matcher(text).matches()
-                        && !CONTEXT.matcher(text).matches()
+                        && !context(text)
                         && !companyText.contains(":")
                         && (COMPANY.matcher(text).matches()
                                 || v34
@@ -877,7 +895,7 @@ final class ExperienceGrammarRows {
     private boolean title(String text, boolean v34) {
         if (company(text, v34)
                 || PROSE.matcher(text).matches()
-                || CONTEXT.matcher(text).matches()
+                || context(text)
                 || text.endsWith(".")
                 || text.length() > 160
                 || text.split(" ").length > 14

@@ -20,6 +20,7 @@ public record PersonalInfoDefinition(
     public static final String GRAMMAR_V32_ENGINE_VERSION = "personal-info-mapping/3.2";
     public static final String GRAMMAR_V33_ENGINE_VERSION = "personal-info-mapping/3.3";
     public static final String GRAMMAR_V34_ENGINE_VERSION = "personal-info-mapping/3.4";
+    public static final String GRAMMAR_V35_ENGINE_VERSION = "personal-info-mapping/3.5";
     public static final Set<String> FIELD_NAMES =
             Set.of("fullName", "email", "phone", "location", "summary", "gender");
     // 3.0-3.2 envelopes stay byte-stable; only 3.3 adds the date of birth field.
@@ -82,12 +83,14 @@ public record PersonalInfoDefinition(
                 || GRAMMAR_ENGINE_VERSION.equals(engine)
                 || GRAMMAR_V32_ENGINE_VERSION.equals(engine)
                 || GRAMMAR_V33_ENGINE_VERSION.equals(engine)
-                || GRAMMAR_V34_ENGINE_VERSION.equals(engine);
+                || GRAMMAR_V34_ENGINE_VERSION.equals(engine)
+                || GRAMMAR_V35_ENGINE_VERSION.equals(engine);
     }
 
     public static Set<String> fieldNames(String engine) {
         return GRAMMAR_V33_ENGINE_VERSION.equals(engine)
                         || GRAMMAR_V34_ENGINE_VERSION.equals(engine)
+                        || GRAMMAR_V35_ENGINE_VERSION.equals(engine)
                 ? V33_FIELD_NAMES
                 : FIELD_NAMES;
     }
