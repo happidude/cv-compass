@@ -19,6 +19,24 @@ Report full `tests/run_checks.py --xml <fresh-path>` mới trong verifier;
 Prerequisite/resource theo README component; kiểm biến test có đặt, không in giá trị/đọc private env.
 Dữ liệu test theo policy; thiếu prerequisite báo BLOCKED/check NOT VERIFIED và bước tiếp.
 
+## Full gate và chuỗi PR
+
+`scripts/full-gate.ps1` chạy trên HEAD của checkout hiện tại: backend `.\gradlew.bat check --rerun-tasks`,
+frontend `npm run check` + `npm run test:browser`, worker builder/verifier/cleanup-only ở trên qua
+`wsl -d CVCompass-Ubuntu-24.04` (clone riêng của script, đúng SHA, build dir mới mỗi lượt).
+Log ở `build/gate/<sha>/<timestamp>/`, in ≤ 15 dòng; exit ≠ 0 khi có phần FAIL/BLOCKED hoặc tree bẩn
+(kể cả file untracked chưa ignore). `-JavaHome` mặc định `$env:JAVA_HOME`, trống thì dùng JDK 25 của máy dev;
+chỉ áp cho tiến trình Gradle con. `TEST_DB_URL`/`TEST_DB_USERNAME`/`TEST_DB_PASSWORD` chỉ đọc từ môi trường;
+script chỉ kiểm có/không, không in giá trị. BLOCKED (không coi là PASS) khi thiếu một trong ba biến đó, JDK,
+`node_modules`, Playwright browser, WSL distro hoặc Docker cho worker; backend thiếu DB/Docker lúc chạy là FAIL.
+
+Chuỗi PR (PR sau dựa trên PR trước); agent chạy gate và báo kết quả, **con người merge**:
+
+- PR giữa chuỗi chỉ chạy affected check theo bảng trên.
+- Full gate **một lần** trên head của PR cuối chuỗi.
+- Chuỗi được merge cùng lúc, theo đúng thứ tự.
+- Muốn merge lẻ một PR giữa chuỗi thì phải chạy full gate trên head PR đó trước.
+
 ## Bằng chứng
 
 CI là nguồn sự thật về gate CI; không viết lại report dài. Log ra file, đọc tóm tắt/đuôi,

@@ -77,3 +77,36 @@ import AGENTS component. Subagent ở `.claude/agents/`, gọi tuần tự:
 Write/Edit ở mức công cụ; Bash vẫn mở để đọc Git/chạy check nên phần chỉ đọc của Bash là chỉ dẫn.
 Quyền dùng chung ở `.claude/settings.json`; thiết lập cá nhân ở `.claude/settings.local.json` (ignore).
 `.codex/` giữ tạm để tương thích lịch sử, không còn là cấu hình chính; xóa khi chủ dự án duyệt.
+
+## Codex qua codex exec
+
+Primary (Claude) có thể giao phần implementer cho Codex chạy không tương tác bằng
+`scripts/codex-task.ps1 <task-id> <brief-file> [-Resume <session-id> <followup-file>]`.
+Codex chạy trong worktree riêng `..\cv-compass-wt\<task-id>` (sandbox `workspace-write`, không mạng,
+môi trường `core`, bỏ qua user config); kết quả theo `scripts/codex-result.schema.json`, event/log ở
+`build/codex/<task-id>/` của checkout chính. Script tự kiểm sandbox của turn cuối (kể cả resume), in ≤ 15 dòng.
+**Luôn chạy `codex-task.ps1` từ checkout chính `E:\cv-compass`**, không từ worktree task, để Codex
+không sửa được chính script/guard đang kiểm nó.
+
+| Việc | Codex | Claude |
+| --- | --- | --- |
+| Chuẩn bị | Không | Tạo worktree/branch, chạy `npm ci` trong `frontend` trước khi gọi Codex |
+| Code + test trong path của brief | Có | Không ghi vào worktree khi Codex đang chạy |
+| Check | Chỉ check frontend (không cần mạng/DB/Docker) | `verifier` chạy backend/worker và full gate |
+| Review | Không | `reviewer` theo mức |
+| Publish | Không commit/push | Commit, push feature branch, Draft PR |
+
+- Tối đa **2 lần gọi/task** (lần đầu + 1 resume theo session id, không `--last`); script chặn lần thứ 3.
+  Vẫn chưa đạt thì BLOCKED, giữ bằng chứng và hỏi chủ dự án.
+- Brief/follow-up theo mẫu brief ở trên; không chứa CV thật, PII, secret hay giá trị env.
+  Script không truyền `TEST_DB_*` hoặc biến dạng secret/token/key vào môi trường Codex.
+- Cấm thêm/xóa/nâng dependency. Thay đổi so với base SHA của task (HEAD worktree trước lần gọi đầu,
+  gồm commit, chưa commit và untracked) chạm `build.gradle*`, `settings.gradle*`,
+  `gradle-wrapper.properties|jar`, `libs.versions.toml`, `package*.json`, `.npmrc`, `pyproject.toml`,
+  `requirements*.txt|lock|in`, `Dockerfile*` là **High**: script trả exit 3, Primary dừng và hỏi chủ dự án,
+  không tự chấp nhận.
+- Path bảo vệ, cùng cách so với base SHA và cùng xử lý **High**/exit 3: `AGENTS.md`, `CLAUDE.md` (mọi thư mục),
+  `.claude/`, `.codex/`, `.github/`, `docs/AGENT_*.md`, `scripts/codex-task.ps1`, `scripts/full-gate.ps1`,
+  `scripts/codex-result.schema.json`.
+- Primary đọc `status`/`files_changed`/`open_questions` rồi tự đọc diff; `checks_run` của Codex không
+  thay verifier. Full gate: `scripts/full-gate.ps1` (xem [kiểm chứng](VERIFICATION.md#full-gate-và-chuỗi-pr)).

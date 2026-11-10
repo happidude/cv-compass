@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodexTaskResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "files_changed", "checks_run", "open_questions", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["DONE", "PARTIAL", "BLOCKED"],
+      "description": "DONE: acceptance met; PARTIAL: some work left; BLOCKED: cannot continue without a decision."
+    },
+    "files_changed": {
+      "type": "array",
+      "description": "Repository-relative paths created, modified or deleted.",
+      "items": { "type": "string" }
+    },
+    "checks_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cmd", "result"],
+        "properties": {
+          "cmd": { "type": "string" },
+          "result": { "type": "string", "enum": ["PASS", "FAIL", "NOT_RUN"] }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "description": "Decisions outside the brief, with context, options and recommendation.",
+      "items": { "type": "string" }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Short summary; no CV content, personal data, secrets or long logs."
+    }
+  }
+}
