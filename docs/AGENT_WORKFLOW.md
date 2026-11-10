@@ -85,6 +85,8 @@ Primary (Claude) có thể giao phần implementer cho Codex chạy không tươ
 Codex chạy trong worktree riêng `..\cv-compass-wt\<task-id>` (sandbox `workspace-write`, không mạng,
 môi trường `core`, bỏ qua user config); kết quả theo `scripts/codex-result.schema.json`, event/log ở
 `build/codex/<task-id>/` của checkout chính. Script tự kiểm sandbox của turn cuối (kể cả resume), in ≤ 15 dòng.
+**Luôn chạy `codex-task.ps1` từ checkout chính `E:\cv-compass`**, không từ worktree task, để Codex
+không sửa được chính script/guard đang kiểm nó.
 
 | Việc | Codex | Claude |
 | --- | --- | --- |
@@ -99,7 +101,12 @@ môi trường `core`, bỏ qua user config); kết quả theo `scripts/codex-re
 - Brief/follow-up theo mẫu brief ở trên; không chứa CV thật, PII, secret hay giá trị env.
   Script không truyền `TEST_DB_*` hoặc biến dạng secret/token/key vào môi trường Codex.
 - Cấm thêm/xóa/nâng dependency. Thay đổi so với base SHA của task (HEAD worktree trước lần gọi đầu,
-  gồm commit, chưa commit và untracked) chạm `build.gradle*`, `settings.gradle*`, `gradle-wrapper.properties`,
-  `package*.json`, `pyproject.toml`, `requirements*.txt|lock|in` là **High**: script trả exit 3, Primary dừng và hỏi chủ dự án, không tự chấp nhận.
+  gồm commit, chưa commit và untracked) chạm `build.gradle*`, `settings.gradle*`,
+  `gradle-wrapper.properties|jar`, `libs.versions.toml`, `package*.json`, `.npmrc`, `pyproject.toml`,
+  `requirements*.txt|lock|in`, `Dockerfile*` là **High**: script trả exit 3, Primary dừng và hỏi chủ dự án,
+  không tự chấp nhận.
+- Path bảo vệ, cùng cách so với base SHA và cùng xử lý **High**/exit 3: `AGENTS.md`, `CLAUDE.md` (mọi thư mục),
+  `.claude/`, `.codex/`, `.github/`, `docs/AGENT_*.md`, `scripts/codex-task.ps1`, `scripts/full-gate.ps1`,
+  `scripts/codex-result.schema.json`.
 - Primary đọc `status`/`files_changed`/`open_questions` rồi tự đọc diff; `checks_run` của Codex không
   thay verifier. Full gate: `scripts/full-gate.ps1` (xem [kiểm chứng](VERIFICATION.md#full-gate-và-chuỗi-pr)).

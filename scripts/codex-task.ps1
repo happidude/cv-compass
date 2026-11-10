@@ -11,7 +11,10 @@
   Events, stderr and the final message go to build\codex\<task-id>\ in the main checkout.
   At most two Codex calls per task (initial + one resume). Prints at most 15 lines.
 
-  Exit codes: 0 ok, 1 usage/run/parse failure, 2 sandbox mismatch, 3 dependency files touched.
+  Run it from the main checkout (E:\cv-compass), never from the task worktree it guards.
+
+  Exit codes: 0 ok, 1 usage/run/parse failure, 2 sandbox mismatch,
+  3 dependency or protected files touched.
 #>
 [CmdletBinding()]
 param(
@@ -26,18 +29,29 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $prevConsoleEncoding = [Console]::OutputEncoding
+$prevInputEncoding = [Console]::InputEncoding
+# Briefs are UTF-8 (Vietnamese diacritics): set both directions before stdin is handed to Codex
+# and restore the caller's console on every exit path.
 [Console]::OutputEncoding = $utf8
+[Console]::InputEncoding = $utf8
+
+function Restore-ConsoleEncoding {
+    [Console]::OutputEncoding = $prevConsoleEncoding
+    [Console]::InputEncoding = $prevInputEncoding
+}
 
 $MaxCalls = 2
 # Dependency changes need the project owner's approval (AGENT_WORKFLOW: High, stop and ask).
-$DependencyPattern = '(^|/)(build\.gradle[^/]*|settings\.gradle[^/]*|gradle-wrapper\.properties|package[^/]*\.json|pyproject\.toml|requirements[^/]*\.(txt|lock|in))$'
+$DependencyPattern = '(^|/)(build\.gradle[^/]*|settings\.gradle[^/]*|gradle-wrapper\.(properties|jar)|libs\.versions\.toml|package[^/]*\.json|\.npmrc|pyproject\.toml|requirements[^/]*\.(txt|lock|in)|Dockerfile[^/]*)$'
+# Agent rules, agent config, CI and this tooling itself are owner-only (High, stop and ask).
+$ProtectedPattern = '^((.*/)?(AGENTS|CLAUDE)\.md|\.claude/.*|\.codex/.*|\.github/.*|docs/AGENT_[^/]*\.md|scripts/(codex-task\.ps1|full-gate\.ps1|codex-result\.schema\.json))$'
 # Never hand test DB settings or anything credential-like to the Codex process. Codex itself
 # authenticates through its own login (CODEX_HOME/auth.json), not through environment keys.
 $SensitiveEnvPattern = '^(TEST_DB_.*|.*(SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|PRIVATE_KEY|API_KEY|ACCESS_KEY).*)$'
 
 function Fail([string]$message, [int]$code = 1) {
     Write-Output "codex-task: $message"
-    [Console]::OutputEncoding = $prevConsoleEncoding
+    Restore-ConsoleEncoding
     exit $code
 }
 
@@ -253,14 +267,22 @@ $untracked = @(& git -C $worktree -c core.quotepath=off ls-files --others --excl
 $diffOk = $diffOk -and ($LASTEXITCODE -eq 0)
 $changed = @(($committedOrTracked + $untracked) | Where-Object { $_ } | Sort-Object -Unique)
 $lines.Add("changes since base $($baseSha.Substring(0, 12)): $($changed.Count) path(s)")
-$deps = @($changed | Where-Object { ($_ -replace '\\', '/') -match $DependencyPattern })
+$normalized = @($changed | ForEach-Object { $_ -replace '\\', '/' })
+$deps = @($normalized | Where-Object { $_ -match $DependencyPattern })
+$protected = @($normalized | Where-Object { $_ -match $ProtectedPattern })
 if (-not $diffOk) {
     # Keep the summary of the call already spent; an unverified guard is treated like a hit.
-    $lines.Add('HIGH: dependency guard NOT VERIFIED (git diff/ls-files failed) - stop and ask the owner')
+    $lines.Add('HIGH: dependency/protected guard NOT VERIFIED (git diff/ls-files failed) - stop and ask the owner')
     $result = 3
-} elseif ($deps.Count -gt 0) {
-    $lines.Add("HIGH: dependency files touched ($($deps -join ', ')) - stop and ask the owner")
-    $result = 3
+} else {
+    if ($deps.Count -gt 0) {
+        $lines.Add("HIGH: dependency files touched ($($deps -join ', ')) - stop and ask the owner")
+        $result = 3
+    }
+    if ($protected.Count -gt 0) {
+        $lines.Add("HIGH: protected paths touched ($($protected -join ', ')) - stop and ask the owner")
+        $result = 3
+    }
 }
 
 if (($exitCode -ne 0 -or $timedOut) -and $result -eq 0) { $result = 1 }
@@ -271,5 +293,5 @@ if ($exitCode -ne 0 -and (Test-Path $stderrLog)) {
 $lines.Add("logs: $outDir")
 
 $lines | Select-Object -First 15 | ForEach-Object { Write-Output $_ }
-[Console]::OutputEncoding = $prevConsoleEncoding
+Restore-ConsoleEncoding
 exit $result
