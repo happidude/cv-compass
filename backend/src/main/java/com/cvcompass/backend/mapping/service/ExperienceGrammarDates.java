@@ -54,24 +54,59 @@ final class ExperienceGrammarDates {
                     + "|tháng\\s+[0-9]{1,2}/\\s*[0-9]{4}|"
                     + DATE
                     + ")";
-    private static final Pattern RANGE = rangePattern(DATE);
-    private static final Pattern RANGE_V34 = rangePattern(DATE_V34);
+    // Standard English month plus two-digit year; endpoints must agree (checked in findAll).
+    private static final String ONGOING = "now\\b|present\\b|current\\b|nay\\b|hiện tại\\b";
+    private static final String CONNECTOR_V35 = "\\s*(?:[-–—]|to\\b\\s*[:：]?|until\\b|đến\\b)\\s*";
+    private static final String MONTH_YY =
+            "(?:" + MONTH + "\\s+[0-9]{2}(?![0-9])(?!\\s*,?\\s*[0-9]{4}))";
+    private static final Pattern RANGE = rangePattern(DATE, "to\\b");
+    private static final Pattern RANGE_V34 = rangePattern(DATE_V34, "to\\b");
+    // Two branches so both endpoints share one form: groups 1-2 normal, groups 3-4 Mon YY.
+    private static final Pattern RANGE_V35 =
+            Pattern.compile(
+                    "(?iu)(?<![\\p{L}0-9])(?:("
+                            + DATE_V34
+                            + ")"
+                            + CONNECTOR_V35
+                            + "("
+                            + DATE_V34
+                            + "|"
+                            + ONGOING
+                            + ")|("
+                            + MONTH_YY
+                            + ")"
+                            + CONNECTOR_V35
+                            + "("
+                            + MONTH_YY
+                            + "|"
+                            + ONGOING
+                            + "))(?![\\p{L}0-9])");
+    private static final Pattern YY_TOKEN = Pattern.compile("(?i)" + MONTH_YY);
+    private static final Pattern YY_ANYWHERE = Pattern.compile("(?i)(?<![\\p{L}0-9])" + MONTH_YY);
 
-    private static Pattern rangePattern(String dateToken) {
+    private static Pattern rangePattern(String dateToken, String to) {
         return Pattern.compile(
                 "(?iu)(?<![\\p{L}0-9])("
                         + dateToken
-                        + ")\\s*(?:[-–—]|to\\b|until\\b|đến\\b)\\s*("
+                        + ")\\s*(?:[-–—]|"
+                        + to
+                        + "|until\\b|đến\\b)\\s*("
                         + dateToken
                         + "|now\\b|present\\b|current\\b|nay\\b|hiện tại\\b)(?![\\p{L}0-9])");
     }
 
     private final boolean v34;
+    private final boolean v35;
     private final Pattern range;
 
-    ExperienceGrammarDates(boolean v34) {
-        this.v34 = v34;
-        this.range = v34 ? RANGE_V34 : RANGE;
+    ExperienceGrammarDates(boolean v34, boolean v35) {
+        this.v35 = v35;
+        this.v34 = v34 || v35;
+        this.range = v35 ? RANGE_V35 : this.v34 ? RANGE_V34 : RANGE;
+    }
+
+    boolean hasTwoDigitYear(String raw) {
+        return v35 && YY_ANYWHERE.matcher(raw).find();
     }
 
     int withoutLeadingRangeConnector(SourceLine line, Capture capture) {
@@ -138,11 +173,13 @@ final class ExperienceGrammarDates {
         var values = new java.util.ArrayList<Capture>();
         var match = range.matcher(line.text);
         while (match.find()) {
+            int group = match.group(1) != null ? 1 : 3;
+            String startToken = match.group(group), endToken = match.group(group + 1);
             boolean ongoing =
                     List.of("now", "present", "current", "nay", "hiện tại")
-                            .contains(match.group(2).toLowerCase(Locale.ROOT));
-            var start = date(match.group(1));
-            var end = ongoing ? null : date(match.group(2));
+                            .contains(endToken.toLowerCase(Locale.ROOT));
+            var start = date(startToken, true);
+            var end = ongoing ? null : date(endToken, true);
             boolean invalid =
                     start == null
                             || !ongoing && end == null
@@ -205,6 +242,11 @@ final class ExperienceGrammarDates {
     }
 
     private PartialDate date(String token) {
+        return date(token, false);
+    }
+
+    // Two-digit years are only read from a matched range, never from a lone labelled date.
+    private PartialDate date(String token, boolean twoDigitYear) {
         try {
             String value = token.strip().toLowerCase(Locale.ROOT).replaceFirst("^tháng\\s+", "");
             if (v34) {
@@ -217,7 +259,12 @@ final class ExperienceGrammarDates {
             }
             int year;
             Integer month = null, day = null;
-            if (value.matches("[0-9]{4}")) year = Integer.parseInt(value);
+            if (v35 && twoDigitYear && YY_TOKEN.matcher(value).matches()) {
+                var parts = value.split("\\s+");
+                month = MONTHS.get(parts[0].substring(0, 3));
+                int yy = Integer.parseInt(parts[1]);
+                year = yy <= 49 ? 2000 + yy : 1900 + yy;
+            } else if (value.matches("[0-9]{4}")) year = Integer.parseInt(value);
             else if (value.matches("[0-9]{4}-[0-9]{1,2}(?:-[0-9]{1,2})?")) {
                 var parts = value.split("-");
                 year = Integer.parseInt(parts[0]);

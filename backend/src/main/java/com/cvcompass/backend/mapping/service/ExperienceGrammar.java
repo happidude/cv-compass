@@ -43,7 +43,7 @@ final class ExperienceGrammar {
         this.input = input;
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
-        this.dates = new ExperienceGrammarDates(v34);
+        this.dates = new ExperienceGrammarDates(v34, v35);
         this.rows = new ExperienceGrammarRows(input, config, lines, dates, v34, v35);
         this.repeatedMargins = v34 ? PersonalInfoGrammarLines.repeatedMargins(lines) : Set.of();
     }
@@ -573,6 +573,13 @@ final class ExperienceGrammar {
         if (period.alternatives().stream()
                 .anyMatch(value -> dates.hasNonstandardMonth(value.raw())))
             notes.add(new Issue("MONTH_ABBREVIATION_NONSTANDARD", "period", period.evidence()));
+        // A PROPOSED alternative can only contain Mon YY when it came from the two-digit branch.
+        if (period.alternatives().stream()
+                .anyMatch(
+                        value ->
+                                "PROPOSED".equals(value.state())
+                                        && dates.hasTwoDigitYear(value.raw())))
+            notes.add(new Issue("TWO_DIGIT_YEAR_ASSUMED", "period", period.evidence()));
         if (title.state().equals("NOT_FOUND"))
             notes.add(new Issue("TITLE_NOT_FOUND", "title", List.of()));
         if (title.state().equals("AMBIGUOUS"))
