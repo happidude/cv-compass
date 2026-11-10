@@ -85,6 +85,8 @@ export function errorLabel(code: string) {
 }
 export function errorMessage(error: unknown) {
   if (!(error instanceof RequestError)) return "Không thể hoàn thành yêu cầu.";
+  if (error.uncertain && (error.kind === "network" || error.kind === "timeout"))
+    return "Không rõ thao tác đã được lưu hay chưa. Tải lại dữ liệu trước khi thử lại.";
   if (error.kind === "contract")
     return "Lỗi contract: phản hồi máy chủ không đúng cấu trúc hoặc ID không an toàn.";
   if (error.kind === "timeout")
