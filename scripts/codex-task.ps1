@@ -39,6 +39,8 @@ function Restore-ConsoleEncoding {
     [Console]::OutputEncoding = $prevConsoleEncoding
     [Console]::InputEncoding = $prevInputEncoding
 }
+# Terminating errors outside Fail (Start-Process, file I/O) must not leave the caller's console in UTF-8.
+trap { Restore-ConsoleEncoding; break }
 
 $MaxCalls = 2
 # Dependency changes need the project owner's approval (AGENT_WORKFLOW: High, stop and ask).
