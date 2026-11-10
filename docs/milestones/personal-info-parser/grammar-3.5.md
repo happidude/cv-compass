@@ -18,6 +18,8 @@ hai sửa trong grammar kinh nghiệm:
 | Group: Sample Holdings | Ngữ cảnh | Giữ nguyên: Group chỉ là nhãn khi theo sau là dấu hai chấm |
 | From: Mar-1999 To: Jun-2001 (nhãn kỳ, `To:` có dấu hai chấm) | Không nhận `To:` làm dấu nối, kỳ không được nhận | Nhận kỳ 1999-03..2001-06 |
 | Feb 11 – Oct 12 Area Packaging Engineer, Sep 98 – Present | Năm hai chữ số không được nhận | Nhận khi hai đầu cùng dạng `Mon YY` (hoặc đầu cuối là Present): YY ≤ 49 → 20YY, ≥ 50 → 19YY, kèm issue TWO_DIGIT_YEAR_ASSUMED. Không nhận May 21 staff joined, Q1 23 – Q2 24, Jan 2020 – Mar 21; Oct 12 – Feb 11 là INVALID |
+| Heading dừng của cột phụ (EDUCATION, SKILLS) chen giữa luồng kinh nghiệm CV 2 cột | Mọi dòng sau đó bị bỏ tới hết tài liệu | Dòng role (có kỳ PROPOSED + chức danh, không mơ hồ, không có từ học vấn) sau heading dừng thì quay lại mục kinh nghiệm trước đó, gắn issue SECTION_RESUMED_AFTER_STOP; khôi phục block công ty chưa có kỳ ở cùng trang/trang liền trước. Cần đã có heading kinh nghiệm trước đó (STOP vào trực tiếp từ DETAIL/SUMMARY, không xen heading khác); không resume sau heading tham chiếu (References, Referees...). Sau resume, dòng có từ học vấn và công ty rác (học vấn, không có chữ, kỳ trong ngoặc) bị bỏ |
+| `Achievements:` trong một job đang mở | Heading dừng, bỏ phần còn lại | Là dòng mô tả của job, không đổi mục. `Projects:`/`Dự án:` là heading ngữ cảnh nên giữ nguyên hành vi 3.4; Education/Skills/References không được miễn trừ |
 
 Bỏ tiền tố đánh số (1–2 chữ số, theo sau là dấu chấm hoặc ngoặc đơn) chỉ áp
 dụng cho dòng có kỳ nằm trong ngoặc; bullet ký hiệu (•, -, \*) giữ nguyên
