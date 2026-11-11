@@ -26,6 +26,7 @@ final class PersonalInfoGrammar {
             Pattern.compile("[\\p{L}\\p{N}._%+'’-]+@[\\p{L}\\p{N}.-]+\\.[\\p{L}]{2,}");
     private static final Pattern LOCATION_BOUNDARY =
             Pattern.compile("^(?:[•●▪*–-]|\\p{L}[^:：]*[:：])");
+    private static final Pattern TRAILING_DASH = Pattern.compile("(.*[^\\s–—-])\\s*[–—-]\\s*");
     private static final Pattern CONTACT_SEGMENT = Pattern.compile("[^|•;]+");
     private static final Pattern UNLABELED_CONTACT_SEGMENT = Pattern.compile("[^|•●▪;,]+");
     private static final Pattern YEAR_SEQUENCE =
@@ -58,6 +59,7 @@ final class PersonalInfoGrammar {
     private final boolean v32;
     // 3.3 keeps every 3.2 rule and adds the fallbacks below; older versions never reach them.
     private final boolean v33;
+    private final boolean v35;
     private final PersonalInfoDefinition config;
     private final PersonalInfoGrammarLabels labels;
     private final List<PersonalInfoGrammarLines.Line> lines;
@@ -75,6 +77,9 @@ final class PersonalInfoGrammar {
                                 config.engineCompatibility())
                         || PersonalInfoDefinition.GRAMMAR_V34_ENGINE_VERSION.equals(
                                 config.engineCompatibility());
+        this.v35 =
+                PersonalInfoDefinition.GRAMMAR_V35_ENGINE_VERSION.equals(
+                        config.engineCompatibility());
         this.v33 =
                 v34
                         || PersonalInfoDefinition.GRAMMAR_V33_ENGINE_VERSION.equals(
@@ -109,7 +114,7 @@ final class PersonalInfoGrammar {
                     if (!summaryConsumed.contains(index)) summary(index, label);
                     continue;
                 }
-                Evidence span = span(line, label.valueStart(), label.end());
+                Evidence span = span(line, label.valueStart(), valueEnd(line, label));
                 if (span == null) pending(index);
                 else extended(label.field(), new Value(line, span));
             }
@@ -707,8 +712,14 @@ final class PersonalInfoGrammar {
                     || line.text().contains("@")
                     || INTRO.matcher(line.text()).matches()) continue;
             var evidence = new ArrayList<Evidence>();
-            evidence.add(line.source().whole());
-            String logical = line.source().whole().text();
+            // 3.5: a lone trailing dash is decoration, not part of the name.
+            var trailing = v35 ? TRAILING_DASH.matcher(line.text()) : null;
+            var whole =
+                    trailing != null && trailing.matches()
+                            ? line.source().span(0, trailing.end(1))
+                            : line.source().whole();
+            evidence.add(whole);
+            String logical = whole.text();
             if (PersonalInfoGrammarValidation.nameFragment(line.text())) {
                 int next = nextMeaningful(line.index() + 1, line.page(), 2);
                 while (next >= 0
@@ -819,6 +830,20 @@ final class PersonalInfoGrammar {
         return result.toString();
     }
 
+    // 3.5: an e-mail value stops at "|" or at the first whitespace after a valid address.
+    private int valueEnd(
+            PersonalInfoGrammarLines.Line line, PersonalInfoGrammarLabels.Label label) {
+        if (!v35 || !"email".equals(label.field())) return label.end();
+        String text = line.text();
+        int bar = text.indexOf('|', label.valueStart());
+        int end = bar >= 0 && bar < label.end() ? bar : label.end();
+        int from = label.valueStart();
+        while (from < end && Character.isWhitespace(text.charAt(from))) from++;
+        // Validation, not a regex match, decides whether what remains is a usable address.
+        while (from < end && !Character.isWhitespace(text.charAt(from))) from++;
+        return from;
+    }
+
     private static Evidence span(PersonalInfoGrammarLines.Line line, int from, int to) {
         while (from < to
                 && (Character.isWhitespace(line.text().charAt(from))
@@ -830,7 +855,7 @@ final class PersonalInfoGrammar {
     }
 
     private PersonalInfoGrammarValidation.Checked check(String field, String raw, String logical) {
-        return PersonalInfoGrammarValidation.check(field, raw, logical, v32, v33);
+        return PersonalInfoGrammarValidation.check(field, raw, logical, v32, v33, v35);
     }
 
     private PersonalField select(String field, List<Candidate> values) {

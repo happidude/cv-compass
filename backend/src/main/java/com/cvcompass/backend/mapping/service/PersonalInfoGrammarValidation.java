@@ -28,6 +28,10 @@ final class PersonalInfoGrammarValidation {
     private static final Pattern PHONE_TRUNK =
             Pattern.compile("(?s)^(?:\\+(\\d{1,3})|\\(\\+(\\d{1,3})\\))\\s*\\(0\\)\\s*(.*)$");
 
+    private static final Pattern PERIOD_RANGE =
+            Pattern.compile(
+                    "\\(?\\s*(?:[01]?\\d/)?(?:19|20)\\d{2}\\s*[–—-]\\s*(?:[01]?\\d/)?(?:19|20)\\d{2}\\s*\\)?");
+
     record Checked(String raw, String normalized, String issue) {}
 
     static String name(String raw) {
@@ -70,6 +74,11 @@ final class PersonalInfoGrammarValidation {
     }
 
     static Checked check(String field, String raw, String logical, boolean v32, boolean v33) {
+        return check(field, raw, logical, v32, v33, false);
+    }
+
+    static Checked check(
+            String field, String raw, String logical, boolean v32, boolean v33, boolean v35) {
         String value = Normalizer.normalize(logical, Normalizer.Form.NFC).strip();
         if (!field.equals("summary")) value = value.replaceAll("(?U)\\s+", " ");
         else value = value.replace("\r\n", "\n").replace('\r', '\n');
@@ -110,7 +119,7 @@ final class PersonalInfoGrammarValidation {
                                 + value.substring(at + 1).toLowerCase(Locale.ROOT),
                         null);
             }
-            case "phone" -> phone(raw, value, v32);
+            case "phone" -> phone(raw, value, v32, v35);
             case "fullName" -> {
                 String cleaned = name(value);
                 if (!cleaned.matches("[\\p{L}\\p{M}][\\p{L}\\p{M} .'’()\\-]*")
@@ -123,13 +132,13 @@ final class PersonalInfoGrammarValidation {
         };
     }
 
-    private static Checked phone(String raw, String value, boolean v32) {
+    private static Checked phone(String raw, String value, boolean v32, boolean v35) {
         var trunk = PHONE_TRUNK.matcher(value);
-        if (!trunk.matches()) return standardPhone(raw, value);
+        if (!trunk.matches()) return standardPhone(raw, value, v35);
         if (!v32) return invalid(raw, "PHONE_TRUNK_NOTATION_AMBIGUOUS");
         if (!trunk.group(3).matches("[0-9].*")) return invalid(raw, "INVALID_PHONE");
         boolean vietnamese = "84".equals(trunk.group(1)) || "84".equals(trunk.group(2));
-        var checked = standardPhone(raw, vietnamese ? "0" + trunk.group(3) : value);
+        var checked = standardPhone(raw, vietnamese ? "0" + trunk.group(3) : value, v35);
         if (checked.normalized() == null) return checked;
         return new Checked(
                 raw,
@@ -137,7 +146,9 @@ final class PersonalInfoGrammarValidation {
                 vietnamese ? "PHONE_TRUNK_NOTATION_NORMALIZED" : "PHONE_TRUNK_NOTATION_KEPT");
     }
 
-    private static Checked standardPhone(String raw, String value) {
+    private static Checked standardPhone(String raw, String value, boolean v35) {
+        // 3.5: a spaced or parenthesised year or month-year range is a period, never a phone.
+        if (v35 && PERIOD_RANGE.matcher(value).matches()) return invalid(raw, "INVALID_PHONE");
         String compact = value.replaceAll("\\s+", "");
         if (compact.matches(
                 "(?:[12]\\d{3}[-/.][01]?\\d[-/.][0-3]?\\d|[0-3]?\\d[-/.][01]?\\d[-/.][12]\\d{3}|[12]\\d{3}[-/.–—][12]\\d{3})"))

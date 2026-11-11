@@ -146,7 +146,9 @@
         "Tóm tắt",
         "Mục tiêu nghề nghiệp",
         "Tóm tắt chuyên môn",
-        "Định hướng nghề nghiệp"
+        "Định hướng nghề nghiệp",
+        "Profile Summary",
+        "Executive Summary"
       ],
       "priorities": [
         "EXPLICIT_LABEL",
@@ -198,7 +200,8 @@
       "Contact Details",
       "Contact Information",
       "Liên hệ",
-      "Thông tin liên hệ"
+      "Thông tin liên hệ",
+      "Personal Contact"
     ],
     "SUMMARY": [
       "Summary",
@@ -213,7 +216,9 @@
       "Tóm tắt",
       "Mục tiêu nghề nghiệp",
       "Tóm tắt chuyên môn",
-      "Định hướng nghề nghiệp"
+      "Định hướng nghề nghiệp",
+      "Profile Summary",
+      "Executive Summary"
     ],
     "EXPERIENCE": [
       "Experience",
@@ -241,7 +246,9 @@
       "Thành tích",
       "Chứng chỉ",
       "Dự án",
-      "Abilities and Qualifications"
+      "Abilities and Qualifications",
+      "Key Skills",
+      "Core Competencies"
     ],
     "REFERENCE": [
       "Reference",

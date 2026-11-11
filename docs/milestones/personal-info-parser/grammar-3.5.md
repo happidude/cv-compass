@@ -24,3 +24,15 @@ hai sửa trong grammar kinh nghiệm:
 Bỏ tiền tố đánh số (1–2 chữ số, theo sau là dấu chấm hoặc ngoặc đơn) chỉ áp
 dụng cho dòng có kỳ nằm trong ngoặc; bullet ký hiệu (•, -, \*) giữ nguyên
 hành vi. Test replay 3.4 dùng digest cố định cho cùng input tổng hợp.
+
+Thông tin cá nhân (chỉ 3.5):
+
+- Phone: giá trị chỉ là khoảng năm hoặc khoảng tháng/năm (có hoặc không ngoặc,
+  khoảng trắng, gạch dài) bị loại với `INVALID_PHONE`; số điện thoại có dấu cách,
+  dấu chấm hoặc `(+84)` vẫn hợp lệ.
+- Email theo nhãn dừng tại `|` (kể cả không có khoảng trắng) hoặc khoảng trắng
+  đầu tiên; phần còn lại do validation có sẵn quyết định, không rút gọn địa chỉ.
+- Tên ở header: một dấu gạch đơn lẻ ở cuối dòng được bỏ trước khi kiểm; evidence
+  chỉ phủ phần tên.
+- Cấu hình 3.5 thêm heading: liên hệ `Personal Contact`; tóm tắt `Profile Summary`,
+  `Executive Summary`; nhóm loại trừ `Key Skills`, `Core Competencies`.
