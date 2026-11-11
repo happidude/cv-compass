@@ -36,7 +36,8 @@ Check affected: <lệnh cụ thể>
 ```
 
 Primary chịu trách nhiệm bằng chứng; subagent không tự delegate/mở task mới.
-Publish: writer commit + push feature branch; implementer mở Draft PR một lần, cập nhật mô tả khi gate xong.
+Publish: writer commit + push feature branch bằng `git push -u origin <branch>` (không push `main`, không force);
+implementer mở Draft PR một lần (`gh pr create --draft`), cập nhật mô tả khi gate xong.
 Lệnh push vẫn hỏi xác nhận (settings không auto-allow) cho tới khi `main` có branch protection.
 Một writer tại một thời điểm: chờ writer/check dừng hẳn, đọc status/diff rồi mới giao tiếp.
 
@@ -99,6 +100,8 @@ không sửa được chính script/guard đang kiểm nó.
 - Tối đa **2 lần gọi/task** (lần đầu + 1 resume theo session id, không `--last`); script chặn lần thứ 3.
   Vẫn chưa đạt thì BLOCKED, giữ bằng chứng và hỏi chủ dự án.
 - Brief/follow-up theo mẫu brief ở trên; không chứa CV thật, PII, secret hay giá trị env.
+  Lệnh check frontend trong brief cho Codex trên Windows dùng `npx.cmd` (vd. `npx.cmd prettier --check src tests`)
+  hoặc `npm run <script>`, không `npx` trần (trên Windows có thể phân giải sang shim `npx.ps1` không chạy được).
   Script không truyền `TEST_DB_*` hoặc biến dạng secret/token/key vào môi trường Codex.
 - Cấm thêm/xóa/nâng dependency. Thay đổi so với base SHA của task (HEAD worktree trước lần gọi đầu,
   gồm commit, chưa commit và untracked) chạm `build.gradle*`, `settings.gradle*`,
@@ -107,6 +110,28 @@ không sửa được chính script/guard đang kiểm nó.
   không tự chấp nhận.
 - Path bảo vệ, cùng cách so với base SHA và cùng xử lý **High**/exit 3: `AGENTS.md`, `CLAUDE.md` (mọi thư mục),
   `.claude/`, `.codex/`, `.github/`, `docs/AGENT_*.md`, `scripts/codex-task.ps1`, `scripts/full-gate.ps1`,
-  `scripts/codex-result.schema.json`.
+  `scripts/codex-result.schema.json`, `worker/spikes/m6_2_hardening/download_locked.py` (tải artifact khóa của worker gate).
 - Primary đọc `status`/`files_changed`/`open_questions` rồi tự đọc diff; `checks_run` của Codex không
   thay verifier. Full gate: `scripts/full-gate.ps1` (xem [kiểm chứng](VERIFICATION.md#full-gate-và-chuỗi-pr)).
+
+## Nhiều phiên chạy không người
+
+Khi chủ dự án duyệt cho hai phiên Primary (A, B) chạy song song không người trông (như đêm 10–11/11/2026),
+hai phiên phối hợp qua thư mục `..\cv-compass-wt\_coord\` (ngoài Git, không chứa CV thật/PII/secret):
+
+- **Báo cáo và tín hiệu xong:** mỗi phiên ghi `<X>-report.md` (khảo sát/finding) rồi tạo `<X>.done`
+  (một dòng: phiên + giờ). Phiên kia chỉ đọc report sau khi thấy `.done`; không sửa file `_coord` của phiên khác.
+- **Plan:** sau khi có cả `A.done` và `B.done`, phiên được giao viết `plan.md` rồi tạo `plan.done`.
+  Plan ghi nguồn duyệt (ai, lúc nào), giới hạn cứng giữ nguyên, chuỗi PR (slice/branch/worktree/mức/base),
+  phần để sau và **bảng quyền sở hữu file**. Phiên kia chỉ bắt đầu ghi code sau `plan.done`.
+- **Quyền sở hữu file:** mỗi path (glob) đúng một phiên; dòng cuối "mọi path khác" thuộc một phiên rõ ràng.
+  Phiên không bao giờ ghi path của phiên kia; việc cần chạm path của phiên kia thành follow-up/PR sau,
+  ghi trong `## Cần duyệt` của báo cáo cuối.
+- **Khóa Gradle:** chỉ một lượt Gradle (affected check hoặc full gate) tại một thời điểm, qua `_coord/gradle.lock`
+  (nội dung: tên phiên + giờ). Có khóa thì chờ; khóa cũ hơn **90 phút** coi là bỏ rơi và được tiếp quản
+  (ghi lại việc tiếp quản); xóa khóa ngay khi lượt chạy xong, kể cả khi lỗi. Helper dùng chung:
+  `_coord/with-gradle-lock.sh <phiên> <lệnh...>`.
+- **Kết thúc:** mỗi phiên ghi `<X>-final.md`: PR đã mở (Draft) và thứ tự merge, kiểm chứng/review/đo,
+  full gate, slice BLOCKED, `## Cần duyệt`, việc chủ dự án cần làm. Chủ dự án đọc `A-final.md`/`B-final.md` buổi sáng.
+- Mọi quy tắc khác giữ nguyên: một writer mỗi working tree, không merge/Ready/push main/force push,
+  không tự xóa branch/worktree/file, quyết định ngoài plan ghi Open Questions thay vì tự làm.
