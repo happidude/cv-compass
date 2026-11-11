@@ -262,17 +262,8 @@ class PersonalInfoPublicationIntegrationTests {
                                 assertThat(row.data().path("company").path("raw").asString())
                                         .isEqualTo("Sample Tea House"));
         var row = profile.experiences().getFirst();
-        var dates =
-                jdbc.queryForMap(
-                        "SELECT \"START_DATE\",\"END_DATE\" FROM \"CANDIDATE_EXPERIENCES\" WHERE \"ID\"=?",
-                        row.id());
-        long months =
-                java.time.Period.between(
-                                ((java.sql.Date) dates.get("START_DATE")).toLocalDate(),
-                                ((java.sql.Date) dates.get("END_DATE")).toLocalDate().plusDays(1))
-                        .toTotalMonths();
-        assertThat(months).isPositive();
-        assertThat(profile.experienceSummary().totalMonths()).isEqualTo(months);
+        // Year-only 2020 – 2025 spans 2020-01-01..2025-12-31 under ExperienceTotals: 6 years.
+        assertThat(profile.experienceSummary().totalMonths()).isEqualTo(72);
 
         // Republishing identical content is a no-op; changed content never overwrites HR edits.
         assertThat(publication.publish(id)).isFalse();
@@ -288,19 +279,65 @@ class PersonalInfoPublicationIntegrationTests {
                         json.readTree("{\"fullName\":\"HR Edited Person\"}"),
                         false,
                         "editor");
-        publication.publish(
+        assertThat(edited.basicState()).isEqualTo("EDITED");
+        assertThat(edited.experiences().getFirst().state()).isEqualTo("EDITED");
+        long second =
                 result(
                         doc,
                         raw.replace("Sample Tea House", "Other Tea House")
                                 .replace("Synthetic Person", "Other Person"),
                         false,
-                        engine));
+                        engine);
+        assertThat(publication.publish(second)).isTrue();
         var after = queries.detail(edited.id());
         assertThat(after.basic().path("fullName").asString()).isEqualTo("HR Edited Person");
+        assertThat(after.basicState()).isEqualTo("EDITED");
         assertThat(after.experiences().getFirst().origin()).isEqualTo("USER");
+        assertThat(after.experiences().getFirst().state()).isEqualTo("EDITED");
         assertThat(after.experiences().getFirst().data().path("company").path("raw").asString())
                 .isEqualTo("Synthetic HR Employer");
-        assertThat(queries.proposals(after.id(), null, 100)).isNotEmpty();
+        var proposals = queries.proposals(after.id(), null, 100);
+        assertThat(proposals)
+                .anySatisfy(
+                        p -> {
+                            assertThat(p.kind()).isEqualTo("PERSONAL_INFO");
+                            assertThat(p.data().toString()).contains("Other Person");
+                        })
+                .anySatisfy(
+                        p -> {
+                            assertThat(p.kind()).isEqualTo("EXPERIENCE");
+                            assertThat(p.data().path("company").path("raw").asString())
+                                    .isEqualTo("Other Tea House");
+                        });
+
+        // CONFIRMED data is protected the same way.
+        var confirmed =
+                candidates.basic(
+                        after.id(), after.version(), json.createObjectNode(), true, "editor");
+        confirmed =
+                candidates.editExperience(
+                        confirmed.id(),
+                        confirmed.version(),
+                        confirmed.experiences().getFirst().id(),
+                        null,
+                        "CONFIRM",
+                        "editor");
+        assertThat(confirmed.basicState()).isEqualTo("CONFIRMED");
+        assertThat(confirmed.experiences().getFirst().state()).isEqualTo("CONFIRMED");
+        long third =
+                result(
+                        doc,
+                        raw.replace("Sample Tea House", "Third Tea House")
+                                .replace("Synthetic Person", "Third Person"),
+                        false,
+                        engine);
+        assertThat(publication.publish(third)).isTrue();
+        var last = queries.detail(confirmed.id());
+        assertThat(last.basic().path("fullName").asString()).isEqualTo("HR Edited Person");
+        assertThat(last.basicState()).isEqualTo("CONFIRMED");
+        assertThat(last.experiences().getFirst().state()).isEqualTo("CONFIRMED");
+        assertThat(last.experiences().getFirst().data().path("company").path("raw").asString())
+                .isEqualTo("Synthetic HR Employer");
     }
 
     @Test
