@@ -23,12 +23,14 @@ Dữ liệu test theo policy; thiếu prerequisite báo BLOCKED/check NOT VERIFI
 
 `scripts/full-gate.ps1` chạy trên HEAD của checkout hiện tại: backend `.\gradlew.bat check --rerun-tasks`,
 frontend `npm run check` + `npm run test:browser`, worker builder/verifier/cleanup-only ở trên qua
-`wsl -d CVCompass-Ubuntu-24.04` (clone riêng của script, đúng SHA, build dir mới mỗi lượt).
+`wsl -d <-WslDistro> -- bash -l` (mặc định `Ubuntu-24.04`; CPython 3.14.8 ở `~/.local/bin` của user nên
+cần login shell; clone riêng của script, đúng SHA, build dir mới mỗi lượt). `python3.14 --version` khác
+3.14.8 thì worker BLOCKED kèm phiên bản thấy được.
 Log ở `build/gate/<sha>/<timestamp>/`, in ≤ 15 dòng; exit ≠ 0 khi có phần FAIL/BLOCKED hoặc tree bẩn
 (kể cả file untracked chưa ignore). `-JavaHome` mặc định `$env:JAVA_HOME`, trống thì dùng JDK 25 của máy dev;
 chỉ áp cho tiến trình Gradle con. `TEST_DB_URL`/`TEST_DB_USERNAME`/`TEST_DB_PASSWORD` chỉ đọc từ môi trường;
 script chỉ kiểm có/không, không in giá trị. BLOCKED (không coi là PASS) khi thiếu một trong ba biến đó, JDK,
-`node_modules`, Playwright browser, WSL distro hoặc Docker cho worker; backend thiếu DB/Docker lúc chạy là FAIL.
+`node_modules`, Playwright browser, WSL distro, Docker hoặc đúng CPython 3.14.8 cho worker; backend thiếu DB/Docker lúc chạy là FAIL.
 
 Chuỗi PR (PR sau dựa trên PR trước); agent chạy gate và báo kết quả, **con người merge**:
 

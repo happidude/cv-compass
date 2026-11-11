@@ -13,13 +13,16 @@
   Logs go to build\gate\<sha>\<timestamp>\ of this checkout (one fresh folder per run, never
   overwritten). Prints at most 15 lines. Exit code is non-zero when any part fails or is blocked.
 
-  Worker runs inside WSL distro CVCompass-Ubuntu-24.04 from a script-owned clone (~/cv-compass-gate)
-  detached at the same SHA, with a fresh worker\build\gate-<sha>-<timestamp> output each run.
+  Worker runs inside WSL distro -WslDistro (default Ubuntu-24.04, whose CPython 3.14.8 lives in the
+  user's ~/.local/bin, so the worker script runs under a login shell) from a script-owned clone
+  (~/cv-compass-gate) detached at the same SHA, with a fresh worker\build\gate-<sha>-<timestamp>
+  output each run. Any python3.14 other than exactly 3.14.8 is BLOCKED with the version found.
   Cleanup-only always runs after verify, even when verify fails.
 #>
 [CmdletBinding()]
 param(
-    [string]$JavaHome = $env:JAVA_HOME
+    [string]$JavaHome = $env:JAVA_HOME,
+    [string]$WslDistro = 'Ubuntu-24.04'
 )
 
 Set-StrictMode -Version Latest
@@ -28,7 +31,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 $prevConsoleEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = $utf8
 
-$Distro = 'CVCompass-Ubuntu-24.04'
+$ExpectedPython = 'Python 3.14.8'
 $WslGateClone = '~/cv-compass-gate'
 $DefaultJavaHome = 'C:\Users\NguyenVanHoang\.jdks\ms-25.0.4.1'
 $TestDbVars = @('TEST_DB_URL', 'TEST_DB_USERNAME', 'TEST_DB_PASSWORD')
@@ -132,6 +135,8 @@ GATE=$WslGateClone
 BUILD=worker/build/gate-$short-$stamp
 docker info --format 'docker {{.OSType}} cgroup{{.CgroupVersion}}' || { echo 'BLOCKED: docker unavailable'; exit 20; }
 command -v python3.14 >/dev/null || { echo 'BLOCKED: python3.14 missing'; exit 20; }
+PYVER=`$(python3.14 --version 2>&1)
+[ "`$PYVER" = '$ExpectedPython' ] || { echo "BLOCKED: python3.14 is '`$PYVER', need '$ExpectedPython'"; exit 20; }
 if [ ! -d "`$GATE/.git" ]; then git -c safe.directory='*' clone --quiet --no-checkout "`$SRC" "`$GATE" || exit 21; fi
 cd "`$GATE" || exit 21
 git -c safe.directory='*' fetch --quiet "`$SRC" '+refs/heads/*:refs/remotes/local/*' || exit 21
@@ -148,13 +153,13 @@ echo "RESULT build=`$b verify=`$v cleanup=`$c"
 [System.IO.File]::WriteAllText($workerScript, ($sh -replace "`r`n", "`n"), $utf8)
 $wslScript = $null
 if (Get-Command wsl.exe -CommandType Application -ErrorAction SilentlyContinue) {
-    $wslScript = (& wsl.exe -d $Distro -- wslpath -a ($workerScript -replace '\\', '/'))
+    $wslScript = (& wsl.exe -d $WslDistro -- wslpath -a ($workerScript -replace '\\', '/'))
     if ($LASTEXITCODE -ne 0) { $wslScript = $null }
 }
 if (-not $wslScript) {
-    Add-Result 'worker' 'BLOCKED' "WSL distro $Distro unavailable" $start
+    Add-Result 'worker' 'BLOCKED' "WSL distro $WslDistro unavailable" $start
 } else {
-    $code = Invoke-Logged $root "wsl.exe -d $Distro -- bash `"$($wslScript.Trim())`"" $workerLog
+    $code = Invoke-Logged $root "wsl.exe -d $WslDistro -- bash -l `"$($wslScript.Trim())`"" $workerLog
     $summary = @([System.IO.File]::ReadAllLines($workerLog, $utf8) | Where-Object { $_ -match '^(RESULT|BLOCKED)' } | Select-Object -Last 1)
     $detail = if ($summary.Count) { $summary[0] } else { "exit=$code" }
     $status = if ($code -eq 0) { 'PASS' } elseif ($code -eq 20 -or $code -eq 21) { 'BLOCKED' } else { 'FAIL' }
