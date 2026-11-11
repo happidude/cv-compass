@@ -33,6 +33,14 @@ def count(metrics, field, counter):
     return dict(line.split() for line in (metrics.get(field) or '').splitlines()).get(counter, '0')
 
 
+def _size(path):
+    # A temp file may vanish between listing and stat; count it as 0 bytes.
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
 def main():
     task = json.loads(Path('/request/task.json').read_text())
     limit = task['wall_timeout']
@@ -70,7 +78,7 @@ def main():
         )
         try:
             while True:
-                sizes = [(p, p.stat().st_size) for p in root.rglob('*') if p.is_file()]
+                sizes = [(p, _size(p)) for p in root.rglob('*') if p.is_file()]
                 if sum(n for p, n in sizes if p.suffix in ('.txt', '.tsv', '.log')) > cap:
                     failure = 'OUTPUT_LIMIT'
                 elif time.monotonic() - started >= limit:
