@@ -142,9 +142,10 @@ docker info --format 'docker {{.OSType}} cgroup{{.CgroupVersion}}' || { echo 'BL
 command -v python3.14 >/dev/null || { echo 'BLOCKED: python3.14 missing'; exit 20; }
 PYVER=`$(python3.14 --version 2>&1)
 [ "`$PYVER" = '$ExpectedPython' ] || { echo "BLOCKED: python3.14 is '`$PYVER', need '$ExpectedPython'"; exit 20; }
-git bundle verify --quiet "`$BUNDLE" || { echo 'BLOCKED: source bundle unreadable in WSL'; exit 21; }
 if [ ! -d "`$GATE/.git" ]; then git init --quiet "`$GATE" || exit 21; fi
 cd "`$GATE" || exit 21
+# git 2.43 refuses to verify a bundle outside a repository, so verify only inside the clone.
+git bundle verify --quiet "`$BUNDLE" || { echo 'BLOCKED: source bundle unreadable in WSL'; exit 21; }
 git fetch --quiet "`$BUNDLE" '+HEAD:refs/gate/head' || exit 21
 git checkout --quiet --force --detach $sha || exit 21
 test "`$(git rev-parse HEAD)" = '$sha' || exit 21
@@ -170,6 +171,8 @@ if ($wslOk) {
     if ($handoff -eq 0) { $handoff = Invoke-Logged $root "wsl.exe -d $WslDistro --exec dd status=none of=$wslTmp.bundle < `"$workerBundle`"" (Join-Path $logDir 'worker-copy-bundle.log') }
     if ($handoff -eq 0) { $handoff = Invoke-Logged $root "wsl.exe -d $WslDistro --exec dd status=none of=$wslTmp.sh < `"$workerScript`"" (Join-Path $logDir 'worker-copy-script.log') }
     Remove-Item -LiteralPath $workerBundle -Force -ErrorAction SilentlyContinue
+    # The script's EXIT trap removes both files once bash runs; a failed handoff never reaches it.
+    if ($handoff -ne 0) { [void](Invoke-Logged $root "wsl.exe -d $WslDistro --exec rm -f $wslTmp.bundle $wslTmp.sh" (Join-Path $logDir 'worker-cleanup.log')) }
 }
 if (-not $wslOk) {
     Add-Result 'worker' 'BLOCKED' "WSL distro $WslDistro unavailable" $start

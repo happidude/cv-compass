@@ -230,6 +230,8 @@ test("polling stops at deadline, terminal state and unmount without old details"
     timeout: 10000,
   });
   const calls = pendingCalls;
+  // Polling really ran before the deadline stopped it.
+  expect(calls).toBeGreaterThan(1);
   await page.waitForTimeout(800);
   expect(pendingCalls).toBe(calls);
   await page.goto("/documents/7");
