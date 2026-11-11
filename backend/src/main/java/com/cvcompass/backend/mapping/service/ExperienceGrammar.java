@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /** Typed block relationships for the personal-info grammar engines. */
 final class ExperienceGrammar {
@@ -28,7 +30,26 @@ final class ExperienceGrammar {
     private final List<Issue> issues = new ArrayList<>();
 
     private final boolean v34;
+    private final boolean v35;
     private final Set<Integer> repeatedMargins;
+    // Referee headings: a role row under them belongs to a referee, never the CV owner.
+    private static final List<String> REFERENCE_HEADINGS =
+            Stream.of(
+                            "References",
+                            "Professional References",
+                            "Referees",
+                            "Người tham chiếu",
+                            "Kiểm tra thông tin")
+                    .map(ExperienceDefinition::key)
+                    .toList();
+    private static final Pattern EDUCATION_WORDS =
+            Pattern.compile(
+                    "(?iu)\\b(?:bachelor|master|mba|degree|diploma|university|college|institute|academy|school|faculty|ph\\.?d|doctor of)\\b|đại học|cao đẳng|học viện|thạc sĩ|cử nhân|(?<!\\p{L})trường\\s+(?:đại học|cao đẳng|thpt|trung học|đh)");
+    private static final Pattern ENDS_WITH_COLON = Pattern.compile(".*[:：]$");
+    private static final Pattern HAS_LETTER = Pattern.compile("(?s).*\\p{L}.*");
+    private static final Pattern PAREN_PERIOD = Pattern.compile("(?s)\\s*[(\\[].*\\d.*[)\\]]\\s*");
+    // The only label a job may carry inside its own block while still being a stop heading.
+    private static final String ACHIEVEMENTS_KEY = ExperienceDefinition.key("Achievements");
 
     ExperienceGrammar(Extraction input, ExperienceDefinition config) {
         this(input, config, false);
@@ -40,6 +61,7 @@ final class ExperienceGrammar {
 
     ExperienceGrammar(Extraction input, ExperienceDefinition config, boolean v34, boolean v35) {
         this.v34 = v34;
+        this.v35 = v35;
         this.input = input;
         this.config = config;
         this.lines = SourceLine.read(input.id(), input.pages());
@@ -58,7 +80,21 @@ final class ExperienceGrammar {
         int epoch = 0;
         int pendingPage = -1;
         SourceLine rejectedRange = null;
+        // v35 resume state: what the section looked like when a stop heading interrupted it.
+        String stoppedSection = null;
+        String stoppedHeading = null;
+        Block stoppedBlock = null;
+        int stoppedEpoch = 0;
+        boolean refereeStop = false;
+        Issue resumeIssue = null;
+        boolean resumed = false;
         for (int index = 0; index < lines.size(); index++) {
+            if (resumeIssue != null) {
+                // Evidence of the resume goes to the block that took the line, else to the
+                // document.
+                (current != null ? current.issues : issues).add(resumeIssue);
+                resumeIssue = null;
+            }
             if (pendingPeriods.size() + pendingTitles.size() > 8)
                 throw new IllegalArgumentException("Unresolved experience anchor limit exceeded");
             var line = lines.get(index);
@@ -72,10 +108,36 @@ final class ExperienceGrammar {
             contentPage = line.page;
             if (heading != null) {
                 String headingKey = key(line.text.replaceFirst("[:：]$", ""));
+                boolean inDetail = section.equals("DETAIL") || section.equals("SUMMARY");
+                if (v35
+                        && heading.equals("STOP")
+                        && inDetail
+                        && ENDS_WITH_COLON.matcher(line.text).matches()
+                        && headingKey.equals(ACHIEVEMENTS_KEY)) {
+                    // A job's own "Achievements:" label, not a section boundary.
+                    if (current != null) describe(current, line);
+                    continue;
+                }
+                if (v35) {
+                    if (heading.equals("STOP") && inDetail) {
+                        stoppedSection = section;
+                        stoppedHeading = sectionHeading;
+                        stoppedBlock = current;
+                        stoppedEpoch = epoch;
+                        refereeStop = false;
+                    } else if (!heading.equals("STOP") || !section.equals("STOP")) {
+                        stoppedSection = null;
+                        stoppedBlock = null;
+                        refereeStop = false;
+                    }
+                    if (heading.equals("STOP"))
+                        refereeStop |= REFERENCE_HEADINGS.stream().anyMatch(headingKey::startsWith);
+                }
                 if (v34
                         && firstOnPage
                         && heading.equals(section)
                         && headingKey.equals(sectionHeading)) continue;
+                resumed = false;
                 sectionHeading = headingKey;
                 if (!heading.equals(section)) epoch++;
                 section = heading;
@@ -85,7 +147,32 @@ final class ExperienceGrammar {
                 pendingTitles.clear();
                 continue;
             }
-            if (section.equals("STOP")) continue;
+            if (section.equals("STOP")) {
+                if (stoppedSection == null || refereeStop || !resumesExperience(index)) continue;
+                section = stoppedSection;
+                sectionHeading = stoppedHeading;
+                epoch = stoppedEpoch;
+                if (stoppedBlock != null
+                        && stoppedBlock.periods.isEmpty()
+                        && stoppedBlock.lastPage + 1 >= line.page) {
+                    current = stoppedBlock;
+                    if (current.lastPage != line.page) {
+                        current.lastPage = line.page;
+                        current.headerEnd = index - 1;
+                        current.issues.add(
+                                new Issue(
+                                        "PAGE_CONTINUATION_ASSUMED",
+                                        "experience",
+                                        List.of(line.whole())));
+                    }
+                }
+                stoppedSection = null;
+                stoppedBlock = null;
+                resumed = true;
+                resumeIssue =
+                        new Issue(
+                                "SECTION_RESUMED_AFTER_STOP", "experience", List.of(line.whole()));
+            }
             boolean anchored = v34 && (section.equals("DETAIL") || section.equals("SUMMARY"));
             boolean contextual = v34 && section.equals("CONTEXT");
             var range =
@@ -120,6 +207,24 @@ final class ExperienceGrammar {
             }
             rejectedRange = null;
             if (row != null) index = row.consumedThrough();
+            if (resumed && row != null) {
+                boolean structured =
+                        row.company() != null
+                                || !row.titles().isEmpty()
+                                || !row.periods().isEmpty();
+                if (structured && EDUCATION_WORDS.matcher(line.text).find()) continue;
+                if (row.company() != null && junkCompany(row.company().text()))
+                    row =
+                            new ExperienceGrammarRows.Row(
+                                    row.source(),
+                                    null,
+                                    row.titles(),
+                                    row.periods(),
+                                    row.consumedThrough(),
+                                    row.continued(),
+                                    row.ambiguous(),
+                                    row.contextOnly());
+            }
             if (pendingPage != -1 && pendingPage != line.page) {
                 if (!pendingPeriods.isEmpty() || !pendingTitles.isEmpty())
                     issues.add(new Issue("UNLINKED_PAGE_TEXT", "source", List.of(line.whole())));
@@ -295,6 +400,7 @@ final class ExperienceGrammar {
                 pendingPeriods.clear();
             }
         }
+        if (resumeIssue != null) (current != null ? current.issues : issues).add(resumeIssue);
         if (!pendingPeriods.isEmpty() || !pendingTitles.isEmpty()) {
             var evidence = new ArrayList<Evidence>();
             pendingPeriods.forEach(value -> evidence.addAll(value.evidence()));
@@ -315,6 +421,24 @@ final class ExperienceGrammar {
                                 page -> List.of("failed", "not_processed").contains(page.status())))
             issues.add(new Issue("SOURCE_INCOMPLETE", "source", List.of()));
         return new Outcome(List.copyOf(result), List.copyOf(issues));
+    }
+
+    // After a resume, side-column leftovers (schools, bare periods) must not become employers.
+    private static boolean junkCompany(String text) {
+        return EDUCATION_WORDS.matcher(text).find()
+                || !HAS_LETTER.matcher(text).matches()
+                || PAREN_PERIOD.matcher(text).matches();
+    }
+
+    /** A dated role row after a stop heading means the experience flow continues (two-column CVs). */
+    private boolean resumesExperience(int index) {
+        if (EDUCATION_WORDS.matcher(lines.get(index).text).find()) return false;
+        var row = rows.parse(index, true);
+        return row != null
+                && !row.ambiguous()
+                && !row.contextOnly()
+                && !row.titles().isEmpty()
+                && row.periods().stream().anyMatch(period -> period.state().equals("PROPOSED"));
     }
 
     private boolean opensCompanyAfterTitle(int index, int page, Block preceding) {

@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 class ExperienceGrammarV35Tests {
+    private static final String HEAD_WITH_COMPANY = "Work Experience\nCompany: Mau Logistics JSC\n";
+
     private static final String NUMBERED =
             """
             Work Experience
@@ -322,6 +324,156 @@ class ExperienceGrammarV35Tests {
                                         .anyMatch(a -> a.end() != null && a.end().year() == 2001));
     }
 
+    @Test
+    void stopHeadingInSideColumnResumesExperienceInV35() throws Exception {
+        var pages =
+                List.of(
+                        "Work Experience\nMau Logistics JSC\nPlant Supervisor | 03/2011 - 06/2014\n- Ran shift crews",
+                        "Company: Sample Foundry Ltd\nEDUCATION\nSample Institute of Technology\nFaculty of Mechanics\n"
+                                + "Bachelor of Engineering (2005 - 2009)\nQuality Director | 07/2014 - 09/2016");
+        var rows = parsePages("3.5", pages).experiences();
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).company().raw()).isEqualTo("Mau Logistics JSC");
+        assertThat(rows.get(1).company().raw()).isEqualTo("Sample Foundry Ltd");
+        assertThat(rows.get(1).title().raw()).isEqualTo("Quality Director");
+        assertThat(rows.get(1).issues())
+                .extracting(issue -> issue.code())
+                .contains("SECTION_RESUMED_AFTER_STOP");
+        assertThat(rows).noneMatch(row -> row.company().raw().contains("Sample Institute"));
+        assertThat(MappingDigests.canonical(parsePages("3.4", pages).experiences()))
+                .doesNotContain("Quality Director");
+    }
+
+    @Test
+    void resumesWhenNoBlockWasOpenedBeforeStop() throws Exception {
+        var pages =
+                List.of(
+                        "Work Experience\nPlant Supervisor | 03/2011 - 06/2014\n- Ran shift crews",
+                        "EDUCATION\nSample Institute of Technology\nQuality Director | 07/2014 - 09/2016");
+        var result = MappingDigests.canonical(parsePages("3.5", pages));
+        assertThat(result).contains("SECTION_RESUMED_AFTER_STOP");
+        assertThat(MappingDigests.canonical(parsePages("3.4", pages)))
+                .doesNotContain("SECTION_RESUMED_AFTER_STOP");
+    }
+
+    @Test
+    void resumeIgnoresEducationLinesAndJunkCompanies() throws Exception {
+        var head = HEAD_WITH_COMPANY;
+        var d =
+                parse(
+                                "3.5",
+                                head
+                                        + "EDUCATION\nQuality Director | 07/2014 - 09/2016\n"
+                                        + "Bachelor of Engineering | 2005 - 2009\nSample Institute of Technology\n")
+                        .experiences();
+        assertThat(d).hasSize(1);
+        assertThat(d.getFirst().company().raw()).isEqualTo("Mau Logistics JSC");
+        assertThat(d.getFirst().title().raw()).isEqualTo("Quality Director");
+        assertThat(d.getFirst().period().alternatives()).hasSize(1);
+        var e =
+                parse(
+                                "3.5",
+                                head
+                                        + "EDUCATION\nQuality Director | 07/2014 - 09/2016\n"
+                                        + "(2005 - 2009)\nSample Faculty of Languages\n")
+                        .experiences();
+        assertThat(e).isNotEmpty();
+        assertThat(e)
+                .allSatisfy(
+                        row ->
+                                assertThat(row.company().raw())
+                                        .doesNotContain("Faculty", "2005")
+                                        .isEqualTo("Mau Logistics JSC"));
+        var teaching = head + "EDUCATION\nTeaching Assistant, Sample University | 2010 - 2012\n";
+        assertThat(MappingDigests.canonical(parse("3.5", teaching)))
+                .doesNotContain("SECTION_RESUMED_AFTER_STOP", "Teaching Assistant");
+    }
+
+    @Test
+    void achievementsLabelBeforeAnyBlockKeepsSectionInV35() throws Exception {
+        var text =
+                "Work Experience\nAchievements:\nSample Foundry Ltd\nSales Executive | 2012 - 2015\n";
+        assertThat(parse("3.5", text).experiences()).hasSize(1);
+        assertThat(parse("3.4", text).experiences()).isEmpty();
+    }
+
+    @Test
+    void achievementsLabelInsideJobDoesNotStopV35() throws Exception {
+        var text =
+                "Work Experience\nSample Foundry Ltd\nSales Executive | 2012 - 2015\nAchievements:\n"
+                        + "- Opened 5 regional agents\nMAU LOGISTICS Jun 2015 – Feb 2017\nOperations Lead\n";
+        var v35 = parse("3.5", text).experiences();
+        assertThat(v35).hasSize(2);
+        assertThat(v35.get(1).company().raw()).isEqualTo("MAU LOGISTICS");
+        assertThat(parse("3.4", text).experiences()).hasSize(1);
+    }
+
+    @Test
+    void stopHeadingDoesNotResumeWithoutRoleEvidence() throws Exception {
+        var edu =
+                "Work Experience\nSAMPLE TRADING\nSales Executive | 2012 - 2015\nEDUCATION\n"
+                        + "Sample Institute of Technology\nBachelor of Engineering (2005 - 2009)\n";
+        var refs =
+                "Work Experience\nSAMPLE TRADING\nSales Executive | 2012 - 2015\nREFERENCES\n"
+                        + "Sales Manager | 2010 - 2012\n";
+        var noDetail = "EDUCATION\nQuality Director | 07/2014 - 09/2016\n";
+        var refereeCompany =
+                "Work Experience\nSample Foundry Ltd\nSales Executive | 2012 - 2015\nREFERENCES\n"
+                        + "Company: Sample Referee Co., Ltd\nSales Manager | 2010 - 2012\n";
+        for (var text : List.of(edu, refs, noDetail, refereeCompany)) {
+            assertThat(parse("3.5", text).experiences().size()).as(text).isLessThanOrEqualTo(1);
+            assertThat(MappingDigests.canonical(parse("3.5", text)))
+                    .as(text)
+                    .doesNotContain("SECTION_RESUMED_AFTER_STOP");
+        }
+        // A context heading between two stop headings ends the chance to resume.
+        var interrupted =
+                "Work Experience\nSample Foundry Ltd\nSales Executive | 2012 - 2015\nEDUCATION\n"
+                        + "Projects\nSKILLS\nVolunteer Manager | 2015 - 2016\n";
+        assertThat(MappingDigests.canonical(parse("3.5", interrupted)))
+                .doesNotContain("SECTION_RESUMED_AFTER_STOP");
+    }
+
+    @Test
+    void projectsLabelInsideJobIsUnchangedFromV34() throws Exception {
+        var text =
+                "Work Experience\nSample Foundry Ltd\nSales Executive | 2012 - 2015\nProjects:\n"
+                        + "- Opened 5 regional agents\nMau Logistics JSC\nOperations Lead | 2015 - 2017\n";
+        assertThat(MappingDigests.canonical(parse("3.5", text).experiences()))
+                .isEqualTo(MappingDigests.canonical(parse("3.4", text).experiences()));
+    }
+
+    @Test
+    void resumeAcrossPagesKeepsRestoredCompany() throws Exception {
+        var pages =
+                List.of(
+                        "Work Experience\nCompany: Mau Logistics JSC",
+                        "EDUCATION\nSample Institute of Technology\nQuality Director | 07/2014 - 09/2016");
+        var rows = parsePages("3.5", pages).experiences();
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().company().raw()).isEqualTo("Mau Logistics JSC");
+        assertThat(rows.getFirst().title().raw()).isEqualTo("Quality Director");
+    }
+
+    @Test
+    void educationWordsOnlyBlockStructuredRowsAfterResume() throws Exception {
+        var head = HEAD_WITH_COMPANY + "EDUCATION\n";
+        var market =
+                parse("3.5", head + "Chuyên viên khảo sát thị trường mẫu | 2015 - 2018\n")
+                        .experiences();
+        assertThat(market).hasSize(1);
+        assertThat(MappingDigests.canonical(market)).contains("SECTION_RESUMED_AFTER_STOP");
+        var bullet =
+                parse(
+                                "3.5",
+                                head
+                                        + "Quality Director | 07/2014 - 09/2016\n"
+                                        + "- Đào tạo đội ngũ tại Sample Academy\n")
+                        .experiences();
+        assertThat(bullet).hasSize(1);
+        assertThat(MappingDigests.canonical(bullet)).contains("Sample Academy");
+    }
+
     private static PersonalInfoDefinition definition(String version) throws Exception {
         try (var stream =
                 ExperienceGrammarV35Tests.class.getResourceAsStream(
@@ -334,15 +486,15 @@ class ExperienceGrammarV35Tests {
     }
 
     private static PersonalInfoMappingResult parse(String version, String raw) throws Exception {
+        return parsePages(version, List.of(raw));
+    }
+
+    private static PersonalInfoMappingResult parsePages(String version, List<String> texts)
+            throws Exception {
         var definition = definition(version);
-        var input =
-                new Extraction(
-                        1,
-                        2,
-                        "cv-compass.ocr/2.0",
-                        "success",
-                        false,
-                        List.of(new Page(1, "ok", raw)));
+        var pages = new java.util.ArrayList<Page>();
+        for (int i = 0; i < texts.size(); i++) pages.add(new Page(i + 1, "ok", texts.get(i)));
+        var input = new Extraction(1, 2, "cv-compass.ocr/2.0", "success", false, pages);
         return PersonalInfoEngineV31.map(
                 new MappingClaim(
                         3,
