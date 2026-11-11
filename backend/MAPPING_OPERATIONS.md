@@ -52,3 +52,32 @@ concurrency and attempts are invariants; selected operating values are propertie
 No OCR protocol limit or production gate is changed.
 
 Foundation verification commands and evidence: [FOUNDATION_CONFIGURATION_REPORT.md](FOUNDATION_CONFIGURATION_REPORT.md).
+
+## Kích hoạt 3.5
+
+Engine `personal-info-mapping/3.5` đã được nối vào runtime (claim, xử lý, publish giống 3.4)
+nhưng **mặc định chưa kích hoạt**: không đổi `CV_MAPPING_ENABLED` hay file cấu hình thì hệ thống
+vẫn chạy như cũ. Việc kích hoạt là thao tác vận hành của con người, không tự động.
+
+Cấu hình cần đặt (property trong `MappingBootstrap`; có thể đặt bằng biến môi trường tương ứng):
+
+| Property | Giá trị |
+| --- | --- |
+| `cv.mapping.enabled` (`CV_MAPPING_ENABLED`) | `true` |
+| `cv.mapping.definition-file` (`CV_MAPPING_DEFINITION_FILE`) | đường dẫn file `personal-info-config-v3.5.json` (bản trong `backend/src/main/resources/mapping/`) |
+| `cv.mapping.revision` (`CV_MAPPING_REVISION`) | `personal-info-grammar-v35-r1` |
+
+Khi khởi động, bootstrap đăng ký và activate config 3.5; việc đổi config active reset cursor và
+bắt đầu quét đầy đủ như mô tả ở trên. Revision đã đăng ký là bất biến: không sửa nội dung file
+mà giữ nguyên revision.
+
+Quay lại 3.4: đặt `cv.mapping.definition-file` về `personal-info-config-v3.4.json` và
+`cv.mapping.revision` về revision 3.4 đã dùng, rồi khởi động lại. Kết quả 3.5 đã sinh ra không bị
+xóa hay ghi đè.
+
+Lưu ý:
+
+- Job cũ (đã hoàn thành ở 3.0–3.4) **không** tự chạy lại; kết quả cũ giữ nguyên.
+- Job đang xếp hàng ở 3.4 (hoặc phiên bản cũ hơn) giữ engine đã pin và vẫn được xử lý bằng đúng engine đó.
+- Chỉ job mới được enqueue sau khi activate mới dùng 3.5. Job 3.5 chỉ được claim khi
+  `engineCompatibility` của config job khớp engine của job.

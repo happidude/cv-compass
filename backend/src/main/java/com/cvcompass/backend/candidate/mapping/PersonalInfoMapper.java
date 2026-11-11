@@ -21,7 +21,11 @@ public final class PersonalInfoMapper {
         var patch = JSON.createObjectNode();
         String version = result.path("engineVersion").asString();
         boolean v33 =
-                Set.of("personal-info-mapping/3.3", "personal-info-mapping/3.4").contains(version);
+                Set.of(
+                                "personal-info-mapping/3.3",
+                                "personal-info-mapping/3.4",
+                                "personal-info-mapping/3.5")
+                        .contains(version);
         for (String name : FIELDS) {
             var field = result.path("personalInfo").path(name);
             if (field.path("enabled").asBoolean()

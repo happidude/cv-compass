@@ -1190,6 +1190,49 @@ class MappingIntegrationTests {
         assertThat(mapping.result(oldClaim.jobId())).contains(old);
     }
 
+    @Test
+    void v35ActivationRoutesNewJobsAndKeepsQueuedV34Pinned() throws Exception {
+        var v34 = personalDefinition("3.4");
+        var v35 = personalDefinition("3.5");
+        long oldId = mapping.register(v34.revision(), v34);
+        long nextId = mapping.register(v35.revision(), v35);
+        long extraction = seed("success", null, "Work Experience\n2020 – 2025 Sample Tea House");
+        var repository = new MappingRepository(jdbc, json);
+        repository.enqueue(extraction, oldId, v34.engineCompatibility(), 3);
+
+        mapping.activate(nextId);
+        repository.cursor(extraction - 1, null);
+        assertThat(mapping.scan(100)).isEqualTo(1);
+
+        var oldClaim = mapping.claim().orElseThrow();
+        assertThat(oldClaim.engineVersion()).isEqualTo(v34.engineCompatibility());
+        assertThat(oldClaim.configId()).isEqualTo(oldId);
+        var old = (PersonalInfoMappingResult) mapping.process(oldClaim);
+        mapping.complete(oldClaim, old);
+
+        var nextClaim = mapping.claim().orElseThrow();
+        assertThat(nextClaim.engineVersion()).isEqualTo(v35.engineCompatibility());
+        assertThat(nextClaim.configId()).isEqualTo(nextId);
+        var next = (PersonalInfoMappingResult) mapping.process(nextClaim);
+        assertThat(next.experiences()).isNotEmpty();
+        mapping.complete(nextClaim, next);
+        assertThat(mapping.result(nextClaim.jobId())).contains(next);
+        assertThat(mapping.result(oldClaim.jobId())).contains(old);
+    }
+
+    @Test
+    void v35JobIsNotClaimedWhenItsConfigEngineDoesNotMatch() throws Exception {
+        var v34 = personalDefinition("3.4");
+        long configId = mapping.register(v34.revision(), v34);
+        long extraction = seed("success", null, "Work Experience\n2020 – 2025 Sample Tea House");
+        jdbc.update(
+                "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
+                extraction,
+                configId,
+                PersonalInfoDefinition.GRAMMAR_V35_ENGINE_VERSION);
+        assertThat(mapping.claim()).isEmpty();
+    }
+
     private PersonalInfoDefinition personalDefinition(String version) throws Exception {
         try (var stream =
                 getClass()

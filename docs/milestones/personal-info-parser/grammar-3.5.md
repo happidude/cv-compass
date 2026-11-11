@@ -1,9 +1,9 @@
 # Grammar 3.5
 
-Engine **personal-info-mapping/3.5** là opt-in và **chưa nối vào runtime**:
-chưa có đường chọn engine 3.5 trong dịch vụ mapping. Cấu hình
-**personal-info-config-v3.5.json** (revision **personal-info-grammar-v35-r1**)
-chỉ được kích hoạt ở PR wiring riêng; không kích hoạt trước đó. 3.0–3.4 giữ
+Engine **personal-info-mapping/3.5** đã được nối vào runtime (claim, xử lý, publish giống 3.4)
+nhưng **mặc định chưa kích hoạt**. Cấu hình **personal-info-config-v3.5.json** (revision
+**personal-info-grammar-v35-r1**) chỉ chạy khi con người đặt cấu hình mapping trỏ tới nó
+(xem `backend/MAPPING_OPERATIONS.md`, mục "Kích hoạt 3.5"). 3.0–3.4 giữ
 nguyên hành vi, output giữ byte-for-byte. Schema kết quả và cấu hình giữ nguyên.
 
 3.5 kế thừa toàn bộ quy tắc 3.4 (và 3.2/3.3 ở phần thông tin cá nhân), cộng

@@ -131,8 +131,15 @@ class PersonalInfoPublicationIntegrationTests {
                         json.readTree(
                                 getClass()
                                         .getResourceAsStream(
-                                                engine.equals("personal-info-mapping/3.3")
-                                                        ? "/mapping/personal-info-config-v3.3.json"
+                                                Set.of(
+                                                                        "personal-info-mapping/3.3",
+                                                                        "personal-info-mapping/3.4",
+                                                                        "personal-info-mapping/3.5")
+                                                                .contains(engine)
+                                                        ? "/mapping/personal-info-config-v"
+                                                                + engine.substring(
+                                                                        engine.lastIndexOf('/') + 1)
+                                                                + ".json"
                                                         : "/mapping/personal-info-config-v3.json")
                                         .readAllBytes());
         tree.put("revision", "personal-" + UUID.randomUUID());
@@ -225,6 +232,75 @@ class PersonalInfoPublicationIntegrationTests {
                 .isEqualTo("personal-info-mapping/3.2");
         assertThat(publication.publish(id)).isFalse();
         assertThat(queries.detail(profile.id())).isEqualTo(profile);
+    }
+
+    @Test
+    void v34PublicationPublishesProposesAndKeepsHrEdits() throws Exception {
+        assertGrammarPublication("personal-info-mapping/3.4");
+    }
+
+    @Test
+    void v35PublicationPublishesProposesAndKeepsHrEdits() throws Exception {
+        assertGrammarPublication("personal-info-mapping/3.5");
+    }
+
+    private void assertGrammarPublication(String engine) throws Exception {
+        var doc = document();
+        String raw =
+                "Full name: Synthetic Person\nGender: Nam\n\nWork Experience\n"
+                        + "2020 – 2025 Sample Tea House";
+        long id = result(doc, raw, false, engine);
+        assertThat(publication.publish(id)).isTrue();
+        var profile = queries.detail(candidate(doc));
+        assertThat(profile.basic().path("fullName").asString()).isEqualTo("Synthetic Person");
+        assertThat(profile.extensions().path("mapping").path("engineVersion").asString())
+                .isEqualTo(engine);
+        assertThat(profile.experiences())
+                .singleElement()
+                .satisfies(
+                        row ->
+                                assertThat(row.data().path("company").path("raw").asString())
+                                        .isEqualTo("Sample Tea House"));
+        var row = profile.experiences().getFirst();
+        var dates =
+                jdbc.queryForMap(
+                        "SELECT \"START_DATE\",\"END_DATE\" FROM \"CANDIDATE_EXPERIENCES\" WHERE \"ID\"=?",
+                        row.id());
+        long months =
+                java.time.Period.between(
+                                ((java.sql.Date) dates.get("START_DATE")).toLocalDate(),
+                                ((java.sql.Date) dates.get("END_DATE")).toLocalDate().plusDays(1))
+                        .toTotalMonths();
+        assertThat(months).isPositive();
+        assertThat(profile.experienceSummary().totalMonths()).isEqualTo(months);
+
+        // Republishing identical content is a no-op; changed content never overwrites HR edits.
+        assertThat(publication.publish(id)).isFalse();
+        var data = (ObjectNode) row.data().deepCopy();
+        ((ObjectNode) data.path("company")).put("raw", "Synthetic HR Employer");
+        var edited =
+                candidates.editExperience(
+                        profile.id(), profile.version(), row.id(), data, "SAVE", "editor");
+        edited =
+                candidates.basic(
+                        edited.id(),
+                        edited.version(),
+                        json.readTree("{\"fullName\":\"HR Edited Person\"}"),
+                        false,
+                        "editor");
+        publication.publish(
+                result(
+                        doc,
+                        raw.replace("Sample Tea House", "Other Tea House")
+                                .replace("Synthetic Person", "Other Person"),
+                        false,
+                        engine));
+        var after = queries.detail(edited.id());
+        assertThat(after.basic().path("fullName").asString()).isEqualTo("HR Edited Person");
+        assertThat(after.experiences().getFirst().origin()).isEqualTo("USER");
+        assertThat(after.experiences().getFirst().data().path("company").path("raw").asString())
+                .isEqualTo("Synthetic HR Employer");
+        assertThat(queries.proposals(after.id(), null, 100)).isNotEmpty();
     }
 
     @Test
