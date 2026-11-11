@@ -149,6 +149,179 @@ class ExperienceGrammarV35Tests {
         }
     }
 
+    @Test
+    void fromToColonRangeInPeriodLabel() throws Exception {
+        for (var range : List.of("Mar-1999 To: Jun-2001", "Mar’- 1999 To: Jun-2001")) {
+            var text =
+                    "Work Experience\nFrom: "
+                            + range
+                            + "\nCompany: MAU RETAIL\nPosition: Sales Executive";
+            var rows = parse("3.5", text).experiences();
+            assertThat(rows).as(range).hasSize(1);
+            assertThat(parse("3.4", text).experiences())
+                    .as(range)
+                    .noneMatch(
+                            row ->
+                                    row.period().alternatives().stream()
+                                            .anyMatch(
+                                                    a ->
+                                                            a.end() != null
+                                                                    && a.end().year() == 2001));
+            var period = rows.getFirst().period();
+            assertThat(period.state()).as(range).isEqualTo("PROPOSED");
+            var start = period.alternatives().getFirst().start();
+            var end = period.alternatives().getFirst().end();
+            assertThat(start.year()).isEqualTo(1999);
+            assertThat(start.month()).isEqualTo(3);
+            assertThat(end.year()).isEqualTo(2001);
+            assertThat(end.month()).isEqualTo(6);
+        }
+    }
+
+    @Test
+    void twoDigitYearRanges() throws Exception {
+        for (var line :
+                List.of(
+                        "Feb 11 – Oct 12 Area Packaging Engineer",
+                        "Sample Foundry Ltd | Feb 11 – Oct 12 Area Packaging Engineer")) {
+            var text = "Work Experience\n" + line + "\nSample Foundry Ltd\n";
+            var rows = parse("3.5", text).experiences();
+            assertThat(rows).as(line).isNotEmpty();
+            var period = rows.getFirst().period().alternatives().getFirst();
+            assertThat(period.state()).isEqualTo("PROPOSED");
+            assertThat(period.start().year()).isEqualTo(2011);
+            assertThat(period.start().month()).isEqualTo(2);
+            assertThat(period.end().year()).isEqualTo(2012);
+            assertThat(period.end().month()).isEqualTo(10);
+            assertThat(rows.getFirst().issues())
+                    .extracting(issue -> issue.code())
+                    .contains("TWO_DIGIT_YEAR_ASSUMED");
+            assertThat(MappingDigests.canonical(parse("3.4", text).experiences()))
+                    .as(line)
+                    .doesNotContain("TWO_DIGIT_YEAR_ASSUMED");
+        }
+        var ongoing =
+                parse(
+                                "3.5",
+                                "Work Experience\nSep 98 – Present Sales Executive\nSample Foundry Ltd\n")
+                        .experiences();
+        assertThat(ongoing).isNotEmpty();
+        var value = ongoing.getFirst().period().alternatives().getFirst();
+        assertThat(value.start().year()).isEqualTo(1998);
+        assertThat(value.ongoingAsStated()).isTrue();
+    }
+
+    @Test
+    void twoDigitYearNegativesStayAsV34() throws Exception {
+        for (var line :
+                List.of(
+                        "May 21 staff joined",
+                        "Top 10 – 20 accounts",
+                        "Q1 23 – Q2 24",
+                        "Jan 2020 – Mar 21 Area Packaging Engineer",
+                        "Jun 15 – Jul 20 2020 Area Packaging Engineer",
+                        "Jun 15, 2020 – Jul 20, 2020 Area Packaging Engineer",
+                        "Dec 15 - 1991 - 1993 Area Packaging Engineer")) {
+            var text = "Work Experience\nMAU RETAIL\n" + line + "\n";
+            assertThat(MappingDigests.canonical(parse("3.5", text).experiences()))
+                    .as(line)
+                    .isEqualTo(MappingDigests.canonical(parse("3.4", text).experiences()))
+                    .doesNotContain("TWO_DIGIT_YEAR_ASSUMED");
+        }
+        // Lone labelled dates never use the two-digit branch.
+        for (var label : List.of("Period: May 21", "From: Mar 21")) {
+            var text = "Work Experience\n" + label + "\nCompany: MAU RETAIL\nPosition: Engineer\n";
+            assertThat(MappingDigests.canonical(parse("3.5", text).experiences()))
+                    .as(label)
+                    .isEqualTo(MappingDigests.canonical(parse("3.4", text).experiences()))
+                    .doesNotContain("TWO_DIGIT_YEAR_ASSUMED");
+        }
+        // Start after end is never PROPOSED and raises no two-digit issue.
+        var invalid =
+                MappingDigests.canonical(
+                        parse(
+                                        "3.5",
+                                        "Work Experience\nMAU RETAIL\nOct 12 – Feb 11 Area Packaging Engineer\n")
+                                .experiences());
+        assertThat(invalid).doesNotContain("PROPOSED", "TWO_DIGIT_YEAR_ASSUMED");
+    }
+
+    @Test
+    void mixedFormTailKeepsLaterYearRange() throws Exception {
+        var text = "Work Experience\nMAU RETAIL\nDec 15 - 1991 - 1993 Area Packaging Engineer\n";
+        var rows = parse("3.5", text).experiences();
+        assertThat(rows).isNotEmpty();
+        var period = rows.getFirst().period().alternatives().getFirst();
+        assertThat(period.start().year()).isEqualTo(1991);
+        assertThat(period.end().year()).isEqualTo(1993);
+    }
+
+    @Test
+    void twoDigitYearIssueOnlyOnRowUsingIt() throws Exception {
+        var text =
+                "Work Experience\nMAU RETAIL\nMar 2015 – Dec 2016 Sales Executive\n"
+                        + "Sample Foundry Ltd\nFeb 11 – Oct 12 Area Packaging Engineer\n";
+        var rows = parse("3.5", text).experiences();
+        assertThat(rows).hasSize(2);
+        var codes =
+                rows.stream()
+                        .map(row -> row.issues().stream().map(issue -> issue.code()).toList())
+                        .toList();
+        assertThat(codes.stream().filter(c -> c.contains("TWO_DIGIT_YEAR_ASSUMED")).count())
+                .isEqualTo(1);
+        var flagged =
+                rows.stream()
+                        .filter(
+                                row ->
+                                        row.issues().stream()
+                                                .anyMatch(
+                                                        i ->
+                                                                i.code()
+                                                                        .equals(
+                                                                                "TWO_DIGIT_YEAR_ASSUMED")))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(flagged.period().alternatives().getFirst().start().year()).isEqualTo(2011);
+    }
+
+    @Test
+    void twoDigitYearCenturyBoundary() throws Exception {
+        var high = parse("3.5", "Work Experience\nFeb 49 – Mar 49 Engineer\nSample Foundry Ltd\n");
+        var low = parse("3.5", "Work Experience\nFeb 50 – Mar 50 Engineer\nSample Foundry Ltd\n");
+        assertThat(high.experiences().getFirst().period().alternatives().getFirst().start().year())
+                .isEqualTo(2049);
+        assertThat(low.experiences().getFirst().period().alternatives().getFirst().start().year())
+                .isEqualTo(1950);
+    }
+
+    @Test
+    void toConnectorVariants() throws Exception {
+        for (var range :
+                List.of(
+                        "Mar-1999 to: Jun-2001",
+                        "Mar-1999 to : Jun-2001",
+                        "Mar-1999 TO：Jun-2001")) {
+            var text =
+                    "Work Experience\nFrom: "
+                            + range
+                            + "\nCompany: MAU RETAIL\nPosition: Sales Executive";
+            var period = parse("3.5", text).experiences().getFirst().period();
+            assertThat(period.state()).as(range).isEqualTo("PROPOSED");
+            assertThat(period.alternatives().getFirst().end().year()).as(range).isEqualTo(2001);
+        }
+    }
+
+    @Test
+    void fromToColonRangeUnchangedInV33() throws Exception {
+        var text =
+                "Work Experience\nFrom: Mar-1999 To: Jun-2001\nCompany: MAU RETAIL\nPosition: Sales Executive";
+        assertThat(parse("3.3", text).experiences())
+                .noneMatch(
+                        row ->
+                                row.period().alternatives().stream()
+                                        .anyMatch(a -> a.end() != null && a.end().year() == 2001));
+    }
+
     private static PersonalInfoDefinition definition(String version) throws Exception {
         try (var stream =
                 ExperienceGrammarV35Tests.class.getResourceAsStream(
