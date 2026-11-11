@@ -143,6 +143,24 @@ def remove_container(name):
     command(['rm', '-f', name])
 
 
+def remove_container_if_present(name):
+    """Remove after a failed create; a container that never existed is already clean."""
+    found = command(['ps', '-a', '--filter', 'name=' + name, '--format', '{{.Names}}'])
+    if name in found.decode().split():
+        remove_container(name)
+
+
+def remove_after_failed_create(name, created, error):
+    """Absence proves a clean failure only when create itself exited non-zero.
+
+    A timeout may leave the daemon still creating the container, so stay conservative.
+    """
+    if not created and isinstance(error, ChildFailure) and error.code == 'INTERNAL_ERROR':
+        remove_container_if_present(name)
+    else:
+        remove_container(name)
+
+
 def create_scope(config, volume=None):
     with docker_session():
         return _create_scope(config, volume)
@@ -198,8 +216,10 @@ def _create_scope(config, volume):
     ]
     if volume:
         args[-4:-4] = ['--mount', f'type=volume,source={volume},target=/request,readonly']
+    created = False
     try:
         command(args)
+        created = True
         info = json.loads(command(['inspect', name]))[0]
         host = info['HostConfig']
         if (
@@ -226,7 +246,7 @@ def _create_scope(config, volume):
         return name
     except Exception as exc:
         try:
-            remove_container(name)
+            remove_after_failed_create(name, created, exc)
         except Exception:
             record_cleanup(None, [name], primary=exc)
         raise
@@ -295,12 +315,19 @@ for p in root.iterdir(): p.chmod(0o444)
     feeder = None
     feed_errors = []
     writer_attempted = False
+    writer_created = False
+    create_error = None
     primary = None
     leftovers = []
     try:
         command(['volume', 'create', '--label', 'cv-compass.scope=ocr-input', *labels, volume])
         writer_attempted = True
-        command(args)
+        try:
+            command(args)
+        except Exception as error:
+            create_error = error
+            raise
+        writer_created = True
         cli, env = docker_cli(['start', '--attach', '--interactive', name])
         process = subprocess.Popen(
             cli,
@@ -348,7 +375,7 @@ for p in root.iterdir(): p.chmod(0o444)
     finally:
         if writer_attempted:
             try:
-                remove_container(name)
+                remove_after_failed_create(name, writer_created, create_error)
             except Exception:
                 leftovers.append(name)
         if process is not None:
