@@ -45,8 +45,9 @@ trap { Restore-ConsoleEncoding; break }
 $MaxCalls = 2
 # Dependency changes need the project owner's approval (AGENT_WORKFLOW: High, stop and ask).
 $DependencyPattern = '(^|/)(build\.gradle[^/]*|settings\.gradle[^/]*|gradle-wrapper\.(properties|jar)|libs\.versions\.toml|package[^/]*\.json|\.npmrc|pyproject\.toml|requirements[^/]*\.(txt|lock|in)|Dockerfile[^/]*)$'
-# Agent rules, agent config, CI and this tooling itself are owner-only (High, stop and ask).
-$ProtectedPattern = '^((.*/)?(AGENTS|CLAUDE)\.md|\.claude/.*|\.codex/.*|\.github/.*|docs/AGENT_[^/]*\.md|scripts/(codex-task\.ps1|full-gate\.ps1|codex-result\.schema\.json))$'
+# Agent rules, agent config, CI, this tooling itself and the locked artifact downloader used by the
+# worker gate are owner-only (High, stop and ask).
+$ProtectedPattern = '^((.*/)?(AGENTS|CLAUDE)\.md|\.claude/.*|\.codex/.*|\.github/.*|docs/AGENT_[^/]*\.md|scripts/(codex-task\.ps1|full-gate\.ps1|codex-result\.schema\.json)|worker/spikes/m6_2_hardening/download_locked\.py)$'
 # Never hand test DB settings or anything credential-like to the Codex process. Codex itself
 # authenticates through its own login (CODEX_HOME/auth.json), not through environment keys.
 $SensitiveEnvPattern = '^(TEST_DB_.*|.*(SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL|PRIVATE_KEY|API_KEY|ACCESS_KEY).*)$'
@@ -251,7 +252,8 @@ if (Test-Path $last) {
         $byResult = ($checks | Group-Object result | ForEach-Object { "$($_.Count) $($_.Name)" }) -join ', '
         $lines.Add("status: $($r.status) | files: $(@($r.files_changed).Count) | checks: $(if ($byResult) { $byResult } else { 'none' }) | open questions: $(@($r.open_questions).Count)")
         $note = ([string]$r.notes) -replace '\s+', ' '
-        if ($note.Length -gt 160) { $note = $note.Substring(0, 160) + '...' }
+        # Never drop part of the notes silently: long notes point at the saved copy that holds them in full.
+        if ($note.Length -gt 400) { $note = $note.Substring(0, 400) + " ... [truncated; full notes in $(Join-Path $outDir "last-$call.txt")]" }
         if ($note) { $lines.Add("notes: $note") }
     } catch {
         $lines.Add('result: last.txt does not match the schema')

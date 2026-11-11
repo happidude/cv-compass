@@ -223,10 +223,15 @@ test("polling stops at deadline, terminal state and unmount without old details"
     return route.fulfill({ json: details[0] });
   });
   await page.goto("/documents/5");
+  // The 5000 ms budget (VITE_POLL_MAX_MS) starts when the detail page mounts, after module loading
+  // and the session request, not when goto resolves; 6000 ms left too little margin on a busy machine.
+  // Stopping itself is still asserted below by the unchanged call count.
   await expect(page.getByText(/Đã dừng tự cập nhật/)).toBeVisible({
-    timeout: 6000,
+    timeout: 10000,
   });
   const calls = pendingCalls;
+  // Polling really ran before the deadline stopped it.
+  expect(calls).toBeGreaterThan(1);
   await page.waitForTimeout(800);
   expect(pendingCalls).toBe(calls);
   await page.goto("/documents/7");

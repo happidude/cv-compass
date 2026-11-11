@@ -14,9 +14,10 @@
   overwritten). Prints at most 15 lines. Exit code is non-zero when any part fails or is blocked.
 
   Worker runs inside WSL distro -WslDistro (default Ubuntu-24.04, whose CPython 3.14.8 lives in the
-  user's ~/.local/bin, so the worker script runs under a login shell) from a script-owned clone
-  (~/cv-compass-gate) detached at the same SHA, with a fresh worker\build\gate-<sha>-<timestamp>
-  output each run. Any python3.14 other than exactly 3.14.8 is BLOCKED with the version found.
+  user's ~/.local/bin, so the worker script runs under a login shell `bash -l`) from a script-owned
+  clone (~/cv-compass-gate) detached at the same SHA. The source (a git bundle of HEAD) and the script
+  are streamed over stdin into the distro's /tmp, so drive automount and wslpath are not
+  needed. Each run gets a fresh worker\build\gate-<sha>-<timestamp> output. Any python3.14 other than exactly 3.14.8 is BLOCKED with the version found.
   Cleanup-only always runs after verify, even when verify fails.
 #>
 [CmdletBinding()]
@@ -122,25 +123,31 @@ if (-not (Test-Path (Join-Path $frontend 'node_modules'))) {
 
 # --- Worker (WSL) --------------------------------------------------------------------------
 $start = Get-Date
-$repoWin = (Split-Path ([System.IO.Path]::GetFullPath((& git -C $root rev-parse --path-format=absolute --git-common-dir).Trim())) -Parent)
 $workerScript = Join-Path $logDir 'worker-gate.sh'
+$workerBundle = Join-Path $logDir 'worker-source.bundle'
 $workerLog = Join-Path $logDir 'worker.log'
-# Script-owned clone: never touches the developer's WSL checkout. Fetch is local (no network);
-# build/verify still need Docker, and the image build downloads pinned artifacts by design.
+# Source and script reach WSL as files streamed over stdin into the distro's own /tmp, so the gate
+# needs neither drive automount (/mnt/e) nor wslpath. Script-owned clone: never touches the
+# developer's WSL checkout. Fetching from the bundle is local (no network); build/verify still need
+# Docker, and the image build downloads pinned artifacts by design.
+$wslTmp = "/tmp/cv-compass-gate-$short-$stamp"
 $sh = @"
 set -u
 umask 022
-SRC=`$(wslpath -a '$($repoWin -replace '\\', '/')')
 GATE=$WslGateClone
+BUNDLE=$wslTmp.bundle
 BUILD=worker/build/gate-$short-$stamp
+trap 'rm -f "`$BUNDLE" $wslTmp.sh' EXIT
 docker info --format 'docker {{.OSType}} cgroup{{.CgroupVersion}}' || { echo 'BLOCKED: docker unavailable'; exit 20; }
 command -v python3.14 >/dev/null || { echo 'BLOCKED: python3.14 missing'; exit 20; }
 PYVER=`$(python3.14 --version 2>&1)
 [ "`$PYVER" = '$ExpectedPython' ] || { echo "BLOCKED: python3.14 is '`$PYVER', need '$ExpectedPython'"; exit 20; }
-if [ ! -d "`$GATE/.git" ]; then git -c safe.directory='*' clone --quiet --no-checkout "`$SRC" "`$GATE" || exit 21; fi
+if [ ! -d "`$GATE/.git" ]; then git init --quiet "`$GATE" || exit 21; fi
 cd "`$GATE" || exit 21
-git -c safe.directory='*' fetch --quiet "`$SRC" '+refs/heads/*:refs/remotes/local/*' || exit 21
-git checkout --quiet --detach $sha || exit 21
+# git 2.43 refuses to verify a bundle outside a repository, so verify only inside the clone.
+git bundle verify --quiet "`$BUNDLE" || { echo 'BLOCKED: source bundle unreadable in WSL'; exit 21; }
+git fetch --quiet "`$BUNDLE" '+HEAD:refs/gate/head' || exit 21
+git checkout --quiet --force --detach $sha || exit 21
 test "`$(git rev-parse HEAD)" = '$sha' || exit 21
 echo "source `$(git rev-parse HEAD) build=`$BUILD"
 python3.14 worker/spikes/m6_2_hardening/build_baseline.py --output "`$BUILD"; b=`$?
@@ -151,15 +158,29 @@ echo "RESULT build=`$b verify=`$v cleanup=`$c"
 [ `$b -eq 0 ] && [ `$v -eq 0 ] && [ `$c -eq 0 ]
 "@
 [System.IO.File]::WriteAllText($workerScript, ($sh -replace "`r`n", "`n"), $utf8)
-$wslScript = $null
+$wslOk = $false
 if (Get-Command wsl.exe -CommandType Application -ErrorAction SilentlyContinue) {
-    $wslScript = (& wsl.exe -d $WslDistro -- wslpath -a ($workerScript -replace '\\', '/'))
-    if ($LASTEXITCODE -ne 0) { $wslScript = $null }
+    # Through cmd.exe: wsl.exe warnings on stderr must not become terminating errors here.
+    $wslOk = (Invoke-Logged $root "wsl.exe -d $WslDistro --exec true" (Join-Path $logDir 'worker-wsl-probe.log')) -eq 0
 }
-if (-not $wslScript) {
+$handoff = 1
+if ($wslOk) {
+    # HEAD in the bundle is exactly $sha; the clone checks the SHA again after fetching.
+    $handoff = Invoke-Logged $root "git bundle create `"$workerBundle`" HEAD" (Join-Path $logDir 'worker-bundle.log')
+    # --exec: wsl.exe passes the arguments as-is, without a shell on either side.
+    if ($handoff -eq 0) { $handoff = Invoke-Logged $root "wsl.exe -d $WslDistro --exec dd status=none of=$wslTmp.bundle < `"$workerBundle`"" (Join-Path $logDir 'worker-copy-bundle.log') }
+    if ($handoff -eq 0) { $handoff = Invoke-Logged $root "wsl.exe -d $WslDistro --exec dd status=none of=$wslTmp.sh < `"$workerScript`"" (Join-Path $logDir 'worker-copy-script.log') }
+    Remove-Item -LiteralPath $workerBundle -Force -ErrorAction SilentlyContinue
+    # The script's EXIT trap removes both files once bash runs; a failed handoff never reaches it.
+    if ($handoff -ne 0) { [void](Invoke-Logged $root "wsl.exe -d $WslDistro --exec rm -f $wslTmp.bundle $wslTmp.sh" (Join-Path $logDir 'worker-cleanup.log')) }
+}
+if (-not $wslOk) {
     Add-Result 'worker' 'BLOCKED' "WSL distro $WslDistro unavailable" $start
+} elseif ($handoff -ne 0) {
+    Add-Result 'worker' 'BLOCKED' "could not hand source/script to WSL (exit=$handoff, see worker-*.log)" $start
 } else {
-    $code = Invoke-Logged $root "wsl.exe -d $WslDistro -- bash -l `"$($wslScript.Trim())`"" $workerLog
+    # Login shell (-l) puts the user's ~/.local/bin CPython 3.14.8 on PATH.
+    $code = Invoke-Logged $root "wsl.exe -d $WslDistro --exec bash -l $wslTmp.sh" $workerLog
     $summary = @([System.IO.File]::ReadAllLines($workerLog, $utf8) | Where-Object { $_ -match '^(RESULT|BLOCKED)' } | Select-Object -Last 1)
     $detail = if ($summary.Count) { $summary[0] } else { "exit=$code" }
     $status = if ($code -eq 0) { 'PASS' } elseif ($code -eq 20 -or $code -eq 21) { 'BLOCKED' } else { 'FAIL' }
