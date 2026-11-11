@@ -15,9 +15,9 @@ export function PdfCanvas({
   onPage: (page: number) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<
+    "loading" | "ready" | "error" | "out-of-range"
+  >("loading");
   const [pages, setPages] = useState(0);
   const [text, setText] = useState("");
   useEffect(() => {
@@ -45,6 +45,11 @@ export function PdfCanvas({
         });
         const document = await loading.promise;
         if (cancelled) return;
+        if (page < 1 || page > document.numPages) {
+          setPages(document.numPages);
+          setStatus("out-of-range");
+          return;
+        }
         const selected = await document.getPage(page);
         const target = canvas.current;
         if (!target || cancelled) return;
@@ -100,13 +105,18 @@ export function PdfCanvas({
           Không thể hiển thị trang PDF này. Thử tải lại hoặc mở/tải PDF gốc.
         </p>
       )}
-      {status === "ready" && (
+      {status === "out-of-range" && (
+        <p role="alert" className="notice notice--bad">
+          Trang {page} không có trong PDF này ({pages} trang).
+        </p>
+      )}
+      {(status === "ready" || status === "out-of-range") && (
         <div className="pdf-pager">
           <Button
             variant="secondary"
             size="sm"
             disabled={page <= 1}
-            onClick={() => onPage(page - 1)}
+            onClick={() => onPage(Math.min(page - 1, pages))}
           >
             <ChevronLeft size={14} aria-hidden="true" />
             Trang PDF trước
@@ -130,7 +140,7 @@ export function PdfCanvas({
           ref={canvas}
           aria-label={`PDF tài liệu ${documentId}, trang ${page}`}
           role="img"
-          hidden={status === "error"}
+          hidden={status === "error" || status === "out-of-range"}
         />
       </div>
       {status === "ready" && (
