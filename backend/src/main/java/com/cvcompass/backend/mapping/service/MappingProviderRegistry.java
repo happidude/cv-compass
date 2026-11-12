@@ -3,6 +3,7 @@ package com.cvcompass.backend.mapping.service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 final class MappingProviderRegistry {
@@ -23,7 +24,8 @@ final class MappingProviderRegistry {
     }
 
     MappingProvider require(String version) {
-        var provider = version == null ? null : providers.get(version);
+        Objects.requireNonNull(version);
+        var provider = providers.get(version);
         if (provider == null) throw new IllegalArgumentException("Unsupported mapping engine");
         return provider;
     }
