@@ -1,6 +1,7 @@
-"""Provider boundary; L1a has no network implementations."""
+"""Synthetic and local provider implementations."""
 
 from .base import LlmProvider, ProviderError
 from .fake import FakeProvider
+from .ollama import OllamaProvider
 
-__all__ = ['FakeProvider', 'LlmProvider', 'ProviderError']
+__all__ = ['FakeProvider', 'LlmProvider', 'OllamaProvider', 'ProviderError']
