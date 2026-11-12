@@ -29,7 +29,8 @@ của HEAD) và script được đẩy qua stdin vào `/tmp` của distro, nên 
 `python3.14 --version` khác 3.14.8 thì worker BLOCKED kèm phiên bản thấy được.
 `llm-worker/` (Python thuần thư viện chuẩn) chạy cùng distro trên bản sao `llm-worker/` của HEAD trong `/tmp`
 (git archive qua stdin): `unittest` với CPython 3.14.8, cộng `ruff check` + `ruff format --check` nếu máy có ruff;
-không có ruff thì ghi `ruff=NOT_VERIFIED` (không cài). HEAD chưa có `llm-worker/` thì bước này là SKIP, không làm hỏng gate.
+không có ruff thì có dòng riêng `llm-worker-ruff NOT_VERIFIED` và dòng tổng ghi `(NOT_VERIFIED: ...)` (không cài,
+không tính FAIL). HEAD chưa có `llm-worker/` thì bước này là SKIP, không làm hỏng gate.
 Log ở `build/gate/<sha>/<timestamp>/`, in ≤ 15 dòng; exit ≠ 0 khi có phần FAIL/BLOCKED hoặc tree bẩn
 (kể cả file untracked chưa ignore). `-JavaHome` mặc định `$env:JAVA_HOME`, trống thì dùng JDK 25 của máy dev;
 chỉ áp cho tiến trình Gradle con. `TEST_DB_URL`/`TEST_DB_USERNAME`/`TEST_DB_PASSWORD` chỉ đọc từ môi trường;

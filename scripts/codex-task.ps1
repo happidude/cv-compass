@@ -95,10 +95,13 @@ $RoleDefaults = @{
     code = @{ Model = 'gpt-6.1-sol'; Effort = 'high' }
     gate = @{ Model = 'gpt-6.1-sol'; Effort = 'low' }
 }
+# ValidateSet is case-insensitive; Codex ids and effort names are lower-case.
+$Role = $Role.ToLowerInvariant()
 if (-not $Model) { $Model = $RoleDefaults[$Role].Model }
 if (-not $ReasoningEffort) { $ReasoningEffort = $RoleDefaults[$Role].Effort }
-# The id is spliced into a TOML -c value, so only plain model slugs are accepted.
-if ($Model -notmatch '^[a-z0-9][a-z0-9._-]{0,63}$') { Fail 'model must be a plain id such as gpt-6.1-sol' }
+$ReasoningEffort = $ReasoningEffort.ToLowerInvariant()
+# The id is spliced into a TOML -c value, so only plain lower-case model slugs are accepted.
+if ($Model -cnotmatch '^[a-z0-9][a-z0-9._-]{0,63}$') { Fail 'model must be a plain lower-case id such as gpt-6.1-sol' }
 if ($TaskId -notmatch '^[a-z0-9][a-z0-9-]{0,63}$') { Fail 'task-id must match ^[a-z0-9][a-z0-9-]{0,63}$' }
 $isResume = [bool]$Resume
 if ($isResume) {

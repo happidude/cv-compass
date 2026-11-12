@@ -103,7 +103,8 @@ không sửa được chính script/guard đang kiểm nó.
 - Codex được chạy unit test Python thuần (vd. `llm-worker/`, `worker/` phần không cần Docker) bằng
   `$env:PYTHONPATH='src'; py -3.14 -m unittest discover -s tests` để phản hồi nhanh. `py -3.14` trên Windows
   chỉ là kiểm nhanh; môi trường có giá trị quyết định là CPython 3.14.8 trong WSL `Ubuntu-24.04`
-  (full gate/verifier). Sandbox không thấy Python thì ghi `NOT_RUN` vào `open_questions`, không cài gì.
+  (full gate/verifier). Sandbox không thấy Python thì ghi check đó trong `checks_run` với `result: NOT_RUN`
+  và lý do ở `notes`, không cài gì (12/11/2026 sandbox báo "No installed Python found").
   Quyền này không nới quy tắc khác: vẫn cấm thêm/xóa/nâng dependency và sửa path bảo vệ (bên dưới).
 - Tối đa **2 lần gọi/task** (lần đầu + 1 resume theo session id, không `--last`); script chặn lần thứ 3.
   Vẫn chưa đạt thì BLOCKED, giữ bằng chứng và hỏi chủ dự án.

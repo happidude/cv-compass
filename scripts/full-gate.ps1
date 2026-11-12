@@ -23,8 +23,8 @@
 
   llm-worker/ (stdlib-only Python) runs in the same distro on a /tmp copy of HEAD's llm-worker/
   (git archive streamed over stdin): unittest under CPython 3.14.8, plus ruff check/format when ruff
-  is installed (otherwise reported as ruff=NOT_VERIFIED). When llm-worker/ is not in HEAD the step is
-  SKIP and does not fail the gate.
+  is installed (otherwise an llm-worker-ruff NOT_VERIFIED row that does not fail the gate).
+  When llm-worker/ is not in HEAD the step is SKIP and does not fail the gate.
 #>
 [CmdletBinding()]
 param(
@@ -196,8 +196,12 @@ if (-not $wslOk) {
 # --- LLM worker (WSL) ----------------------------------------------------------------------
 $start = Get-Date
 # Judge HEAD, not the working tree, so the evidence matches the SHA in the summary.
-$hasLlm = @(& git -C $root ls-tree --name-only HEAD llm-worker).Count -gt 0
-if (-not $hasLlm) {
+$llmTree = @(& git -C $root ls-tree --name-only HEAD llm-worker)
+$llmTreeOk = $LASTEXITCODE -eq 0
+if (-not $llmTreeOk) {
+    # A git failure must not look like "component absent".
+    Add-Result 'llm-worker' 'BLOCKED' 'git ls-tree failed; cannot tell whether llm-worker/ is in HEAD' $start
+} elseif ($llmTree.Count -eq 0) {
     Add-Result 'llm-worker' 'SKIP' 'llm-worker/ not in HEAD' $start
 } elseif (-not $wslOk) {
     Add-Result 'llm-worker' 'BLOCKED' "WSL distro $WslDistro unavailable" $start
@@ -227,7 +231,7 @@ if [ -n "`$RUFF" ]; then
   echo "RESULT unittest=`$u ruff=`$r"
 else
   r=0
-  echo "RESULT unittest=`$u ruff=NOT_VERIFIED (not installed)"
+  echo "RESULT unittest=`$u ruff=NOT_VERIFIED"
 fi
 [ `$u -eq 0 ] && [ `$r -eq 0 ]
 "@
@@ -245,17 +249,25 @@ fi
         $detail = if ($summary.Count) { $summary[0] } else { "exit=$code" }
         $status = if ($code -eq 0) { 'PASS' } elseif ($code -eq 20 -or $code -eq 21) { 'BLOCKED' } else { 'FAIL' }
         Add-Result 'llm-worker' $status $detail $start
+        # Own row so a lint/format check that never ran is visible in the Status column, not only in detail.
+        if ($detail -match 'ruff=NOT_VERIFIED') {
+            Add-Result 'llm-worker-ruff' 'NOT_VERIFIED' 'ruff not installed in WSL; lint/format not run' $start
+        }
     }
 }
 
 # --- Summary -------------------------------------------------------------------------------
 # SKIP means the component does not exist at this SHA (e.g. llm-worker/ before it is merged).
-$failed = @($results | Where-Object { $_.Status -notin @('PASS', 'SKIP') }).Count
+# NOT_VERIFIED is an optional tool that is missing (ruff); it never fails the gate but is named
+# in the overall line so the result is not reported as a plain PASS.
+$failed = @($results | Where-Object { $_.Status -notin @('PASS', 'SKIP', 'NOT_VERIFIED') }).Count
+$unverified = @($results | Where-Object { $_.Status -eq 'NOT_VERIFIED' } | ForEach-Object { $_.Name })
 $overall = if ($failed -eq 0 -and -not $dirty) { 'PASS' } else { 'FAIL' }
+if ($unverified.Count -gt 0) { $overall += " (NOT_VERIFIED: $($unverified -join ', '))" }
 $out = New-Object System.Collections.Generic.List[string]
 $out.Add("full-gate $overall source=$sha$(if ($dirty) { ' DIRTY (changes or untracked files not in HEAD)' })")
 foreach ($r in $results) { $out.Add(('{0,-17} {1,-8} {2,5}s  {3}' -f $r.Name, $r.Status, $r.Secs, $r.Detail)) }
 $out.Add("logs: $logDir")
 $out | Select-Object -First 15 | ForEach-Object { Write-Output $_ }
 [Console]::OutputEncoding = $prevConsoleEncoding
-if ($overall -eq 'PASS') { exit 0 } else { exit 1 }
+if ($failed -eq 0 -and -not $dirty) { exit 0 } else { exit 1 }
