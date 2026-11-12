@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Full local gate on the current checkout's HEAD: backend, frontend and worker (docs/VERIFICATION.md).
+  Full local gate on the current checkout's HEAD: backend, frontend, worker and llm-worker
+  (docs/VERIFICATION.md).
 
 .DESCRIPTION
   Usage: scripts\full-gate.ps1 [-JavaHome <jdk-dir>]
@@ -19,6 +20,11 @@
   are streamed over stdin into the distro's /tmp, so drive automount and wslpath are not
   needed. Each run gets a fresh worker\build\gate-<sha>-<timestamp> output. Any python3.14 other than exactly 3.14.8 is BLOCKED with the version found.
   Cleanup-only always runs after verify, even when verify fails.
+
+  llm-worker/ (stdlib-only Python) runs in the same distro on a /tmp copy of HEAD's llm-worker/
+  (git archive streamed over stdin): unittest under CPython 3.14.8, plus ruff check/format when ruff
+  is installed (otherwise reported as ruff=NOT_VERIFIED). When llm-worker/ is not in HEAD the step is
+  SKIP and does not fail the gate.
 #>
 [CmdletBinding()]
 param(
@@ -187,8 +193,64 @@ if (-not $wslOk) {
     Add-Result 'worker' $status $detail $start
 }
 
+# --- LLM worker (WSL) ----------------------------------------------------------------------
+$start = Get-Date
+# Judge HEAD, not the working tree, so the evidence matches the SHA in the summary.
+$hasLlm = @(& git -C $root ls-tree --name-only HEAD llm-worker).Count -gt 0
+if (-not $hasLlm) {
+    Add-Result 'llm-worker' 'SKIP' 'llm-worker/ not in HEAD' $start
+} elseif (-not $wslOk) {
+    Add-Result 'llm-worker' 'BLOCKED' "WSL distro $WslDistro unavailable" $start
+} else {
+    $llmTmp = "/tmp/cv-compass-llm-gate-$short-$stamp"
+    $llmArchive = Join-Path $logDir 'llm-worker-source.tar'
+    $llmScript = Join-Path $logDir 'llm-worker-gate.sh'
+    $llmLog = Join-Path $logDir 'llm-worker.log'
+    # Stdlib-only package: unit tests run on a native-Linux copy of HEAD's llm-worker/ (no Docker,
+    # no network). Ruff is optional on this machine; a missing ruff is reported, never installed.
+    $llmSh = @"
+set -u
+umask 022
+DIR=$llmTmp
+trap 'rm -rf "`$DIR" "`$DIR.tar" "`$DIR.sh"' EXIT
+command -v python3.14 >/dev/null || { echo 'BLOCKED: python3.14 missing'; exit 20; }
+PYVER=`$(python3.14 --version 2>&1)
+[ "`$PYVER" = '$ExpectedPython' ] || { echo "BLOCKED: python3.14 is '`$PYVER', need '$ExpectedPython'"; exit 20; }
+mkdir -p "`$DIR" && tar -xf "`$DIR.tar" -C "`$DIR" || { echo 'BLOCKED: source archive unreadable in WSL'; exit 21; }
+cd "`$DIR/llm-worker" || exit 21
+PYTHONPATH=src python3.14 -m unittest discover -s tests; u=`$?
+if python3.14 -m ruff --version >/dev/null 2>&1; then RUFF='python3.14 -m ruff'
+elif command -v ruff >/dev/null; then RUFF=ruff
+else RUFF=''; fi
+if [ -n "`$RUFF" ]; then
+  `$RUFF check . && `$RUFF format --check .; r=`$?
+  echo "RESULT unittest=`$u ruff=`$r"
+else
+  r=0
+  echo "RESULT unittest=`$u ruff=NOT_VERIFIED (not installed)"
+fi
+[ `$u -eq 0 ] && [ `$r -eq 0 ]
+"@
+    [System.IO.File]::WriteAllText($llmScript, ($llmSh -replace "`r`n", "`n"), $utf8)
+    $handoff = Invoke-Logged $root "git archive --format=tar -o `"$llmArchive`" HEAD llm-worker" (Join-Path $logDir 'llm-worker-archive.log')
+    if ($handoff -eq 0) { $handoff = Invoke-Logged $root "wsl.exe -d $WslDistro --exec dd status=none of=$llmTmp.tar < `"$llmArchive`"" (Join-Path $logDir 'llm-worker-copy-archive.log') }
+    if ($handoff -eq 0) { $handoff = Invoke-Logged $root "wsl.exe -d $WslDistro --exec dd status=none of=$llmTmp.sh < `"$llmScript`"" (Join-Path $logDir 'llm-worker-copy-script.log') }
+    Remove-Item -LiteralPath $llmArchive -Force -ErrorAction SilentlyContinue
+    if ($handoff -ne 0) {
+        [void](Invoke-Logged $root "wsl.exe -d $WslDistro --exec rm -f $llmTmp.tar $llmTmp.sh" (Join-Path $logDir 'llm-worker-cleanup.log'))
+        Add-Result 'llm-worker' 'BLOCKED' "could not hand source/script to WSL (exit=$handoff, see llm-worker-*.log)" $start
+    } else {
+        $code = Invoke-Logged $root "wsl.exe -d $WslDistro --exec bash -l $llmTmp.sh" $llmLog
+        $summary = @([System.IO.File]::ReadAllLines($llmLog, $utf8) | Where-Object { $_ -match '^(RESULT|BLOCKED)' } | Select-Object -Last 1)
+        $detail = if ($summary.Count) { $summary[0] } else { "exit=$code" }
+        $status = if ($code -eq 0) { 'PASS' } elseif ($code -eq 20 -or $code -eq 21) { 'BLOCKED' } else { 'FAIL' }
+        Add-Result 'llm-worker' $status $detail $start
+    }
+}
+
 # --- Summary -------------------------------------------------------------------------------
-$failed = @($results | Where-Object { $_.Status -ne 'PASS' }).Count
+# SKIP means the component does not exist at this SHA (e.g. llm-worker/ before it is merged).
+$failed = @($results | Where-Object { $_.Status -notin @('PASS', 'SKIP') }).Count
 $overall = if ($failed -eq 0 -and -not $dirty) { 'PASS' } else { 'FAIL' }
 $out = New-Object System.Collections.Generic.List[string]
 $out.Add("full-gate $overall source=$sha$(if ($dirty) { ' DIRTY (changes or untracked files not in HEAD)' })")

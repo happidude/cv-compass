@@ -13,6 +13,12 @@
 
   Run it from the main checkout (E:\cv-compass), never from the task worktree it guards.
 
+  Model selection (ids from `codex debug models`, codex-cli 0.164.0, owner-approved 2026-11-12):
+    -Role code (default)  -> model gpt-6.1-sol, reasoning effort high  ("GPT-6.1 Sol High")
+    -Role gate            -> model gpt-6.1-sol, reasoning effort low   ("GPT-6.1 Sol Light")
+  -Model / -ReasoningEffort override the role default. -DryRun validates the input and prints the
+  resolved model, effort and Codex command line without running Codex or recording any call state.
+
   Exit codes: 0 ok, 1 usage/run/parse failure, 2 sandbox mismatch,
   3 dependency or protected files touched.
 #>
@@ -22,7 +28,11 @@ param(
     [Parameter(Mandatory = $true, Position = 1)][string]$BriefFile,
     [string]$Resume,
     [Parameter(Position = 2)][string]$FollowupFile,
-    [int]$TimeoutMinutes = 60
+    [int]$TimeoutMinutes = 60,
+    [ValidateSet('code', 'gate')][string]$Role = 'code',
+    [string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
@@ -81,6 +91,14 @@ function Read-Utf8([string]$path) {
 }
 
 # --- Validate input -------------------------------------------------------------------------
+$RoleDefaults = @{
+    code = @{ Model = 'gpt-6.1-sol'; Effort = 'high' }
+    gate = @{ Model = 'gpt-6.1-sol'; Effort = 'low' }
+}
+if (-not $Model) { $Model = $RoleDefaults[$Role].Model }
+if (-not $ReasoningEffort) { $ReasoningEffort = $RoleDefaults[$Role].Effort }
+# The id is spliced into a TOML -c value, so only plain model slugs are accepted.
+if ($Model -notmatch '^[a-z0-9][a-z0-9._-]{0,63}$') { Fail 'model must be a plain id such as gpt-6.1-sol' }
 if ($TaskId -notmatch '^[a-z0-9][a-z0-9-]{0,63}$') { Fail 'task-id must match ^[a-z0-9][a-z0-9-]{0,63}$' }
 $isResume = [bool]$Resume
 if ($isResume) {
@@ -112,7 +130,7 @@ if ((Test-Path (Join-Path $worktree 'frontend\package.json')) -and
 
 $schema = Join-Path $PSScriptRoot 'codex-result.schema.json'
 $outDir = Join-Path $mainRoot "build\codex\$TaskId"
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
 $sessionFile = Join-Path $outDir 'session-id.txt'
 $previousCalls = @(Get-ChildItem -LiteralPath $outDir -Filter 'events-*.jsonl' -ErrorAction SilentlyContinue).Count
 if ($previousCalls -ge $MaxCalls) { Fail "call limit reached ($MaxCalls per task)" }
@@ -141,7 +159,7 @@ if ($baseSha -notmatch '^[0-9a-f]{40}$') { Fail 'recorded base SHA is malformed'
 # --verify --quiet reports a missing commit through the exit code only, never on stderr.
 $null = & git -C $worktree rev-parse --verify --quiet "$baseSha^{commit}"
 if ($LASTEXITCODE -ne 0) { Fail 'recorded base SHA is not a commit in the worktree' }
-if (-not $isResume) { [System.IO.File]::WriteAllText($baseFile, $baseSha, $utf8) }
+if (-not $isResume -and -not $DryRun) { [System.IO.File]::WriteAllText($baseFile, $baseSha, $utf8) }
 
 $codex = (Get-Command codex.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1)
 if (-not $codex) { Fail 'codex.exe not found on PATH' }
@@ -150,7 +168,8 @@ if (-not $codex) { Fail 'codex.exe not found on PATH' }
 $shared = @(
     '--ignore-user-config',
     '-c', 'windows.sandbox="elevated"',
-    '-c', 'model_reasoning_effort="medium"',
+    '-c', "model=`"$Model`"",
+    '-c', "model_reasoning_effort=`"$ReasoningEffort`"",
     '-c', 'shell_environment_policy.inherit="core"',
     '-c', 'sandbox_workspace_write.network_access=false',
     '--json',
@@ -164,6 +183,15 @@ if ($isResume) {
     $argv = @('exec') + $shared + @('-s', 'workspace-write', '-C', $worktree, '-')
 }
 $argLine = ($argv | ForEach-Object { ConvertTo-NativeArg $_ }) -join ' '
+
+if ($DryRun) {
+    # No Codex process, no events file and no base SHA are written, so the call budget is untouched.
+    Write-Output "codex-task $TaskId DRY RUN call $call/$MaxCalls ($(if ($isResume) { 'resume' } else { 'initial' }))"
+    Write-Output "role=$Role model=$Model effort=$ReasoningEffort base=$($baseSha.Substring(0, 12))"
+    Write-Output "codex $argLine"
+    Restore-ConsoleEncoding
+    exit 0
+}
 
 # --- Run with a scrubbed environment --------------------------------------------------------
 $removed = @{}
@@ -196,7 +224,7 @@ try {
 # --- Summarise ------------------------------------------------------------------------------
 $lines = New-Object System.Collections.Generic.List[string]
 $mode = if ($isResume) { 'resume' } else { 'initial' }
-$lines.Add("codex-task $TaskId call $call/$MaxCalls ($mode) exit=$exitCode$(if ($timedOut) { ' TIMEOUT' })")
+$lines.Add("codex-task $TaskId call $call/$MaxCalls ($mode) role=$Role model=$Model effort=$ReasoningEffort exit=$exitCode$(if ($timedOut) { ' TIMEOUT' })")
 # Names and values are never printed; only whether TEST_DB_* existed and was withheld.
 $lines.Add("env: withheld $($removed.Count) sensitive var(s); TEST_DB_* $(if ($testDbPresent) { 'present, withheld' } else { 'absent' })")
 $result = 0

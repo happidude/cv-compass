@@ -86,6 +86,9 @@ Primary (Claude) có thể giao phần implementer cho Codex chạy không tươ
 Codex chạy trong worktree riêng `..\cv-compass-wt\<task-id>` (sandbox `workspace-write`, không mạng,
 môi trường `core`, bỏ qua user config); kết quả theo `scripts/codex-result.schema.json`, event/log ở
 `build/codex/<task-id>/` của checkout chính. Script tự kiểm sandbox của turn cuối (kể cả resume), in ≤ 15 dòng.
+Model theo vai (`-Role`, id tra bằng `codex debug models`, chủ dự án chốt 12/11/2026): `code` (mặc định) =
+`gpt-6.1-sol` mức `high`; `gate` = `gpt-6.1-sol` mức `low`. Ghi đè bằng `-Model`/`-ReasoningEffort`;
+`-DryRun` chỉ in model/lệnh, không gọi Codex và không tính vào số lần gọi.
 **Luôn chạy `codex-task.ps1` từ checkout chính `E:\cv-compass`**, không từ worktree task, để Codex
 không sửa được chính script/guard đang kiểm nó.
 
@@ -93,10 +96,15 @@ không sửa được chính script/guard đang kiểm nó.
 | --- | --- | --- |
 | Chuẩn bị | Không | Tạo worktree/branch, chạy `npm ci` trong `frontend` trước khi gọi Codex |
 | Code + test trong path của brief | Có | Không ghi vào worktree khi Codex đang chạy |
-| Check | Chỉ check frontend (không cần mạng/DB/Docker) | `verifier` chạy backend/worker và full gate |
+| Check | Check frontend; unit test Python bằng `py -3.14` (không cần mạng/DB/Docker) | `verifier` chạy backend/worker/llm-worker và full gate |
 | Review | Không | `reviewer` theo mức |
 | Publish | Không commit/push | Commit, push feature branch, Draft PR |
 
+- Codex được chạy unit test Python thuần (vd. `llm-worker/`, `worker/` phần không cần Docker) bằng
+  `$env:PYTHONPATH='src'; py -3.14 -m unittest discover -s tests` để phản hồi nhanh. `py -3.14` trên Windows
+  chỉ là kiểm nhanh; môi trường có giá trị quyết định là CPython 3.14.8 trong WSL `Ubuntu-24.04`
+  (full gate/verifier). Sandbox không thấy Python thì ghi `NOT_RUN` vào `open_questions`, không cài gì.
+  Quyền này không nới quy tắc khác: vẫn cấm thêm/xóa/nâng dependency và sửa path bảo vệ (bên dưới).
 - Tối đa **2 lần gọi/task** (lần đầu + 1 resume theo session id, không `--last`); script chặn lần thứ 3.
   Vẫn chưa đạt thì BLOCKED, giữ bằng chứng và hỏi chủ dự án.
 - Brief/follow-up theo mẫu brief ở trên; không chứa CV thật, PII, secret hay giá trị env.
