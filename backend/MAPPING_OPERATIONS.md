@@ -52,3 +52,45 @@ concurrency and attempts are invariants; selected operating values are propertie
 No OCR protocol limit or production gate is changed.
 
 Foundation verification commands and evidence: [FOUNDATION_CONFIGURATION_REPORT.md](FOUNDATION_CONFIGURATION_REPORT.md).
+
+## Kích hoạt 3.5
+
+Engine `personal-info-mapping/3.5` đã được nối vào runtime (claim, xử lý, publish giống 3.4)
+nhưng **mặc định chưa kích hoạt**: không đổi `CV_MAPPING_ENABLED` hay file cấu hình thì hệ thống
+vẫn chạy như cũ. Việc kích hoạt là thao tác vận hành của con người, không tự động.
+
+Cấu hình cần đặt (property trong `MappingBootstrap`; có thể đặt bằng biến môi trường tương ứng):
+
+| Property | Giá trị |
+| --- | --- |
+| `cv.mapping.enabled` (`CV_MAPPING_ENABLED`) | `true` |
+| `cv.mapping.definition-file` (`CV_MAPPING_DEFINITION_FILE`) | đường dẫn file `personal-info-config-v3.5.json` (bản trong `backend/src/main/resources/mapping/`) |
+| `cv.mapping.revision` (`CV_MAPPING_REVISION`) | `personal-info-grammar-v35-r1` |
+
+Khi khởi động, bootstrap đăng ký và activate config 3.5; việc đổi config active reset cursor và
+bắt đầu quét đầy đủ như mô tả ở trên. Revision đã đăng ký là bất biến: không sửa nội dung file
+mà giữ nguyên revision.
+
+Lưu ý: `cv.mapping.definition-file` là **đường dẫn hệ thống tệp** (`MappingBootstrap` đọc bằng
+`Files.newInputStream`), không phải đường dẫn classpath. Khi chạy từ jar, phải đặt file JSON ra
+ngoài jar (ví dụ sao chép từ `backend/src/main/resources/mapping/`) và trỏ tới đường dẫn đó.
+
+Quay lại 3.4: đặt `cv.mapping.definition-file` về file `personal-info-config-v3.4.json` và
+`cv.mapping.revision` về `personal-info-grammar-v34-r1`, rồi khởi động lại. Kết quả 3.5 đã sinh ra
+không bị xóa hay ghi đè. Job 3.5 đang PENDING lúc rollback vẫn được claim và xử lý bằng 3.5
+(engine đã pin theo job), chỉ job mới enqueue sau rollback dùng 3.4.
+
+Trước khi deploy (việc của con người): kiểm tra có job `ENGINE_VERSION='personal-info-mapping/3.5'`
+đang `PENDING` hay không; có thể đã bị kẹt từ trước vì validate đã chấp nhận 3.5 nhưng chưa có
+đường claim, và sau deploy chúng sẽ được xử lý.
+
+Hệ quả khi kích hoạt và các lưu ý:
+
+- Activate 3.5 đổi config active, nên cursor bị reset và scan chạy full sweep. Scan enqueue job 3.5
+  **mới** cho **toàn bộ** extraction hiện có (ràng buộc unique extraction/config/engine); khối lượng
+  xấp xỉ số extraction hiện có, cần tính tải trước khi bật.
+- Job và kết quả cũ (3.0–3.4) giữ nguyên, không bị replay hay ghi đè.
+- Publish kết quả 3.5 cho ứng viên đã có dữ liệu HR đã sửa/xác nhận không ghi đè dữ liệu đó mà
+  sinh proposal để HR duyệt.
+- Job đang xếp hàng ở 3.4 (hoặc cũ hơn) giữ engine đã pin và vẫn được xử lý bằng đúng engine đó.
+- Job 3.5 chỉ được claim khi `engineCompatibility` của config job khớp engine của job.

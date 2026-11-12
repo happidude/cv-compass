@@ -33,6 +33,7 @@ public class MappingService {
     private final PersonalInfoEngineV32 grammarV32Engine;
     private final PersonalInfoEngineV33 grammarV33Engine;
     private final PersonalInfoEngineV34 grammarV34Engine;
+    private final PersonalInfoEngineV35 grammarV35Engine;
 
     public MappingService(
             MappingRepository repository,
@@ -149,7 +150,6 @@ public class MappingService {
                 new PersonalInfoEngineV34());
     }
 
-    @Autowired
     public MappingService(
             MappingRepository repository,
             OcrExtractionReader inputs,
@@ -163,6 +163,37 @@ public class MappingService {
             PersonalInfoEngineV32 grammarV32Engine,
             PersonalInfoEngineV33 grammarV33Engine,
             PersonalInfoEngineV34 grammarV34Engine) {
+        this(
+                repository,
+                inputs,
+                engine,
+                json,
+                transactions,
+                properties,
+                experienceEngine,
+                personalInfoEngine,
+                grammarEngine,
+                grammarV32Engine,
+                grammarV33Engine,
+                grammarV34Engine,
+                new PersonalInfoEngineV35());
+    }
+
+    @Autowired
+    public MappingService(
+            MappingRepository repository,
+            OcrExtractionReader inputs,
+            MappingEngine engine,
+            ObjectMapper json,
+            PlatformTransactionManager transactions,
+            MappingProperties properties,
+            ExperienceEngine experienceEngine,
+            PersonalInfoEngine personalInfoEngine,
+            PersonalInfoEngineV31 grammarEngine,
+            PersonalInfoEngineV32 grammarV32Engine,
+            PersonalInfoEngineV33 grammarV33Engine,
+            PersonalInfoEngineV34 grammarV34Engine,
+            PersonalInfoEngineV35 grammarV35Engine) {
         this.repository = repository;
         this.inputs = inputs;
         this.engine = engine;
@@ -175,6 +206,7 @@ public class MappingService {
         this.grammarV32Engine = grammarV32Engine;
         this.grammarV33Engine = grammarV33Engine;
         this.grammarV34Engine = grammarV34Engine;
+        this.grammarV35Engine = grammarV35Engine;
     }
 
     public long register(String revision, MappingConfig definition) {
@@ -248,6 +280,7 @@ public class MappingService {
                                     PersonalInfoEngineV32.VERSION,
                                     PersonalInfoEngineV33.VERSION,
                                     PersonalInfoEngineV34.VERSION,
+                                    PersonalInfoEngineV35.VERSION,
                                     properties.getLeaseDuration(),
                                     properties.getHardDeadline());
                     claim.ifPresent(
@@ -292,6 +325,7 @@ public class MappingService {
             case PersonalInfoEngineV32.VERSION -> grammarV32Engine.map(current, input);
             case PersonalInfoEngineV33.VERSION -> grammarV33Engine.map(current, input);
             case PersonalInfoEngineV34.VERSION -> grammarV34Engine.map(current, input);
+            case PersonalInfoEngineV35.VERSION -> grammarV35Engine.map(current, input);
             default -> throw new IllegalArgumentException("Unsupported mapping engine");
         };
     }
