@@ -77,7 +77,7 @@ CLI không cung cấp tùy chọn hay biến môi trường để đổi ranh gi
 
 ```powershell
 $env:PYTHONPATH='src'
-py -3.14 -m cv_compass_llm run --input C:\cv-compass-synthetic\ocr --output C:\cv-compass-synthetic\run-01 --provider ollama --model synthetic-model --base-url http://127.0.0.1:11434 --timeout 120 --max-blocks 20 --limit 10
+py -3.14 -m cv_compass_llm run --input C:\cv-compass-synthetic\ocr --output C:\cv-compass-synthetic\run-01 --limit 10
 py -3.14 -m cv_compass_llm draft-gold --results C:\cv-compass-synthetic\run-01 --output C:\cv-compass-synthetic\gold
 py -3.14 -m cv_compass_llm compare --results C:\cv-compass-synthetic\run-01 --gold C:\cv-compass-synthetic\gold --json
 ```
@@ -134,3 +134,44 @@ Không có `--json` thì in từng chỉ số; có cờ thì in cùng số liệ
 
 Artifact result/gold chứa giá trị tổng hợp riêng tư của lượt chạy: giữ ngoài Git,
 không đưa vào log hoặc artifact công khai. Giữ nguyên OCR đầu vào khi có lỗi.
+
+## Cấu hình `run`
+
+Sao chép `.env.example` thành `llm-worker/.env`, rồi điền tag model đã chuẩn bị
+vào `CVC_LLM_MODEL`. Ví dụ `run` ở trên dùng provider/model từ file này.
+Provider và model bắt buộc phải được đặt; không có model mặc định.
+Bộ đọc chỉ dùng thư viện chuẩn, không thay đổi `os.environ`.
+
+Mỗi khóa lấy giá trị theo thứ tự **CLI > biến môi trường > file `.env` > mặc định**.
+Giá trị rỗng hoặc chỉ khoảng trắng được coi là chưa đặt. File mặc định được tìm
+từ vị trí package, không phụ thuộc thư mục làm việc. Có thể chọn file khác bằng
+`run --env-file PATH`. File mặc định không tồn tại được bỏ qua; file chọn tường minh
+không tồn tại trả `ENV_FILE_NOT_FOUND`.
+
+| Biến | Tham số CLI | Mặc định / giới hạn |
+| --- | --- | --- |
+| `CVC_LLM_PROVIDER` | `--provider` | Bắt buộc, chỉ `ollama` |
+| `CVC_LLM_MODEL` | `--model` | Bắt buộc, tag model đã chuẩn bị |
+| `CVC_LLM_BASE_URL` | `--base-url` | `http://127.0.0.1:11434`, chỉ HTTP loopback như trên |
+| `CVC_LLM_TIMEOUT_S` | `--timeout` | 120, số hữu hạn lớn hơn 0 |
+| `CVC_LLM_MAX_BLOCKS` | `--max-blocks` | 20, số nguyên từ 0 |
+| `CVC_LLM_TEMPERATURE` | `--temperature` | 0, số hữu hạn từ 0 đến 2 |
+| `CVC_LLM_THINK` | `--think {true,false}` | false; file/môi trường không phân biệt hoa thường |
+| `CVC_LLM_NUM_CTX` | `--num-ctx` | Không gửi nếu chưa đặt; số nguyên từ 1 đến 1048576 |
+
+File `.env` phải là UTF-8 strict, tối đa 64 KiB. Dòng trống và dòng bắt đầu bằng
+`#` được bỏ qua; dòng còn lại có dạng `KEY=VALUE`, bỏ khoảng trắng ở hai đầu.
+Value có thể được bao bởi một cặp nháy đơn hoặc kép; không nội suy biến hay xử lý
+escape/comment cuối dòng. Khóa không thuộc `CVC_LLM_*` được bỏ qua sau khi kiểm
+cú pháp; khóa `CVC_LLM_*` không biết hoặc lặp bị từ chối để tránh cấu hình mơ hồ.
+File sai cú pháp, UTF-8, kích thước hoặc không đọc được trả `INVALID_ENV_FILE`.
+File vẫn được kiểm tra khi CLI đã cung cấp đủ giá trị. `.env` được Git bỏ qua;
+chỉ `.env.example` được track, không ghi bí mật hoặc nội dung CV vào cấu hình.
+
+Thiếu provider/model trả `MISSING_CONFIG`; provider không hợp lệ trả
+`INVALID_PROVIDER`. Giá trị sai trả mã tương ứng `INVALID_TIMEOUT`,
+`INVALID_MAX_BLOCKS`, `INVALID_TEMPERATURE`, `INVALID_THINK`, `INVALID_NUM_CTX`.
+Base URL không hợp lệ trả `OLLAMA_HOST_NOT_LOCAL`. Sai cú pháp CLI (kể cả
+`--think` ngoài hai lựa chọn) trả `INVALID_ARGUMENTS`. Lỗi chỉ in mã cố định,
+không in giá trị, tên khóa lạ, nội dung file hay đường dẫn; mã thoát là 2.
+`draft-gold` và `compare` không đọc cấu hình này.

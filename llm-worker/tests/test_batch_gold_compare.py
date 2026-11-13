@@ -56,6 +56,15 @@ class DirectoryTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith('CVC_LLM_')}
+        self.environment = patch.dict(os.environ, environment, clear=True)
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+        self.env_file = patch('cv_compass_llm.config.default_env_file',
+                              return_value=self.root / '.env')
+        self.env_file.start()
+        self.addCleanup(self.env_file.stop)
         self.source = self.root / 'input'
         self.source.mkdir()
         self.output = self.root / 'output'
@@ -201,15 +210,19 @@ class BatchTests(DirectoryTests):
     def test_cli_diagnostics_never_echo_arguments(self) -> None:
         """Keep arbitrary argument values and filesystem paths out of diagnostics."""
         for argv in (['run', '--provider', 'PRIVATE_ARGUMENT_MARKER'],
-                     ['PRIVATE_COMMAND_MARKER'],
-                     ['run', '--input', str(self.source), '--output', str(self.output),
-                      '--provider', 'ollama', '--model', 'synthetic', '--timeout', 'PRIVATE']):
+                     ['PRIVATE_COMMAND_MARKER']):
             out, err = io.StringIO(), io.StringIO()
             with redirect_stdout(out), redirect_stderr(err):
                 with self.assertRaises(SystemExit) as caught:
                     main(argv)
             self.assertEqual(caught.exception.code, 2)
             self.assertEqual(out.getvalue() + err.getvalue(), 'INVALID_ARGUMENTS\n')
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(['run', '--input', str(self.source), '--output', str(self.output),
+                         '--provider', 'ollama', '--model', 'synthetic', '--timeout', 'PRIVATE'])
+        self.assertEqual(code, 2)
+        self.assertEqual(out.getvalue() + err.getvalue(), 'INVALID_TIMEOUT\n')
         out = io.StringIO()
         with redirect_stdout(out):
             code = main(['run', '--input', str(self.source), '--output', str(self.output),
@@ -395,6 +408,21 @@ class CompareTests(DirectoryTests):
                 markers.add(path.name)
                 markers.add(path.name.split('.')[0])
                 collect_values(read(path))
+        markers.difference_update({
+            'fullName', 'gender', 'location', 'dateOfBirth', 'title', 'company', 'start',
+            'end', 'ongoing', 'personal', 'experiences', 'status', 'CONFIRMED', 'DRAFT',
+        })
+        self.assertTrue({
+            'MARKÉR_NAME', '  marke\u0301r_name\t', 'FEMALE', 'OTHER', 'CITY_MARKER',
+            '\n city_marker   ', 'MISSING_NAME_MARKER', '2000', '2001',
+            'zq-marker-title-7', 'zq-marker-company-7', 'zq-marker-title-8',
+            'zq-marker-company-8', '  ZQ-MARKER-TITLE-7\t', 'ZQ-MARKER-COMPANY-7',
+            'WRONG_ORG_MARKER', 'EXTRA_ROLE_MARKER', 'EXTRA_ORG_MARKER',
+            '2019', '2020', '2021', '2022', 'EVIDENCE_MARKER',
+            'EXPERIENCE_EVIDENCE_MARKER', 'SYNTHETIC_ISSUE',
+            'zq-marker-document-7.result.json', 'zq-marker-document-7',
+            str(self.source), str(self.output),
+        }.issubset(markers))
         for flag in ([], ['--json']):
             out, err = io.StringIO(), io.StringIO()
             with redirect_stdout(out), redirect_stderr(err):

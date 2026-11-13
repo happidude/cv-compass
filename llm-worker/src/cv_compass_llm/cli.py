@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 from collections import Counter
 from pathlib import Path
 from time import perf_counter
@@ -9,6 +10,7 @@ from typing import Literal
 
 from .batch_io import input_directory, prepare_output, write_json
 from .compare import compare
+from .config import load_config
 from .gold import draft_gold
 from .ocr_input import load_document
 from .pipeline import extract
@@ -23,6 +25,8 @@ INPUT_ERRORS = {
 CLI_ERRORS = {
     'UNSAFE_OUTPUT', 'OUTPUT_NOT_EMPTY', 'INVALID_INPUT_DIRECTORY', 'INVALID_MAX_BLOCKS',
     'INVALID_LIMIT', 'OLLAMA_HOST_NOT_LOCAL', 'INVALID_MODEL', 'INVALID_TIMEOUT',
+    'MISSING_CONFIG', 'INVALID_PROVIDER', 'ENV_FILE_NOT_FOUND', 'INVALID_ENV_FILE',
+    'INVALID_TEMPERATURE', 'INVALID_THINK', 'INVALID_NUM_CTX',
 }
 
 
@@ -82,11 +86,15 @@ def parser() -> argparse.ArgumentParser:
     run = commands.add_parser('run')
     run.add_argument('--input', required=True)
     run.add_argument('--output', required=True)
-    run.add_argument('--provider', required=True, choices=('ollama',))
-    run.add_argument('--model', required=True)
-    run.add_argument('--base-url', default='http://127.0.0.1:11434')
-    run.add_argument('--timeout', type=float, default=120.0)
-    run.add_argument('--max-blocks', type=int, default=20)
+    run.add_argument('--provider')
+    run.add_argument('--model')
+    run.add_argument('--base-url')
+    run.add_argument('--timeout')
+    run.add_argument('--max-blocks')
+    run.add_argument('--temperature')
+    run.add_argument('--think', choices=('true', 'false'))
+    run.add_argument('--num-ctx')
+    run.add_argument('--env-file')
     run.add_argument('--limit', type=int)
     draft = commands.add_parser('draft-gold')
     draft.add_argument('--results', required=True)
@@ -113,9 +121,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.command == 'run':
-            provider = OllamaProvider(args.model, base_url=args.base_url, timeout_s=args.timeout)
+            config = load_config(
+                vars(args), os.environ,
+                Path(args.env_file) if args.env_file is not None else None,
+                env_file_explicit=args.env_file is not None,
+            )
+            provider = OllamaProvider(
+                config.model, base_url=config.base_url, timeout_s=config.timeout_s,
+                temperature=config.temperature, think=config.think, num_ctx=config.num_ctx,
+            )
             summary = run_batch(
-                args.input, args.output, provider, max_blocks=args.max_blocks, limit=args.limit,
+                args.input, args.output, provider, max_blocks=config.max_blocks, limit=args.limit,
             )
             print(f'processed={summary["files"]} ok={summary["ok"]} '
                   f'errors={sum(summary["errors"].values())}')
