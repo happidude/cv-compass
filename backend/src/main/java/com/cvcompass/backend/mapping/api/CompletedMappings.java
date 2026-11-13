@@ -8,7 +8,6 @@ import com.cvcompass.backend.mapping.repository.CompletedMappingRepository;
 import com.cvcompass.backend.mapping.service.ExperienceEngine;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -18,11 +17,6 @@ public class CompletedMappings {
     private final CompletedMappingRepository repository;
     private final ObjectMapper json;
 
-    public CompletedMappings(CompletedMappingRepository repository) {
-        this(repository, new ObjectMapper());
-    }
-
-    @Autowired
     public CompletedMappings(CompletedMappingRepository repository, ObjectMapper json) {
         this.repository = repository;
         this.json = json;

@@ -685,10 +685,42 @@ class PersonalInfoPublicationIntegrationTests {
     @Test
     void malformedSupportedEnvelopeIsSkippedOnceWithoutCreatingCandidate() throws Exception {
         var d = document();
-        long r = result(d, "Full name: Synthetic Person", false);
-        jdbc.update(
-                "UPDATE \"CV_MAPPING_RESULTS\" SET \"RESULT\"=jsonb_set(\"RESULT\", '{experiences}', '\"invalid array\"'::jsonb) WHERE \"ID\"=?",
-                r);
+        long valid = result(d, "Full name: Synthetic Person", false);
+        var source =
+                new com.cvcompass.backend.mapping.repository.CompletedMappingRepository(jdbc)
+                        .read(valid)
+                        .orElseThrow();
+        var definition =
+                (ObjectNode)
+                        json.readTree(
+                                jdbc.queryForObject(
+                                        "SELECT \"DEFINITION\"::text FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                                        String.class,
+                                        source.configId()));
+        definition.put("revision", "personal-" + UUID.randomUUID());
+        var parsed =
+                json.treeToValue(
+                        definition, com.cvcompass.backend.mapping.dto.PersonalInfoDefinition.class);
+        long config = mapping.register(parsed.revision(), parsed);
+        var body = (ObjectNode) json.readTree(source.body());
+        body.put("configId", config).put("configRevision", parsed.revision());
+        body.put("experiences", "invalid array");
+        long job =
+                jdbc.queryForObject(
+                        "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\",\"STATUS\",\"INPUT_SHA256\",\"COMPLETED_AT\",\"ATTEMPTS\") VALUES (?,?,?,'COMPLETED',?,CURRENT_TIMESTAMP,1) RETURNING \"ID\"",
+                        Long.class,
+                        source.extractionId(),
+                        config,
+                        body.path("engineVersion").asString(),
+                        body.path("inputSha256").asString());
+        String resultBody = json.writeValueAsString(body);
+        long r =
+                jdbc.queryForObject(
+                        "INSERT INTO \"CV_MAPPING_RESULTS\" (\"JOB_ID\",\"SCHEMA_VERSION\",\"QUALITY\",\"DIGEST\",\"RESULT\") VALUES (?,3,'NEEDS_REVIEW',?,?::jsonb) RETURNING \"ID\"",
+                        Long.class,
+                        job,
+                        com.cvcompass.backend.mapping.service.MappingDigests.sha256(resultBody),
+                        resultBody);
         assertThat(publication.publish(r)).isTrue();
         assertThat(candidate(d)).isNull();
         assertThat(
