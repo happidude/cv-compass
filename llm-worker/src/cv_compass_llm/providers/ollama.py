@@ -27,6 +27,7 @@ class OllamaProvider:
     def __init__(
         self, model: str, *, base_url: str = 'http://127.0.0.1:11434',
         timeout_s: float = 120.0,
+        temperature: float = 0.0, think: bool = False, num_ctx: int | None = None,
     ) -> None:
         """Validate the local endpoint and timeout for each socket operation."""
         try:
@@ -47,19 +48,31 @@ class OllamaProvider:
         if (isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float))
                 or not math.isfinite(timeout_s) or timeout_s <= 0):
             raise ValueError('INVALID_TIMEOUT')
+        if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
+                or not 0 <= temperature <= 2 or not math.isfinite(temperature)):
+            raise ValueError('INVALID_TEMPERATURE')
+        if type(think) is not bool:
+            raise ValueError('INVALID_THINK')
+        if num_ctx is not None and (type(num_ctx) is not int or not 1 <= num_ctx <= 1048576):
+            raise ValueError('INVALID_NUM_CTX')
         self.model = model
         self.name = 'ollama:' + model
         self.url = urlunsplit((url.scheme, url.netloc, '/api/chat', '', ''))
         self.timeout_s = timeout_s
+        self.temperature = temperature
+        self.think = think
+        self.num_ctx = num_ctx
         self._opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def generate(self, prompt: str, json_schema: dict) -> str:
         """Return bounded chat content or a content-free transport error."""
         payload = {
             'model': self.model, 'messages': [{'role': 'user', 'content': prompt}],
-            'format': json_schema, 'stream': False, 'think': False,
-            'options': {'temperature': 0},
+            'format': json_schema, 'stream': False, 'think': self.think,
+            'options': {'temperature': self.temperature if self.temperature else 0},
         }
+        if self.num_ctx is not None:
+            payload['options']['num_ctx'] = self.num_ctx
         try:
             request = Request(
                 self.url, data=json.dumps(payload).encode('utf-8'),

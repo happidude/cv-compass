@@ -82,6 +82,29 @@ class OllamaTests(unittest.TestCase):
         }):
             self.assertEqual(self.provider().generate('synthetic', {}), 'synthetic response')
 
+    def test_configured_generation_options(self) -> None:
+        """Send explicit generation options including optional context size."""
+        self.provider(temperature=1.25, think=True, num_ctx=4096).generate('synthetic', {})
+        payload = self.server.requests[0][1]
+        self.assertIs(payload['think'], True)
+        self.assertEqual(payload['options'], {'temperature': 1.25, 'num_ctx': 4096})
+
+    def test_generation_option_validation(self) -> None:
+        """Reject wrongly typed and out-of-range options before transport."""
+        for name, invalid, code in (
+            ('temperature', (-1, 2.1, 10 ** 400, float('nan'), float('inf'), True, '0', None),
+             'INVALID_TEMPERATURE'),
+            ('think', ('false', 0, 1, None), 'INVALID_THINK'),
+            ('num_ctx', (0, -1, 1048577, True, 1.0, '1'), 'INVALID_NUM_CTX'),
+        ):
+            for value in invalid:
+                with self.subTest(name=name, value=value):
+                    with self.assertRaisesRegex(ValueError, '^' + code + '$'):
+                        self.provider(**{name: value})
+        for temperature in (0, 2):
+            for num_ctx in (None, 1, 1048576):
+                self.provider(temperature=temperature, think=False, num_ctx=num_ctx)
+
     def test_http_error_has_fixed_code(self) -> None:
         """Discard the HTTP error body instead of exposing its contents."""
         self.server.status, self.server.body = 500, b'PRIVATE_RESPONSE_MARKER'
