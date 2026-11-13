@@ -167,6 +167,33 @@ schema. Đặt `TEST_DB_PASSWORD` trong shell; `TEST_DB_URL` và `TEST_DB_USERNA
 tùy chọn, mặc định dùng kết nối phát triển local hiện có. Không đưa thông tin xác
 thực vào hệ thống quản lý mã nguồn.
 
+### DB test riêng trong Docker (khuyến nghị)
+
+Container `cv-compass-postgres-test` (PostgreSQL 17, chỉ `127.0.0.1:5433`, volume
+`cv-compass-postgres-test-data`) tách hẳn khỏi DB phát triển ở cổng 5432
+([compose](../infra/test-db/compose.yaml)). Từ thư mục gốc repo, trong PowerShell:
+
+```powershell
+.\scripts\test-db.ps1 up      # tạo/khởi động, chờ healthy, kiểm SELECT 1
+.\scripts\test-db.ps1 status  # trạng thái container/volume + SELECT 1
+.\scripts\test-db.ps1 stop    # dừng container, GIỮ dữ liệu
+```
+
+- Lần `up` đầu tiên sinh mật khẩu ngẫu nhiên (32 ký tự hex, bộ sinh số mật mã) và đặt biến môi
+  trường **User** của Windows: `TEST_DB_URL=jdbc:postgresql://127.0.0.1:5433/cv_compass_test`,
+  `TEST_DB_USERNAME=cvcompass_test`, `TEST_DB_PASSWORD`. Các lần sau tái dùng, không sinh lại.
+  Script không bao giờ in mật khẩu.
+- Biến User mới chỉ thấy ở terminal/IDE **mở lại** sau lần `up` đầu (tiến trình đang chạy `up` đã có sẵn).
+- Xem mật khẩu khi cần (chỉ trên máy mình, không dán vào chat/PR/log):
+  `[Environment]::GetEnvironmentVariable('TEST_DB_PASSWORD','User')`.
+- Script không có lệnh xóa dữ liệu. Nếu volume đã tồn tại mà biến User bị mất/đổi, `up` dừng
+  thay vì sinh mật khẩu mới (mật khẩu mới sẽ không khớp dữ liệu đã khởi tạo).
+- Nếu biến User `TEST_DB_*` đã trỏ tới DB khác, `up` dừng; chạy `up -ReplaceExisting` để chủ động
+  chuyển sang container này (giá trị cũ bị ghi đè, không khôi phục được).
+- Nếu ExecutionPolicy chặn script: `powershell -ExecutionPolicy Bypass -File .\scripts\test-db.ps1 up`.
+- Mật khẩu nằm dạng rõ trong registry biến User (`HKCU\Environment`) và `docker inspect` của container;
+  chỉ dùng cho DB test cục bộ, không tái dùng ở nơi khác.
+
 Cài JDK 25 và đặt `JAVA_HOME` trỏ đến thư mục cài đặt bằng công cụ quản lý JDK hoặc
 cơ chế của hệ điều hành. Java toolchain của Gradle nhắm đến Java 25.
 Trong thư mục `backend/`, kiểm tra Java và chạy:
