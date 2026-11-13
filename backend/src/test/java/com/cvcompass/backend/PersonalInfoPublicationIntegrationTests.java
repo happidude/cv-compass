@@ -683,6 +683,30 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     @Test
+    void malformedSupportedEnvelopeIsSkippedOnceWithoutCreatingCandidate() throws Exception {
+        var d = document();
+        long r = result(d, "Full name: Synthetic Person", false);
+        jdbc.update(
+                "UPDATE \"CV_MAPPING_RESULTS\" SET \"RESULT\"=jsonb_set(\"RESULT\", '{experiences}', '\"invalid array\"'::jsonb) WHERE \"ID\"=?",
+                r);
+        assertThat(publication.publish(r)).isTrue();
+        assertThat(candidate(d)).isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                String.class,
+                                r))
+                .isEqualTo("SKIPPED");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                String.class,
+                                r))
+                .isEqualTo("INVALID_MAPPING_ENVELOPE");
+        assertThat(publication.publish(r)).isFalse();
+    }
+
+    @Test
     void skippedPublicationPersistsFiniteReasonWithoutAProfile() throws Exception {
         var d = document();
         long r = result(d, "Gender: Unspecified", false);
