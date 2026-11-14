@@ -87,7 +87,9 @@ Giới hạn body (review L5): lệnh điều khiển (claim/lease/failure) ≤ 
   mỗi chuỗi ≤ 2000 code point; `issues[].code` regex `[A-Z][A-Z0-9_]{0,63}`; evidence của experience chỉ có key cho giá trị khác null.
   Key thừa/thiếu, sai kiểu → 422 `INVALID_RESULT`.
 - Worker **không** gửi configId, revision, extractionId, documentId — backend lấy từ claim đã pin.
-- `llm-worker` hiện xuất 5 key personal; L5 thêm `email`/`phone` = `null` (L1a chưa trích hai field này; backend không tự điền).
+- `llm-worker` xuất 5 key personal từ LLM + contact tất định (`contacts.py`: `email`, `phone`, `url`, có thể nhiều). L5 lấy email/phone
+  **đầu tiên** cho 7 key personal, phần còn lại + `url` đưa vào `other`; không có → `null` (backend không tự điền). (Sửa 14/11: bản trước ghi nhầm
+  là L1a không trích email/phone.)
 
 ## 5. REMOTE verifier (thay "chạy lại process()")
 
