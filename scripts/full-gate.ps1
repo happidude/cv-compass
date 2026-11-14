@@ -99,11 +99,14 @@ if ($missingDb.Count -gt 0) {
     Add-Result 'backend' 'BLOCKED' 'JDK not found at -JavaHome (bin\java.exe missing)' $start
 } else {
     # `set` inside cmd.exe scopes JAVA_HOME to the Gradle child only.
-    $gradle = "set `"JAVA_HOME=$JavaHome`" && .\gradlew.bat check --rerun-tasks --console=plain"
+    # --no-daemon: a freshly started daemon inherits the cmd.exe pipe and keeps it open after the
+    # build, so Invoke-Logged waits until the daemon idles out (seen 2026-11-13). The gate already
+    # uses --rerun-tasks, so a warm daemon buys nothing here.
+    $gradle = "set `"JAVA_HOME=$JavaHome`" && .\gradlew.bat check --rerun-tasks --no-daemon --console=plain"
     $code = Invoke-Logged $backend $gradle (Join-Path $logDir 'backend-check.log')
     $junit = Get-JUnitSummary (Join-Path $backend 'build\test-results\test')
     $jdk = Split-Path $JavaHome -Leaf
-    Add-Result 'backend' $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }) "gradlew check --rerun-tasks exit=$code jdk=$jdk; $junit" $start
+    Add-Result 'backend' $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }) "gradlew check --rerun-tasks --no-daemon exit=$code jdk=$jdk; $junit" $start
 }
 
 # --- Frontend ------------------------------------------------------------------------------
