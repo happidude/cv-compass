@@ -19,6 +19,7 @@ import { ExperienceSummaryNotice } from "./experience-summary";
 import { ExperienceValues, type Evidence } from "./experience";
 import { HistorySection } from "./history";
 import { candidateTitle, firstFilename, stateLabel, stateTone } from "./labels";
+import { mappingEngineLabel } from "./mapping-engine";
 import { PersonalFields, PersonalForm } from "./personal-info";
 import { ProposalsSection } from "./proposals";
 import { useHistory, useProfile, useProposals } from "./queries";
@@ -105,11 +106,13 @@ function CandidateContent({ id }: { id: string }) {
       <ErrorNotice error={query.error} retry={() => void query.refetch()} />
     );
   const p = query.data;
+  const engineLabel = mappingEngineLabel(p.extensions);
   const selected = p.documents.find((d) => d.id === document) ?? p.documents[0];
   return (
     <div className="profile">
       <PageHeader
         title={candidateTitle(id, p.basic.fullName, firstFilename(p.documents))}
+        description={engineLabel}
         meta={
           <>
             <span className="nums">Phiên bản {p.version}</span>
