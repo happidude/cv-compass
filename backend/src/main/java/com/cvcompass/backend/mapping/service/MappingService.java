@@ -210,7 +210,8 @@ public class MappingService {
                                 new InProcessMappingProvider(
                                         PersonalInfoEngineV34.VERSION, grammarV34Engine::map),
                                 new InProcessMappingProvider(
-                                        PersonalInfoEngineV35.VERSION, grammarV35Engine::map)));
+                                        PersonalInfoEngineV35.VERSION, grammarV35Engine::map),
+                                new RemoteMappingProvider()));
     }
 
     public long register(String revision, MappingConfig definition) {
@@ -218,6 +219,9 @@ public class MappingService {
             throw new IllegalArgumentException("Invalid mapping revision");
         }
         definition.validate();
+        if (definition instanceof com.cvcompass.backend.mapping.dto.LlmExtractionDefinition llm
+                && !revision.equals(llm.revision()))
+            throw new IllegalArgumentException("MAPPING_REVISION_MISMATCH");
         if (definition instanceof PersonalInfoDefinition personal
                 && !revision.equals(personal.revision()))
             throw new IllegalArgumentException("MAPPING_REVISION_MISMATCH");

@@ -34,7 +34,10 @@ public final class OperationalLog {
         MAPPING_CLAIMED,
         MAPPING_COMPLETED,
         MAPPING_ATTEMPT_FAILED,
-        MAPPING_SCHEDULER_FAILED
+        MAPPING_SCHEDULER_FAILED,
+        MAPPING_REMOTE_CLAIMED,
+        MAPPING_REMOTE_ACCEPTED,
+        MAPPING_REMOTE_FAILED
     }
 
     private static final Set<String> KEYS =
