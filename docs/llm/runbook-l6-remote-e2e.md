@@ -88,7 +88,7 @@ Revision trên lấy từ [definition 3.5](../../backend/src/main/resources/mapp
 Khởi động lại backend để kích hoạt 3.5; giữ mapping/publication bật nếu tiếp tục dùng 3.5.
 Job LLM còn `PENDING` sẽ không được ai xử lý: worker 3.5 không nhận engine LLM,
 REMOTE tắt nên pull worker không nhận việc. Không xóa hay đổi dữ liệu của các job đó.
-Đóng cửa sổ worker để bỏ token môi trường; lần bật sau sinh cặp token/hash mới.
+Đóng cửa sổ worker để bỏ token môi trường; lần bật sau sinh cặp token/hash mới và **thay** dòng `credential-sha256[0]` cũ (không để lại hash cũ).
 
 ## Giới hạn
 
