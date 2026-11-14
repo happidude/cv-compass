@@ -101,3 +101,4 @@ output model, giá trị trường hay token; `attempt` chỉ là 8 ký tự đ�
 | UI báo "Lỗi contract…" | Mở console trình duyệt: dòng `[contract]` ghi đường dẫn trường bị từ chối và mã lỗi (không có giá trị). Gửi dòng đó khi báo lỗi. |
 | Worker im lặng | Bản clone WSL chưa `git pull`, hoặc mức log quá cao (`CVC_LLM_LOG_LEVEL`). Chạy `check`. |
 | `check` FAIL ở backend | Backend chưa chạy, sai `CVC_LLM_BACKEND_URL`, hoặc WSL không ở chế độ mạng mirrored. |
+| `FAIL backend_token code=…` | `UNAUTHORIZED`: token trong cửa sổ không khớp hash backend; `MAPPING_REMOTE_UNAVAILABLE`: REMOTE đang tắt; `TLS_REQUIRED`: gọi HTTP không qua loopback; `BACKEND_PROBE_REJECTED`: địa chỉ không phải backend CV Compass. |
