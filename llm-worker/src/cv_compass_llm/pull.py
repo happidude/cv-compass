@@ -17,7 +17,12 @@ from .progress import command_logging, endpoint, event, model_name
 from .prompts import PROMPT_VERSION
 from .providers.base import ProviderError
 from .pull_payload import (
-    ENGINE, PERSONAL, PROTOCOL, WORKER_ISSUES, compact_result, input_document,
+    ENGINE,
+    PERSONAL,
+    PROTOCOL,
+    WORKER_ISSUES,
+    compact_result,
+    input_document,
 )
 
 

@@ -3,13 +3,14 @@
 import json
 import unittest
 
+from test_core import block, document, experience, personal, response
+
 from cv_compass_llm import Document, Page, extract
 from cv_compass_llm.evidence import locate
 from cv_compass_llm.json_strict import strict_json
 from cv_compass_llm.providers import FakeProvider, ProviderError
 from cv_compass_llm.segmenter import segment
 from cv_compass_llm.validate import validate_experiences, validate_personal
-from test_core import block, document, experience, personal, response
 
 
 class GenderRegressionTests(unittest.TestCase):

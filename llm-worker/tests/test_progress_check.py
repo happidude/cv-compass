@@ -14,6 +14,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from test_pull import ATTEMPT_ID, NULL_PERSONAL, Backend, backend_server, claim, config
+
 from cv_compass_llm.backend_client import CONTROL_LIMIT, BackendError
 from cv_compass_llm.check import BACKEND_PROBE
 from cv_compass_llm.cli import main
@@ -24,7 +26,6 @@ from cv_compass_llm.providers.base import ProviderError
 from cv_compass_llm.providers.fake import FakeProvider
 from cv_compass_llm.pull import _Attempt, run_pull
 from cv_compass_llm.pull_payload import input_document
-from test_pull import ATTEMPT_ID, NULL_PERSONAL, Backend, backend_server, claim, config
 
 MARKER = 'SENTINEL_PII_7f3a'
 TOKEN = MARKER + '_' + 'x' * 43
