@@ -2,6 +2,8 @@ package com.cvcompass.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.cvcompass.backend.ingestion.dto.OcrAttemptKey;
 import com.cvcompass.backend.ingestion.dto.OcrClaimRequest;
@@ -14,6 +16,8 @@ import com.cvcompass.backend.ingestion.repository.CvProcessingJobRepository;
 import com.cvcompass.backend.ingestion.service.OcrJobService;
 import com.cvcompass.backend.mapping.api.CompletedMappings;
 import com.cvcompass.backend.mapping.config.MappingRemoteProperties;
+import com.cvcompass.backend.mapping.config.MappingWorkerAuthenticationFilter;
+import com.cvcompass.backend.mapping.dto.LlmExtractionDefinition;
 import com.cvcompass.backend.mapping.remote.MappingRemoteException;
 import com.cvcompass.backend.mapping.service.MappingDigests;
 import com.cvcompass.backend.mapping.service.MappingRemoteFixtures;
@@ -21,6 +25,7 @@ import com.cvcompass.backend.mapping.service.MappingRemoteService;
 import com.cvcompass.backend.mapping.service.MappingService;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
@@ -33,18 +38,26 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContextManager;
+import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.NONE,
-        properties = {"cv.ocr.enabled=true", "cv.mapping.remote.enabled=true"})
+        properties = {
+            "cv.ocr.enabled=true",
+            "cv.mapping.remote.enabled=true",
+            "cv.candidate.publication.enabled=false"
+        })
+@AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @ExtendWith(OutputCaptureExtension.class)
 class MappingRemoteIntegrationTests {
@@ -59,6 +72,8 @@ class MappingRemoteIntegrationTests {
     @Autowired ObjectMapper json;
     @Autowired CompletedMappings completed;
     @Autowired MappingRemoteProperties properties;
+    @Autowired MockMvc mvc;
+    @Autowired com.cvcompass.backend.candidate.service.PublicationService publication;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws Exception {
@@ -83,14 +98,20 @@ class MappingRemoteIntegrationTests {
     }
 
     private long seed() {
-        var doc = new CvDocument();
-        doc.setOriginalFilename("synthetic.pdf");
-        doc.setStoragePath(UUID.randomUUID() + ".pdf");
-        doc.setFileSize(1024L);
-        doc.setMimeType("application/pdf");
-        doc.setSha256("a".repeat(64));
-        doc.setStatus(DocumentStatus.PENDING);
-        documents.saveAndFlush(doc);
+        return seed(null, MappingRemoteFixtures.definition());
+    }
+
+    private long seed(CvDocument existing, LlmExtractionDefinition definition) {
+        var doc = existing == null ? new CvDocument() : existing;
+        if (existing == null) {
+            doc.setOriginalFilename("synthetic.pdf");
+            doc.setStoragePath(UUID.randomUUID() + ".pdf");
+            doc.setFileSize(1024L);
+            doc.setMimeType("application/pdf");
+            doc.setSha256("a".repeat(64));
+            doc.setStatus(DocumentStatus.PENDING);
+            documents.saveAndFlush(doc);
+        }
         var job = new CvProcessingJob();
         job.setDocument(doc);
         job.setStatus(JobStatus.PENDING);
@@ -116,10 +137,7 @@ class MappingRemoteIntegrationTests {
                                 new OcrAttemptKey(claim.attemptId(), request.workerId(), HASH),
                                 envelope.toString())
                         .extractionId();
-        long config =
-                mapping.register(
-                        MappingRemoteFixtures.definition().revision(),
-                        MappingRemoteFixtures.definition());
+        long config = mapping.register(definition.revision(), definition);
         return jdbc.queryForObject(
                 """
                 INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
@@ -128,6 +146,108 @@ class MappingRemoteIntegrationTests {
                 Long.class,
                 extraction,
                 config);
+    }
+
+    @Test
+    void remoteHttpPublicationMatchesFrontendFixturesForInitialAndExistingProfile()
+            throws Exception {
+        String credential = "synthetic-mapping-token-" + "m".repeat(43);
+        String lease = "l".repeat(43);
+        var worker = new MappingRemoteProperties.Worker();
+        worker.setCredentialSha256(Set.of(MappingWorkerAuthenticationFilter.hash(credential)));
+        properties.setWorkers(Map.of("synthetic_worker", worker));
+        jdbc.update(
+                "INSERT INTO \"CV_USERS\" (\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES (?,?,'USER') ON CONFLICT DO NOTHING",
+                "synthetic-user",
+                new BCryptPasswordEncoder().encode("synthetic-test-only"));
+        var csrf =
+                mvc.perform(get("/api/auth/csrf"))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse();
+        var login =
+                mvc.perform(
+                                post("/api/auth/login")
+                                        .cookie(csrf.getCookie("XSRF-TOKEN"))
+                                        .header(
+                                                "X-XSRF-TOKEN",
+                                                json.readTree(csrf.getContentAsString())
+                                                        .path("token")
+                                                        .asString())
+                                        .param("username", "synthetic-user")
+                                        .param("password", "synthetic-test-only"))
+                        .andExpect(status().isNoContent())
+                        .andReturn();
+        var session = (MockHttpSession) login.getRequest().getSession(false);
+        CvDocument doc = null;
+        for (boolean subsequent : java.util.List.of(false, true)) {
+            long job = seed(doc, LlmRemoteContractFixtures.definition());
+            long documentId =
+                    jdbc.queryForObject(
+                            "SELECT e.\"CV_DOCUMENT_ID\" FROM \"CV_EXTRACTIONS\" e JOIN \"CV_MAPPING_JOBS\" j ON j.\"EXTRACTION_ID\"=e.\"ID\" WHERE j.\"ID\"=?",
+                            Long.class,
+                            job);
+            doc = documents.findById(documentId).orElseThrow();
+            jdbc.update(
+                    "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"=?::timestamptz WHERE \"ID\"=?",
+                    LlmRemoteContractFixtures.AT,
+                    documentId);
+            var claimed =
+                    mvc.perform(
+                                    post("/internal/mapping/v1/claims")
+                                            .header("Authorization", "Bearer " + credential)
+                                            .header("X-Lease-Token", lease)
+                                            .header("Idempotency-Key", UUID.randomUUID().toString())
+                                            .contentType("application/json")
+                                            .content(MappingRemoteFixtures.claimBody().toString()))
+                            .andExpect(status().isCreated())
+                            .andReturn()
+                            .getResponse();
+            var data = json.readTree(claimed.getContentAsString()).path("data");
+            var body =
+                    LlmRemoteContractFixtures.compact(
+                            data.path("inputSha256").asString(), subsequent);
+            mvc.perform(
+                            put("/internal/mapping/v1/attempts/"
+                                            + data.path("attemptId").asString()
+                                            + "/result")
+                                    .header("Authorization", "Bearer " + credential)
+                                    .header("X-Lease-Token", lease)
+                                    .contentType("application/json")
+                                    .content(body.toString()))
+                    .andExpect(status().isOk());
+            long result =
+                    jdbc.queryForObject(
+                            "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                            Long.class,
+                            job);
+            assertThat(publication.publish(result)).isTrue();
+            long candidate =
+                    jdbc.queryForObject(
+                            "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                            Long.class,
+                            documentId);
+            String prefix = subsequent ? "subsequent-" : "initial-";
+            for (String endpoint : java.util.List.of("profile", "proposals", "history")) {
+                var response =
+                        mvc.perform(
+                                        get("/api/candidates/"
+                                                        + candidate
+                                                        + (endpoint.equals("profile")
+                                                                ? ""
+                                                                : "/" + endpoint))
+                                                .session(session))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse();
+                var payload = json.readTree(response.getContentAsString());
+                if (endpoint.equals("proposals"))
+                    assertThat(payload.size()).isEqualTo(subsequent ? 6 : 0);
+                if (endpoint.equals("profile"))
+                    assertThat(payload.path("experiences").size()).isEqualTo(5);
+                LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
+            }
+        }
     }
 
     private MappingRemoteService.Reply claim(UUID request) {
