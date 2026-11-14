@@ -4,5 +4,5 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(MappingProperties.class)
+@EnableConfigurationProperties({MappingProperties.class, MappingRemoteProperties.class})
 public class MappingConfiguration {}

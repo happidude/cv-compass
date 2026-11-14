@@ -23,7 +23,8 @@ import tools.jackson.databind.ObjectMapper;
 
 class MappingProviderRegistryTests {
     @Test
-    void serviceRegistersExactlyTheEightInProcessVersions() throws ReflectiveOperationException {
+    void serviceRegistersExactlyTheEightInProcessVersionsAndOneRemote()
+            throws ReflectiveOperationException {
         var service =
                 new MappingService(
                         mock(MappingRepository.class),
@@ -43,7 +44,13 @@ class MappingProviderRegistryTests {
         field.setAccessible(true);
         var registry = (MappingProviderRegistry) field.get(service);
 
-        assertThat(registry.versions())
+        assertThat(registry.versions()).hasSize(9);
+        assertThat(
+                        registry.versions().stream()
+                                .filter(
+                                        version ->
+                                                registry.require(version).kind()
+                                                        == MappingProviderKind.IN_PROCESS))
                 .containsExactlyInAnyOrder(
                         MappingEngine.VERSION,
                         ExperienceEngine.VERSION,
@@ -56,8 +63,21 @@ class MappingProviderRegistryTests {
         for (var version : registry.versions()) {
             var provider = registry.require(version);
             assertThat(provider.engineVersion()).isEqualTo(version);
-            assertThat(provider.kind()).isEqualTo(MappingProviderKind.IN_PROCESS);
+            assertThat(provider.kind())
+                    .isEqualTo(
+                            com.cvcompass.backend.mapping.dto.LlmExtractionDefinition.ENGINE_VERSION
+                                            .equals(version)
+                                    ? MappingProviderKind.REMOTE
+                                    : MappingProviderKind.IN_PROCESS);
         }
+        assertThat(
+                        registry.versions().stream()
+                                .filter(
+                                        version ->
+                                                registry.require(version).kind()
+                                                        == MappingProviderKind.REMOTE))
+                .containsExactly(
+                        com.cvcompass.backend.mapping.dto.LlmExtractionDefinition.ENGINE_VERSION);
         assertThatThrownBy(() -> registry.versions().clear())
                 .isInstanceOf(UnsupportedOperationException.class);
     }

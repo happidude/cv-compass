@@ -86,7 +86,7 @@ class MappingIntegrationTests {
         assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
                 .isEqualTo(DATABASE.schemaName());
         jdbc.execute(
-                "TRUNCATE \"CANDIDATE_PROPOSALS\",\"CANDIDATE_PUBLICATIONS\",\"CANDIDATE_EXPERIENCES\",\"CV_MAPPING_RESULTS\",\"CV_MAPPING_JOBS\"");
+                "TRUNCATE \"CANDIDATE_PROPOSALS\",\"CANDIDATE_PUBLICATIONS\",\"CANDIDATE_EXPERIENCES\",\"CV_MAPPING_RESULTS\",\"CV_MAPPING_ATTEMPTS\",\"CV_MAPPING_JOBS\"");
         jdbc.update(
                 "UPDATE \"CV_MAPPING_SETTINGS\" SET \"ACTIVE_CONFIG_ID\"=NULL,\"SCAN_AFTER_ID\"=0");
     }

@@ -31,10 +31,11 @@ public record PersonalInfoMappingResult(
         implements MappingOutcome {
     public PersonalInfoMappingResult {
         if (schemaVersion != 3
-                || !PersonalInfoDefinition.supportsEngine(engineVersion)
+                || !MappingVersions.personalResultEngine(engineVersion)
                 || personalInfo == null
-                || !personalInfo.keySet().equals(PersonalInfoDefinition.fieldNames(engineVersion)))
-            invalid();
+                || !personalInfo
+                        .keySet()
+                        .equals(MappingVersions.personalResultFields(engineVersion))) invalid();
         values = List.copyOf(values);
         experiences = List.copyOf(experiences);
         issues = List.copyOf(issues);

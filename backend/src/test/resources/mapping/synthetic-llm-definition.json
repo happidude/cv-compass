@@ -1,0 +1,76 @@
+{
+    "schemaVersion":  4,
+    "engineCompatibility":  "llm-extraction/1.0",
+    "revision":  "synthetic-llm-v1",
+    "fields":  {
+                   "fullName":  {
+                                    "enabled":  true,
+                                    "description":  "Synthetic fullName",
+                                    "type":  "STRING",
+                                    "aliases":  [
+
+                                                ]
+                                },
+                   "email":  {
+                                 "enabled":  true,
+                                 "description":  "Synthetic email",
+                                 "type":  "STRING",
+                                 "aliases":  [
+
+                                             ]
+                             },
+                   "phone":  {
+                                 "enabled":  true,
+                                 "description":  "Synthetic phone",
+                                 "type":  "STRING",
+                                 "aliases":  [
+
+                                             ]
+                             },
+                   "location":  {
+                                    "enabled":  true,
+                                    "description":  "Synthetic location",
+                                    "type":  "STRING",
+                                    "aliases":  [
+
+                                                ]
+                                },
+                   "summary":  {
+                                   "enabled":  true,
+                                   "description":  "Synthetic summary",
+                                   "type":  "STRING",
+                                   "aliases":  [
+
+                                               ]
+                               },
+                   "gender":  {
+                                  "enabled":  true,
+                                  "description":  "Synthetic gender",
+                                  "type":  "ENUM_GENDER",
+                                  "aliases":  [
+
+                                              ]
+                              },
+                   "dateOfBirth":  {
+                                       "enabled":  true,
+                                       "description":  "Synthetic dateOfBirth",
+                                       "type":  "DATE_PARTIAL",
+                                       "aliases":  [
+
+                                                   ]
+                                   },
+                   "experiences":  {
+                                       "enabled":  true,
+                                       "description":  "Synthetic experiences",
+                                       "type":  "EXPERIENCE_LIST",
+                                       "aliases":  [
+
+                                                   ]
+                                   }
+               },
+    "other":  {
+                  "enabled":  true,
+                  "description":  "Synthetic other",
+                  "maxItems":  5
+              }
+}

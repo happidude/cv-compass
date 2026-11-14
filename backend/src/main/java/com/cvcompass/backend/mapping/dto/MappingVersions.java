@@ -14,6 +14,16 @@ public final class MappingVersions {
         int version = root.path("schemaVersion").asInt(-1);
         if (version == 2) validateV2(root);
         if (version == 3) validateV3(root);
+        if (version == 4) {
+            root =
+                    json.reader()
+                            .with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                            .with(
+                                    tools.jackson.databind.DeserializationFeature
+                                            .FAIL_ON_TRAILING_TOKENS)
+                            .readTree(body);
+            validateV4(root);
+        }
         return switch (version) {
             case 1 -> json.readValue(body, MappingDefinition.class);
             case 2 -> json.readValue(body, ExperienceDefinition.class);
@@ -22,8 +32,51 @@ public final class MappingVersions {
                 definition.validate();
                 yield definition;
             }
+            case 4 -> {
+                var definition = json.readValue(body, LlmExtractionDefinition.class);
+                definition.validate();
+                yield definition;
+            }
             default -> throw new IllegalArgumentException("Unsupported mapping config schema");
         };
+    }
+
+    public static boolean personalResultEngine(String engine) {
+        return PersonalInfoDefinition.supportsEngine(engine)
+                || LlmExtractionDefinition.ENGINE_VERSION.equals(engine);
+    }
+
+    public static java.util.Set<String> personalResultFields(String engine) {
+        return LlmExtractionDefinition.ENGINE_VERSION.equals(engine)
+                ? PersonalInfoDefinition.V33_FIELD_NAMES
+                : PersonalInfoDefinition.fieldNames(engine);
+    }
+
+    private static void exact(JsonNode node, java.util.Set<String> names) {
+        if (!node.isObject() || !node.propertyNames().equals(names)) throw invalid();
+    }
+
+    private static void validateV4(JsonNode root) {
+        exact(
+                root,
+                java.util.Set.of(
+                        "schemaVersion", "engineCompatibility", "revision", "fields", "other"));
+        if (!root.path("revision").isString()) throw invalid();
+        JsonNode fields = root.path("fields");
+        exact(fields, LlmExtractionDefinition.FIELD_NAMES);
+        for (JsonNode field : fields) {
+            exact(field, java.util.Set.of("enabled", "description", "type", "aliases"));
+            if (!field.path("enabled").isBoolean()
+                    || !field.path("description").isString()
+                    || !field.path("type").isString()) throw invalid();
+            strings(field.path("aliases"));
+        }
+        JsonNode other = root.path("other");
+        exact(other, java.util.Set.of("enabled", "description", "maxItems"));
+        if (!other.path("enabled").isBoolean()
+                || !other.path("description").isString()
+                || !other.path("maxItems").isIntegralNumber()
+                || !other.path("maxItems").canConvertToInt()) throw invalid();
     }
 
     private static void validateV2(JsonNode root) {

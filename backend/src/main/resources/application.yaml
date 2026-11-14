@@ -52,6 +52,15 @@ cv:
     lease-duration: ${CV_MAPPING_LEASE_DURATION:120s}
     hard-deadline: ${CV_MAPPING_HARD_DEADLINE:120s}
     retry-backoff: ${CV_MAPPING_RETRY_BACKOFF:30s}
+    remote:
+      enabled: ${CV_MAPPING_REMOTE_ENABLED:false}
+      lease-duration: ${CV_MAPPING_REMOTE_LEASE_DURATION:120s}
+      heartbeat-interval: ${CV_MAPPING_REMOTE_HEARTBEAT_INTERVAL:30s}
+      hard-deadline: ${CV_MAPPING_REMOTE_HARD_DEADLINE:15m}
+      reclaim-grace: ${CV_MAPPING_REMOTE_RECLAIM_GRACE:2m}
+      control-body-bytes: ${CV_MAPPING_REMOTE_CONTROL_BODY_BYTES:16384}
+      max-result-bytes: ${CV_MAPPING_REMOTE_MAX_RESULT_BYTES:1048576}
+      workers: {}
   pagination:
     default-page-size: ${CV_API_DEFAULT_PAGE_SIZE:20}
     max-page-size: ${CV_API_MAX_PAGE_SIZE:100}
