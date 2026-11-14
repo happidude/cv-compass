@@ -212,7 +212,7 @@ public class MappingRemoteVerifier {
                                     periodEvidence.isEmpty() ? "NOT_FOUND" : "PROPOSED",
                                     List.of(),
                                     periodEvidence),
-                            null,
+                            "",
                             List.of(),
                             all,
                             List.of()));

@@ -41,6 +41,8 @@ class MappingRemoteVerifierTests {
         assertThat(result.values().getFirst().evidence().text()).isEqualTo("e\u0301");
         assertThat(result.experiences().getFirst().company().normalized()).isNull();
         assertThat(result.experiences().getFirst().period().start().month()).isEqualTo(1);
+        assertThat(result.experiences().getFirst().descriptionRaw()).isEmpty();
+        assertThat(result.experiences().getFirst().descriptionEvidence()).isEmpty();
         var api = new CompletedMappings(null, MappingRemoteFixtures.JSON);
         var published =
                 api.publishable(

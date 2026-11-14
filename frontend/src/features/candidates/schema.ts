@@ -40,7 +40,7 @@ export const experienceDataSchema = z
       evidence,
     }),
     countInTotal: z.boolean().optional(),
-    descriptionRaw: z.string().optional(),
+    descriptionRaw: z.string().nullable().optional(),
     descriptionEvidence: evidence,
     evidence,
     issues: z

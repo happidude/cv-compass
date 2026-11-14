@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, afterEach, it, expect } from "vitest";
+import { beforeAll, afterAll, afterEach, it, expect, vi } from "vitest";
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { metadataSchema } from "../src/features/documents/schema";
@@ -10,7 +10,10 @@ const server = setupServer(
   ),
 );
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.restoreAllMocks();
+});
 afterAll(() => server.close());
 it("does not retry an upload on 503 and marks outcome uncertain", async () => {
   let calls = 0;
@@ -37,6 +40,7 @@ it("does not retry an upload on 503 and marks outcome uncertain", async () => {
   expect(calls).toBe(1);
 });
 it("treats malformed successful POST as uncertain", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   server.use(http.post("/api/documents", () => HttpResponse.json({ id: 1 })));
   await expect(
     upload(
@@ -47,4 +51,13 @@ it("treats malformed successful POST as uncertain", async () => {
       new AbortController().signal,
     ),
   ).rejects.toMatchObject({ kind: "contract", uncertain: true });
+  expect(log).toHaveBeenCalledTimes(1);
+  expect(
+    JSON.parse(String(log.mock.calls[0][0]).slice("[contract] ".length)),
+  ).toMatchObject({
+    endpoint: "/documents",
+    issues: expect.arrayContaining([
+      { path: "originalFilename", code: "invalid_type" },
+    ]),
+  });
 });
