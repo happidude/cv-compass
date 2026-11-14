@@ -1,5 +1,6 @@
 """Single-job pull loop with lease fencing and concurrent heartbeat supervision."""
 
+import logging
 import math
 import re
 import secrets
@@ -12,9 +13,12 @@ from uuid import UUID, uuid4
 from .backend_client import BackendClient, BackendError, encode
 from .config import PullConfig
 from .pipeline import extract
+from .progress import command_logging, endpoint, event, model_name
 from .prompts import PROMPT_VERSION
 from .providers.base import ProviderError
-from .pull_payload import ENGINE, PERSONAL, PROTOCOL, compact_result, input_document
+from .pull_payload import (
+    ENGINE, PERSONAL, PROTOCOL, WORKER_ISSUES, compact_result, input_document,
+)
 
 
 def _instant(value: str) -> float:
@@ -61,6 +65,7 @@ class _Attempt:
     def __init__(self, client, claim, token, counts) -> None:
         self.client, self.token, self.counts = client, token, counts
         self.path = '/attempts/' + str(UUID(claim['attemptId']))
+        self.short_id = str(UUID(claim['attemptId']))[:8]
         self.interval = _interval(claim['heartbeatInterval'])
         wall, steady = time.time(), time.monotonic()
         self.hard = steady + _instant(claim['hardDeadlineAt']) - wall
@@ -71,20 +76,27 @@ class _Attempt:
         self.lock = threading.Lock()
         self.lost = False
         self.outcome_started = False
+        self.failure_code = 'INTERNAL_ERROR'
         self.thread = threading.Thread(target=self._heartbeat, name='mapping-heartbeat', daemon=True)
 
     def _error(self, error: BackendError) -> None:
         self.counts[error.code] += 1
+        event('backend_error', level=logging.ERROR, attempt=self.short_id, code=error.code)
+
+    def _lost(self, code: str) -> None:
+        self.lost = True
+        event('heartbeat_lost', level=logging.WARNING, attempt=self.short_id, code=code)
 
     def outcome(self, kind: str, body: bytes) -> None:
         """Called under the lock: an uncertain outcome must never become a new one."""
         if self.lost or self.outcome_started:
             return
         if time.monotonic() >= min(self.lease, self.hard):
-            self.lost = True
+            self._lost('LEASE_EXPIRED')
             self.counts['LEASE_EXPIRED'] += 1
             return
         self.outcome_started = True
+        event('submitting', attempt=self.short_id)
         try:
             status, reply = self.client.request(
                 'PUT', self.path + '/' + kind, self.token, body,
@@ -94,10 +106,15 @@ class _Attempt:
             if status != 200 or reply.get('status') != expected:
                 raise BackendError('BACKEND_BAD_RESPONSE')
             self.counts['accepted' if kind == 'result' else 'failed'] += 1
+            if kind == 'result':
+                event('accepted', attempt=self.short_id)
+            else:
+                event('failed', attempt=self.short_id, code=self.failure_code)
         except BackendError as error:
             self._error(error)
 
     def failure(self, code: str) -> None:
+        self.failure_code = code
         self.outcome('failure', encode({'code': code}))
 
     def _heartbeat(self) -> None:
@@ -113,7 +130,7 @@ class _Attempt:
                         return
                     now = time.monotonic()
                     if now >= self.lease:
-                        self.lost = True
+                        self._lost('LEASE_EXPIRED')
                         self.counts['LEASE_EXPIRED'] += 1
                         return
                     if now >= self.hard - self.interval:
@@ -128,6 +145,7 @@ class _Attempt:
                             raise BackendError('BACKEND_BAD_RESPONSE')
                         self.lease = min(self.hard, time.monotonic() +
                                          _instant(reply['leaseExpiresAt']) - time.time())
+                        event('heartbeat', level=logging.DEBUG, attempt=self.short_id)
                     except BackendError as error:
                         self._error(error)
                         if (error.status not in (401, 409)
@@ -136,11 +154,11 @@ class _Attempt:
                             self.failure('PROVIDER_TIMEOUT')
                             return
                         # Exhausted transport retries leave renewal uncertain. Abandon safely.
-                        self.lost = True
+                        self._lost(error.code)
                         return
         except Exception:
             with self.lock:
-                self.lost = True
+                self._lost('BACKEND_BAD_RESPONSE')
                 self.counts['BACKEND_BAD_RESPONSE'] += 1
 
     def close(self) -> None:
@@ -167,14 +185,17 @@ def _shutdown_unstarted(client, claim, token, counts) -> None:
     try:
         path = '/attempts/' + str(UUID(claim['attemptId'])) + '/failure'
         expiry = min(_instant(claim['leaseExpiresAt']), _instant(claim['hardDeadlineAt']))
+        event('submitting', attempt=str(UUID(claim['attemptId']))[:8])
         status, reply = client.request(
             'PUT', path, token, encode({'code': 'WORKER_SHUTDOWN'}),
             deadline=time.monotonic() + expiry - time.time(),
         )
         if status == 200 and reply.get('status') == 'FAILED':
             counts['failed'] += 1
+            event('failed', attempt=str(UUID(claim['attemptId']))[:8], code='WORKER_SHUTDOWN')
     except BackendError as error:
         counts[error.code] += 1
+        event('backend_error', level=logging.ERROR, code=error.code)
     except Exception:
         counts['BACKEND_BAD_RESPONSE'] += 1
 
@@ -190,7 +211,10 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
             attempt = _Attempt(client, claim, token, counts)
         except (ValueError, TypeError, KeyError, OverflowError):
             counts['BACKEND_BAD_RESPONSE'] += 1
+            event('backend_error', level=logging.ERROR, code='BACKEND_BAD_RESPONSE')
             return
+        event('claimed', attempt=attempt.short_id,
+              engine=ENGINE if claim['engineVersion'] == ENGINE else 'UNSUPPORTED')
         attempt.thread.start()
         if claim['engineVersion'] != ENGINE:
             failure = 'UNSUPPORTED_ENGINE'
@@ -203,13 +227,31 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     raise ValueError('INVALID_INPUT')
                 document = input_document(data)
                 del data
+                event('input_fetched', attempt=attempt.short_id, pages=len(document.pages),
+                      chars=sum(len(page.raw_text) for page in document.pages))
             except (ValueError, TypeError, KeyError):
                 failure = 'INVALID_INPUT'
             if failure is None:
                 observed = _ObservedProvider(provider, attempt)
-                result = extract(document, observed, max_blocks=config.llm.max_blocks)
+                started = time.monotonic()
+
+                def on_block(index, total, seconds):
+                    event('extraction_block', attempt=attempt.short_id,
+                          block=f'{index}/{total}', seconds=f'{seconds:.3f}')
+
+                result = extract(document, observed, max_blocks=config.llm.max_blocks,
+                                 on_block=on_block)
+                issues = Counter(issue.code for issue in result.issues
+                                 if issue.code in WORKER_ISSUES | {'LLM_INVALID_JSON',
+                                                                  'PROVIDER_ERROR'})
+                event('extraction_done', attempt=attempt.short_id,
+                      seconds=f'{time.monotonic() - started:.3f}',
+                      issues=','.join(f'{code}:{issues[code]}' for code in sorted(issues))
+                      or 'NONE:0')
                 if observed.failure:
                     failure = observed.failure
+                    event('provider_error', level=logging.ERROR, attempt=attempt.short_id,
+                          code=failure)
                 elif any(issue.code == 'LLM_INVALID_JSON' for issue in result.issues):
                     failure = 'INVALID_OUTPUT'
                 else:
@@ -217,6 +259,7 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     kind = 'result'
     except BackendError as error:
         counts[error.code] += 1
+        event('backend_error', level=logging.ERROR, code=error.code)
         if error.code in ('BACKEND_BAD_RESPONSE', 'BACKEND_RESPONSE_TOO_LARGE'):
             failure = 'INVALID_INPUT'
         else:
@@ -226,6 +269,7 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
     except ProviderError as error:
         failure = ('PROVIDER_TIMEOUT' if str(error) in ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT')
                    else 'PROVIDER_ERROR')
+        event('provider_error', level=logging.ERROR, code=failure)
     except ValueError as error:
         failure = str(error) if str(error) in ('RESULT_TOO_LARGE', 'INVALID_OUTPUT') else 'INTERNAL_ERROR'
     except KeyboardInterrupt:
@@ -264,7 +308,12 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
 
 
 def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
-    """Claim at most one job at a time; output only fixed counters and error codes."""
+    """Scope stderr logging to this command and preserve the stdout counters."""
+    with command_logging(config.log_level):
+        return _run_pull(config, provider, once=once)
+
+
+def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
     counts = Counter(claimed=0, accepted=0, failed=0)
     provenance = {'model': config.llm.model, 'promptVersion': PROMPT_VERSION,
                   'workerVersion': config.worker_version}
@@ -272,6 +321,18 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
     claim_body = encode({'protocol': PROTOCOL, 'engineVersions': [ENGINE],
                          'provenance': provenance})
     exit_code = 0
+    last_waiting = {}
+
+    def waiting(code: str) -> None:
+        now = time.monotonic()
+        previous = last_waiting.get(code)
+        if previous is None or now - previous >= 60:
+            event('waiting', code=code)
+            last_waiting[code] = now
+
+    model = model_name(config.llm.model) if config.llm.model != config.worker_token else 'REDACTED'
+    event('worker_start', model=model, ollama=endpoint(config.llm.base_url),
+          backend=endpoint(config.backend_url), poll_s=config.poll_s, log_level=config.log_level)
     try:
         token, key = secrets.token_urlsafe(32), str(uuid4())
         while True:
@@ -279,12 +340,20 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
                 status, claim = client.request('POST', '/claims', token, claim_body, claim_key=key)
             except BackendError as error:
                 counts[error.code] += 1
+                if error.status in (0, 503):
+                    waiting(error.code)
+                else:
+                    event('backend_error', level=logging.ERROR, code=error.code)
                 if once or (error.status not in (0, 503)):
                     exit_code = 2
                     break
                 time.sleep(config.poll_s)
                 continue
+            # Successful contact ends outage throttling; consecutive idle polls stay quiet.
+            last_waiting = {code: stamp for code, stamp in last_waiting.items()
+                            if code == 'NO_WORK'}
             if status == 204:
+                waiting('NO_WORK')
                 if once:
                     break
                 time.sleep(config.poll_s)
@@ -294,9 +363,11 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
                 'ACTIVE', 'ACCEPTED', 'FAILED', 'EXPIRED',
             ):
                 counts['BACKEND_BAD_RESPONSE'] += 1
+                event('backend_error', level=logging.ERROR, code='BACKEND_BAD_RESPONSE')
                 exit_code = 2
                 break
             if claim['status'] == 'ACTIVE':
+                last_waiting.clear()
                 run_attempt(client, config, provider, claim, token, provenance, counts)
             del claim
             if once:
@@ -305,6 +376,7 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
     except KeyboardInterrupt:
         exit_code = 130
     finally:
+        event('stopped')
         print(' '.join(f'{name}={counts[name]}' for name in ('claimed', 'accepted', 'failed')))
         for code in sorted(set(counts) - {'claimed', 'accepted', 'failed'}):
             print(f'{code}={counts[code]}')

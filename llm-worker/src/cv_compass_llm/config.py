@@ -22,6 +22,7 @@ ENV_KEYS = {
     'poll_s': 'CVC_LLM_POLL_S',
     'http_timeout_s': 'CVC_LLM_HTTP_TIMEOUT_S',
     'max_http_attempts': 'CVC_LLM_MAX_HTTP_ATTEMPTS',
+    'log_level': 'CVC_LLM_LOG_LEVEL',
 }
 MAX_ENV_BYTES = 64 * 1024
 
@@ -161,6 +162,7 @@ class PullConfig:
     poll_s: int
     http_timeout_s: int
     max_http_attempts: int
+    log_level: str = 'INFO'
 
 
 def validate_backend_url(value: str) -> str:
@@ -185,6 +187,7 @@ def validate_backend_url(value: str) -> str:
 
 def load_pull_config(
     environ: Mapping[str, str], env_file: Path | None, *, env_file_explicit: bool,
+    cli: Mapping[str, str | None] | None = None,
 ) -> PullConfig:
     """Extend the shared dotenv parser; credentials come only from the process."""
     path = env_file if env_file is not None else default_env_file()
@@ -192,7 +195,8 @@ def load_pull_config(
 
     def value(name: str, default: str = '') -> str:
         key = ENV_KEYS[name]
-        return environ.get(key, '').strip() or values.get(key, '').strip() or default
+        return (((cli or {}).get(name) or '').strip() or environ.get(key, '').strip()
+                or values.get(key, '').strip() or default)
 
     backend = value('backend_url')
     if not backend:
@@ -233,4 +237,7 @@ def load_pull_config(
         raise PullConfigError(ENV_KEYS[name], code) from None
     if not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', llm.model):
         raise PullConfigError(ENV_KEYS['model'], 'INVALID_PROVENANCE')
-    return PullConfig(llm, backend, token, version, **numbers)
+    log_level = value('log_level', 'INFO')
+    if log_level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR'):
+        raise PullConfigError(ENV_KEYS['log_level'], 'INVALID_LOG_LEVEL')
+    return PullConfig(llm, backend, token, version, **numbers, log_level=log_level)

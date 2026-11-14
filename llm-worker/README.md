@@ -214,9 +214,11 @@ py -3.14 -m cv_compass_llm pull --env-file .env --once
 | `CVC_LLM_POLL_S` | `5` | số nguyên 1–300 |
 | `CVC_LLM_HTTP_TIMEOUT_S` | `10` | số nguyên 1–120 |
 | `CVC_LLM_MAX_HTTP_ATTEMPTS` | `3` | số nguyên 1–10 |
+| `CVC_LLM_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 Model phải thỏa cùng regex provenance như worker version. Cấu hình vẫn ưu tiên
-môi trường trên `.env`; `pull` chỉ nhận `--env-file` và `--once`.
+môi trường trên `.env`; `--log-level` ưu tiên trên môi trường và `.env`.
+Giá trị mức log sai trả `CVC_LLM_LOG_LEVEL INVALID_LOG_LEVEL`, không in giá trị.
 
 Mỗi request retry tối đa theo cấu hình, chỉ khi lỗi mạng/timeout/503, backoff
 1, 2, 4 rồi tối đa 8 giây. Claim retry giữ nguyên body, Idempotency-Key và lease
@@ -253,3 +255,47 @@ chiếu dữ liệu tùy ý. Lỗi cấu hình chỉ nêu tên biến và mã c�
 
 Test L5 dùng `ThreadingHTTPServer` loopback và provider giả trong tiến trình,
 chạy cùng lệnh unittest ở trên; không cần backend/Ollama/CV thật.
+
+### Log tiến trình và kiểm tra kết nối
+
+`pull` ghi từng sự kiện qua `logging` ra stderr, flush mỗi dòng, giờ local không
+mili giây: `YYYY-MM-DD HH:MM:SS INFO event=claimed attempt=a0000000 engine=llm-extraction/1.0`.
+Các sự kiện gồm `worker_start`, `waiting`, `claimed`, `input_fetched`,
+`extraction_block`, `extraction_done`, `submitting`, `accepted`, `failed`,
+`heartbeat_lost`, `backend_error`, `provider_error`, `stopped`; `heartbeat` chỉ ở DEBUG.
+`waiting` xuất hiện khi hết việc, 503 hoặc không kết nối được backend, tối đa một
+lần mỗi 60 giây cho cùng mã trong đợt chờ. Khi backend trả lời thành công, bộ đếm
+thời gian lỗi kết nối được reset; các poll hết việc liên tiếp vẫn không lặp log.
+Tiến độ block tính cả lời gọi personal và các block kinh nghiệm thực
+sự xử lý (sau giới hạn `max_blocks`); chỉ số bắt đầu từ 1.
+Log chỉ có metadata: attempt rút còn 8 ký tự, số trang/ký tự, thời gian, tổng issue
+theo mã cố định (`issues=NONE:0` khi không có issue). Model dạng URL/đường dẫn
+tuyệt đối được che bằng `REDACTED`. Origin chỉ hiện host:port; không ghi OCR, prompt, output, evidence,
+giá trị ứng viên, token/hash, URL đầy đủ, đường dẫn hay message exception.
+Logger riêng chỉ được cấu hình trong lúc chạy lệnh; stdout bộ đếm giữ nguyên.
+
+```powershell
+py -3.14 -m cv_compass_llm pull --log-level DEBUG
+py -3.14 -m cv_compass_llm check --env-file .env
+```
+
+`check` chỉ đọc: kiểm cấu hình pull (token bắt buộc trong môi trường tiến trình),
+gửi `GET /internal/mapping/v1/check` tới backend và `GET /api/tags` tới Ollama.
+Không claim, tải input, gia hạn lease, gửi result/failure hay gọi model.
+Filter `MappingWorkerAuthenticationFilter` và provider L4 chỉ kiểm cấu hình/token,
+không ghi DB; security chain áp dụng cho toàn `/internal/mapping/**`.
+Controller không khai báo route `check`. Chỉ 404 kèm envelope lỗi CV Compass hợp
+lệ với `code=NOT_FOUND` được coi là token được chấp nhận. Tương tự, chỉ 401 kèm
+`UNAUTHORIZED` được báo token không hợp lệ; 503 kèm `MAPPING_REMOTE_UNAVAILABLE`
+và 403 kèm `TLS_REQUIRED` giữ mã cố định đó. 401 kèm `AUTH_REQUIRED`, body không
+đúng envelope, hoặc cặp status/code khác trả `BACKEND_PROBE_REJECTED`, không kết
+luận token đúng/sai (redirect là `BACKEND_REDIRECT`).
+Không theo redirect/proxy; response backend giới hạn 64 KiB, Ollama 4 MiB và
+timeout theo từng cấu hình.
+Tên model phải trùng chính xác trong tags; cấu hình không có tag chấp nhận thêm
+`:latest`. Không in danh sách model hoặc response.
+
+Mỗi dòng stdout là `OK <tên>` hoặc `FAIL <tên> code=<MÃ>`; backend/Ollama chỉ
+hiện host:port, model chỉ ghi tên check `model`. Thoát 0 khi mọi check OK, 2 khi
+có lỗi. Lỗi kết nối là `BACKEND_UNREACHABLE`/`OLLAMA_UNREACHABLE`, model thiếu là
+`MODEL_NOT_FOUND`, token thiếu là `FAIL config code=MISSING_CONFIG`.

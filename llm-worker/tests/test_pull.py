@@ -210,9 +210,12 @@ class PullTests(unittest.TestCase):
             if overrides:
                 settings = replace(settings, **overrides)
             result = run_pull(settings, provider or FakeProvider(NULL_PERSONAL), once=once)
-        self.assertEqual(err.getvalue(), '')
+        self.assertTrue(err.getvalue().splitlines())
+        for line in err.getvalue().splitlines():
+            self.assertRegex(line, r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d '
+                                   r'(INFO|WARNING|ERROR) event=[a-z_]+(?: [^\s=]+=[^\s]+)*$')
         for marker in (RAW, 'Synthetic Person', 'example.invalid', TOKEN, 'private-output'):
-            self.assertNotIn(marker, out.getvalue())
+            self.assertNotIn(marker, out.getvalue() + err.getvalue())
         return result, out.getvalue()
 
     def test_complete_flow_headers_and_compact_payload(self):
