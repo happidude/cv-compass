@@ -41,8 +41,9 @@ Nếu Ruff đã được provision, dùng `ruff format --check src tests` và
 ## Privacy
 
 Chỉ dùng fixture tổng hợp, không tên/người/công ty thật. Không print/log CV,
-prompt, model output, exception của provider hay đường dẫn nguồn. Không gửi dữ liệu
-ra ngoài máy; Ollama chỉ dùng HTTP loopback, không proxy và không theo redirect.
+prompt, model output, exception của provider hay đường dẫn nguồn. Chỉ gửi dữ liệu
+tới provider loopback và backend nội bộ được cấu hình cho `pull`. Ollama chỉ dùng
+HTTP loopback, không proxy và không theo redirect.
 FakeProvider giữ prompt trong bộ nhớ chỉ để test. Bên gọi chịu trách nhiệm
 giới hạn vòng đời dữ liệu và không ghi/public hóa prompt đã ghi nhận. OCR gốc không
 bao giờ bị sửa hoặc xóa, kể cả khi đọc/parse/trích xuất thất bại. Gender chỉ để hiển
@@ -175,3 +176,80 @@ Base URL không hợp lệ trả `OLLAMA_HOST_NOT_LOCAL`. Sai cú pháp CLI (k�
 `--think` ngoài hai lựa chọn) trả `INVALID_ARGUMENTS`. Lỗi chỉ in mã cố định,
 không in giá trị, tên khóa lạ, nội dung file hay đường dẫn; mã thoát là 2.
 `draft-gold` và `compare` không đọc cấu hình này.
+
+## L5 — Worker kéo việc từ backend
+
+Lệnh `pull` nhận từng job qua `/internal/mapping/v1`, tải OCR vào bộ nhớ, dùng
+provider L1 đã cấu hình và gửi kết quả bản gọn `cv-compass.llm-mapping/1.0`.
+Không truy cập DB, không ghi CV/prompt/output ra đĩa. Heartbeat chạy trong thread
+riêng theo khoảng thời gian backend trả; trích xuất chạy ở thread chính.
+
+Thiết lập `CVC_LLM_PROVIDER`, `CVC_LLM_MODEL` và các tùy chọn Ollama như L1b trong
+`llm-worker/.env`. Thêm `CVC_LLM_BACKEND_URL` (chỉ origin, không dấu `/` cuối):
+HTTP chỉ cho `127.0.0.1`, `localhost`, `[::1]`; máy khác bắt buộc HTTPS.
+Không dùng proxy hệ thống và không theo redirect, kể cả redirect cùng host.
+
+Token do chủ dự án cấp, chỉ truyền qua **biến môi trường tiến trình**
+`CVC_LLM_WORKER_TOKEN`, gồm 43–256 ký tự `A-Z a-z 0-9 _ -`. Không có flag CLI
+nhận token. Có key token trong `.env` là lỗi `TOKEN_IN_ENV_FILE`, kể cả khi môi
+trường đã có token hợp lệ. Không commit `.env`; `.env.example` chỉ có giá trị giả.
+Không ghi token thật vào lịch sử lệnh, log hay tài liệu.
+
+Sau khi token đã được cấp vào môi trường tiến trình, chạy tại `llm-worker/`:
+
+```powershell
+$env:PYTHONPATH='src'
+py -3.14 -m cv_compass_llm pull
+# Xử lý tối đa một attempt (204 thì thoát thành công):
+py -3.14 -m cv_compass_llm pull --once
+# Chọn file cấu hình khác, cùng quy tắc parser L1:
+py -3.14 -m cv_compass_llm pull --env-file .env --once
+```
+
+| Biến bổ sung | Mặc định | Giới hạn |
+| --- | --- | --- |
+| `CVC_LLM_BACKEND_URL` | bắt buộc | origin HTTPS hoặc HTTP loopback |
+| `CVC_LLM_WORKER_TOKEN` | bắt buộc | chỉ môi trường tiến trình |
+| `CVC_LLM_WORKER_VERSION` | `dev` | `[A-Za-z0-9._:/@+-]{1,128}` |
+| `CVC_LLM_POLL_S` | `5` | số nguyên 1–300 |
+| `CVC_LLM_HTTP_TIMEOUT_S` | `10` | số nguyên 1–120 |
+| `CVC_LLM_MAX_HTTP_ATTEMPTS` | `3` | số nguyên 1–10 |
+
+Model phải thỏa cùng regex provenance như worker version. Cấu hình vẫn ưu tiên
+môi trường trên `.env`; `pull` chỉ nhận `--env-file` và `--once`.
+
+Mỗi request retry tối đa theo cấu hình, chỉ khi lỗi mạng/timeout/503, backoff
+1, 2, 4 rồi tối đa 8 giây. Claim retry giữ nguyên body, Idempotency-Key và lease
+token, kể cả khi poll tiếp sau một đợt retry chưa rõ kết quả. Result/failure
+retry giữ nguyên byte; không đổi sang failure sau khi đã bắt đầu gửi result.
+204 được poll lại bình thường; 503/lỗi mạng đã hết lượt retry thì chờ `POLL_S`.
+Với `--once`, claim hết lượt retry thì thoát 2.
+
+Heartbeat được gửi sau tối đa nửa TTL lease còn lại hoặc một heartbeat interval,
+tùy khoảng nào ngắn hơn, để gia hạn cả lease ngắn hơn interval đã khai báo.
+Heartbeat mất fencing/xác thực hoặc hết lượt retry thì bỏ outcome để backend
+thu hồi lease. Worker không gửi outcome sau thời hạn lease đã biết. Khi còn
+một khoảng heartbeat đến hạn chót, supervisor gửi `PROVIDER_TIMEOUT` nếu còn
+lease và bỏ kết quả trả về muộn. Provider đang chạy có thể chỉ trả quyền điều
+khiển khi hết timeout riêng của nó; worker đợi trước khi claim job tiếp theo.
+Ctrl+C gửi `WORKER_SHUTDOWN` best effort nếu chưa gửi outcome, rồi thoát 130.
+
+Kết quả có đúng 7 key personal; email/phone đầu tiên theo page/offset vào
+personal, phần còn lại và URL vào `other`. Field tắt là null, experiences tắt
+là `[]`, `other` tắt là `[]`; vượt `maxItems` thì giữ thứ tự và thêm
+`OTHER_TRUNCATED`. Không cắt kết quả vượt 1 MiB. Issue của L1 dùng field con
+kinh nghiệm được đổi thành `experiences`; chỉ mã issue do worker sở hữu được gửi.
+Email/phone tắt cũng bị loại khỏi `other`. Evidence của field chuỗi được thu hẹp
+về đúng lát cắt của value trong quote, so theo Unicode whitespace của backend,
+giữ offset code point và nguyên văn nguồn. Không tìm được thì bỏ field kèm
+`QUOTE_NOT_FOUND`; gender, dateOfBirth và period giữ quote gốc. Ngày ngoài giới
+hạn verifier hoặc period sai thứ tự/ongoing có end bị bỏ kèm `INVALID_DATE`;
+period lỗi được xóa đồng thời start/end/ongoing và evidence period.
+
+Stdout chỉ có số đếm `claimed=… accepted=… failed=…` và mã lỗi cố định kèm số
+đếm; không có body, đường dẫn, token hoặc thông tin ứng viên. Mã lỗi backend
+ngoài tập contract đã biết được báo chung `BACKEND_HTTP_ERROR` để tránh phản
+chiếu dữ liệu tùy ý. Lỗi cấu hình chỉ nêu tên biến và mã cố định.
+
+Test L5 dùng `ThreadingHTTPServer` loopback và provider giả trong tiến trình,
+chạy cùng lệnh unittest ở trên; không cần backend/Ollama/CV thật.

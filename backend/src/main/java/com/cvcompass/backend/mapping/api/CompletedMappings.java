@@ -2,7 +2,6 @@ package com.cvcompass.backend.mapping.api;
 
 import com.cvcompass.backend.mapping.dto.ExperienceMappingResult;
 import com.cvcompass.backend.mapping.dto.MappingVersions;
-import com.cvcompass.backend.mapping.dto.PersonalInfoDefinition;
 import com.cvcompass.backend.mapping.dto.PersonalInfoMappingResult;
 import com.cvcompass.backend.mapping.repository.CompletedMappingRepository;
 import com.cvcompass.backend.mapping.service.ExperienceEngine;
@@ -45,7 +44,7 @@ public class CompletedMappings {
                     || !body.path("engineVersion").isString()) return false;
             String engine = body.path("engineVersion").asString();
             return result.schemaVersion() == 2 && ExperienceEngine.VERSION.equals(engine)
-                    || result.schemaVersion() == 3 && PersonalInfoDefinition.supportsEngine(engine);
+                    || result.schemaVersion() == 3 && MappingVersions.personalResultEngine(engine);
         } catch (IllegalArgumentException | JacksonException invalid) {
             return false;
         }
@@ -66,7 +65,7 @@ public class CompletedMappings {
                                 3,
                                 personal.engineVersion(),
                                 true,
-                                PersonalInfoDefinition.fieldNames(personal.engineVersion())
+                                MappingVersions.personalResultFields(personal.engineVersion())
                                         .contains("dateOfBirth")));
             return Optional.empty();
         } catch (IllegalArgumentException | JacksonException invalid) {

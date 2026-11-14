@@ -5,6 +5,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ENV_KEYS = {
     'provider': 'CVC_LLM_PROVIDER',
@@ -15,6 +16,12 @@ ENV_KEYS = {
     'temperature': 'CVC_LLM_TEMPERATURE',
     'think': 'CVC_LLM_THINK',
     'num_ctx': 'CVC_LLM_NUM_CTX',
+    'backend_url': 'CVC_LLM_BACKEND_URL',
+    'worker_token': 'CVC_LLM_WORKER_TOKEN',
+    'worker_version': 'CVC_LLM_WORKER_VERSION',
+    'poll_s': 'CVC_LLM_POLL_S',
+    'http_timeout_s': 'CVC_LLM_HTTP_TIMEOUT_S',
+    'max_http_attempts': 'CVC_LLM_MAX_HTTP_ATTEMPTS',
 }
 MAX_ENV_BYTES = 64 * 1024
 
@@ -64,10 +71,14 @@ def _read_env(path: Path, explicit: bool) -> dict[str, str]:
                     raise ValueError
                 value = value[1:-1].strip()
             if key.startswith('CVC_LLM_'):
+                if key == 'CVC_LLM_WORKER_TOKEN':
+                    raise PullConfigError(key, 'TOKEN_IN_ENV_FILE')
                 if key not in ENV_KEYS.values() or key in values:
                     raise ValueError
                 values[key] = value
         return values
+    except PullConfigError:
+        raise
     except (ValueError, UnicodeError):
         raise ValueError('INVALID_ENV_FILE') from None
 
@@ -95,9 +106,10 @@ def _integer(value: str, code: str, *, minimum: int, maximum: int | None = None)
 def load_config(
     cli: Mapping[str, str | None], environ: Mapping[str, str], env_file: Path | None,
     *, env_file_explicit: bool,
+    _file_values: Mapping[str, str] | None = None,
 ) -> LlmConfig:
     """Resolve each CLI destination name over environment and dotenv values."""
-    file_values = _read_env(
+    file_values = _file_values if _file_values is not None else _read_env(
         env_file if env_file is not None else default_env_file(), env_file_explicit,
     )
 
@@ -131,3 +143,94 @@ def load_config(
         num_ctx=(_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576)
                  if num_ctx else None),
     )
+
+
+class PullConfigError(ValueError):
+    """Configuration diagnostics contain only a known key and fixed code."""
+
+    def __init__(self, key: str, code: str) -> None:
+        super().__init__(f'{key} {code}')
+
+
+@dataclass(frozen=True, repr=False)
+class PullConfig:
+    llm: LlmConfig
+    backend_url: str
+    worker_token: str
+    worker_version: str
+    poll_s: int
+    http_timeout_s: int
+    max_http_attempts: int
+
+
+def validate_backend_url(value: str) -> str:
+    """Allow plaintext only for the three explicitly approved loopback hosts."""
+    try:
+        url = urlsplit(value)
+        valid = (
+            url.scheme in ('http', 'https') and bool(url.hostname)
+            and (url.scheme == 'https' or url.hostname in ('127.0.0.1', 'localhost', '::1'))
+            and url.username is None and url.password is None and url.path == ''
+            and '?' not in value and '#' not in value and '\\' not in value
+            and not url.netloc.endswith(':')
+            and (url.port is None or 0 < url.port <= 65535)
+            and not any(ord(char) <= 32 or ord(char) == 127 for char in value)
+        )
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise PullConfigError(ENV_KEYS['backend_url'], 'BACKEND_URL_NOT_ALLOWED')
+    return value
+
+
+def load_pull_config(
+    environ: Mapping[str, str], env_file: Path | None, *, env_file_explicit: bool,
+) -> PullConfig:
+    """Extend the shared dotenv parser; credentials come only from the process."""
+    path = env_file if env_file is not None else default_env_file()
+    values = _read_env(path, env_file_explicit)
+
+    def value(name: str, default: str = '') -> str:
+        key = ENV_KEYS[name]
+        return environ.get(key, '').strip() or values.get(key, '').strip() or default
+
+    backend = value('backend_url')
+    if not backend:
+        raise PullConfigError(ENV_KEYS['backend_url'], 'MISSING_CONFIG')
+    backend = validate_backend_url(backend)
+    token = environ.get(ENV_KEYS['worker_token'], '')
+    if not token:
+        raise PullConfigError(ENV_KEYS['worker_token'], 'MISSING_CONFIG')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{43,256}', token):
+        raise PullConfigError(ENV_KEYS['worker_token'], 'INVALID_WORKER_TOKEN')
+    version = value('worker_version', 'dev')
+    if not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', version):
+        raise PullConfigError(ENV_KEYS['worker_version'], 'INVALID_PROVENANCE')
+    numbers = {}
+    for name, default, maximum in (
+        ('poll_s', '5', 300), ('http_timeout_s', '10', 120),
+        ('max_http_attempts', '3', 10),
+    ):
+        try:
+            numbers[name] = _integer(value(name, default), 'INVALID_CONFIG',
+                                     minimum=1, maximum=maximum)
+        except ValueError:
+            raise PullConfigError(ENV_KEYS[name], 'INVALID_CONFIG') from None
+    # Reuse the same parsed snapshot so dotenv cannot change between the two loads.
+    merged = dict(values)
+    merged.update(environ)
+    try:
+        llm = load_config({}, merged, path, env_file_explicit=env_file_explicit,
+                          _file_values=values)
+    except ValueError as error:
+        code = str(error)
+        names = {
+            'INVALID_PROVIDER': 'provider', 'INVALID_TIMEOUT': 'timeout',
+            'INVALID_MAX_BLOCKS': 'max_blocks', 'INVALID_TEMPERATURE': 'temperature',
+            'INVALID_THINK': 'think', 'INVALID_NUM_CTX': 'num_ctx',
+        }
+        name = names.get(code, 'provider' if not value('provider') else 'model')
+        raise PullConfigError(ENV_KEYS[name], code) from None
+    if not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', llm.model):
+        raise PullConfigError(ENV_KEYS['model'], 'INVALID_PROVENANCE')
+    return PullConfig(llm, backend, token, version, **numbers)

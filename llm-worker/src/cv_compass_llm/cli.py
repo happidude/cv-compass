@@ -10,13 +10,14 @@ from typing import Literal
 
 from .batch_io import input_directory, prepare_output, write_json
 from .compare import compare
-from .config import load_config
+from .config import ENV_KEYS, PullConfigError, load_config, load_pull_config
 from .gold import draft_gold
 from .ocr_input import load_document
 from .pipeline import extract
 from .prompts import PROMPT_VERSION
 from .providers.base import LlmProvider
 from .providers.ollama import OllamaProvider
+from .pull import run_pull
 
 INPUT_ERRORS = {
     'INVALID_OCR', 'INVALID_JSON', 'INVALID_UTF8', 'OCR_TOO_LARGE', 'OCR_READ_ERROR',
@@ -96,6 +97,9 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--num-ctx')
     run.add_argument('--env-file')
     run.add_argument('--limit', type=int)
+    pull = commands.add_parser('pull')
+    pull.add_argument('--env-file')
+    pull.add_argument('--once', action='store_true')
     draft = commands.add_parser('draft-gold')
     draft.add_argument('--results', required=True)
     draft.add_argument('--output', required=True)
@@ -120,7 +124,21 @@ def main(argv: list[str] | None = None) -> int:
     """Execute a command while keeping paths and source values out of diagnostics."""
     args = parser().parse_args(argv)
     try:
-        if args.command == 'run':
+        if args.command == 'pull':
+            config = load_pull_config(
+                os.environ, Path(args.env_file) if args.env_file is not None else None,
+                env_file_explicit=args.env_file is not None,
+            )
+            llm = config.llm
+            try:
+                provider = OllamaProvider(
+                    llm.model, base_url=llm.base_url, timeout_s=llm.timeout_s,
+                    temperature=llm.temperature, think=llm.think, num_ctx=llm.num_ctx,
+                )
+            except ValueError:
+                raise PullConfigError(ENV_KEYS['base_url'], 'OLLAMA_HOST_NOT_LOCAL') from None
+            return run_pull(config, provider, once=args.once)
+        elif args.command == 'run':
             config = load_config(
                 vars(args), os.environ,
                 Path(args.env_file) if args.env_file is not None else None,
@@ -143,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(metrics, allow_nan=False, sort_keys=True))
             else:
                 print_metrics(metrics)
+    except PullConfigError as error:
+        print(str(error))
+        return 2
     except ValueError as error:
         print(str(error) if str(error) in CLI_ERRORS else 'INVALID_DATA')
         return 2

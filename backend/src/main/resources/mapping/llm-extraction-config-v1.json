@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 4,
+  "engineCompatibility": "llm-extraction/1.0",
+  "revision": "llm-extraction-v1-r1",
+  "fields": {
+    "fullName": {
+      "enabled": true,
+      "description": "Extract only the full name stated verbatim in the CV; do not infer.",
+      "type": "STRING",
+      "aliases": ["Họ và tên", "Họ tên", "Full name", "Name"]
+    },
+    "email": {
+      "enabled": true,
+      "description": "Extract only an email address stated verbatim in the CV; do not infer.",
+      "type": "STRING",
+      "aliases": ["Thư điện tử", "Địa chỉ email", "Email", "E-mail"]
+    },
+    "phone": {
+      "enabled": true,
+      "description": "Extract only a phone number stated verbatim in the CV; do not infer.",
+      "type": "STRING",
+      "aliases": ["Số điện thoại", "Điện thoại", "Phone", "Mobile", "Tel."]
+    },
+    "location": {
+      "enabled": true,
+      "description": "Extract only a location stated verbatim in the CV; do not infer.",
+      "type": "STRING",
+      "aliases": ["Địa chỉ", "Nơi ở", "Location", "Address"]
+    },
+    "summary": {
+      "enabled": true,
+      "description": "Extract only a summary stated verbatim in the CV; do not generate or infer.",
+      "type": "STRING",
+      "aliases": ["Tóm tắt", "Giới thiệu bản thân", "Summary", "Profile", "About me"]
+    },
+    "gender": {
+      "enabled": true,
+      "description": "Extract only gender stated verbatim in the CV; do not infer from names or context.",
+      "type": "ENUM_GENDER",
+      "aliases": ["Giới tính", "Phái", "Gender", "Sex"]
+    },
+    "dateOfBirth": {
+      "enabled": true,
+      "description": "Extract only a birth date stated verbatim in the CV; do not infer missing date parts.",
+      "type": "DATE_PARTIAL",
+      "aliases": ["Ngày sinh", "Năm sinh", "Date of birth", "Birth date", "DOB"]
+    },
+    "experiences": {
+      "enabled": true,
+      "description": "Extract only work experience details stated verbatim in the CV; do not infer roles, employers or dates.",
+      "type": "EXPERIENCE_LIST",
+      "aliases": ["Kinh nghiệm làm việc", "Kinh nghiệm", "Work experience", "Employment history", "Professional experience"]
+    }
+  },
+  "other": {
+    "enabled": true,
+    "description": "Keep at most 20 additional labeled facts stated verbatim in the CV with source evidence; do not infer or duplicate core fields.",
+    "maxItems": 20
+  }
+}

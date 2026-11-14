@@ -325,7 +325,7 @@ public class MappingRepository {
         return jdbc.query(
                 """
                 SELECT "ID" FROM "CV_MAPPING_JOBS"
-                WHERE "STATUS"='PROCESSING' AND "LEASE_EXPIRES_AT"<=clock_timestamp()
+                WHERE "STATUS"='PROCESSING' AND "ENGINE_VERSION"<>'llm-extraction/1.0' AND "LEASE_EXPIRES_AT"<=clock_timestamp()
                 ORDER BY "LEASE_EXPIRES_AT","ID" LIMIT ? FOR UPDATE SKIP LOCKED
                 """,
                 (rs, n) -> rs.getLong(1),
