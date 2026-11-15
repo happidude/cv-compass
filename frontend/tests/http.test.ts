@@ -8,7 +8,10 @@ import { metadata, apiFailure } from "../src/mocks/fixtures";
 vi.stubGlobal("window", { location: { origin: "http://localhost:3000" } });
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.restoreAllMocks();
+});
 afterAll(() => server.close());
 it("uses HTTP and schema validation with safe ApiError and correlationId", async () => {
   server.use(
@@ -34,6 +37,7 @@ it("uses HTTP and schema validation with safe ApiError and correlationId", async
   expect((await get("/documents/7", metadataSchema)).id).toBe("7");
 });
 it("rejects malformed GET responses at the boundary", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   server.use(
     http.get("http://localhost:3000/api/documents/7", () =>
       HttpResponse.json({ id: 1 }),
@@ -41,6 +45,15 @@ it("rejects malformed GET responses at the boundary", async () => {
   );
   await expect(get("/documents/7", metadataSchema)).rejects.toMatchObject({
     kind: "contract",
+  });
+  expect(log).toHaveBeenCalledTimes(1);
+  expect(
+    JSON.parse(String(log.mock.calls[0][0]).slice("[contract] ".length)),
+  ).toMatchObject({
+    endpoint: "/documents/:id",
+    issues: expect.arrayContaining([
+      { path: "originalFilename", code: "invalid_type" },
+    ]),
   });
 });
 it("honors cancellation", async () => {

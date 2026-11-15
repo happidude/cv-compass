@@ -30,6 +30,8 @@ revision `llm-extraction-v1-r1` (đối chiếu SQL bên dưới), engine `llm-e
 
 ## 3. Chạy worker và E2E
 
+Worker chạy trong WSL: xem thêm [Chạy toàn hệ thống local](../LOCAL_DEV.md#2-chạy-llm-worker) (sinh token bằng bash, `git pull` bản clone WSL, lệnh `check`, đọc log).
+
 Từ `llm-worker/`, tạo `.env` từ `.env.example` nếu chưa có; theo
 [README L5](../../llm-worker/README.md#l5--worker-kéo-việc-từ-backend).
 Đặt `CVC_LLM_PROVIDER=ollama`, `CVC_LLM_MODEL=<tag model đã kéo>`,
@@ -51,6 +53,8 @@ Upload một PDF tổng hợp mới qua UI → OCR hoàn tất → job mapping `
 | Thấy gì là đúng / lỗi thường gặp | Cách đọc và xử lý |
 | --- | --- |
 | OCR hoàn tất, job `PENDING` → `PROCESSING` → `COMPLETED`, attempt `ACCEPTED` | Worker có số đếm `claimed`, `accepted`; publication tạo hồ sơ có dữ liệu đề xuất cần duyệt (`NEEDS_REVIEW`). |
+| Hồ sơ **mới** có kinh nghiệm nhưng `/proposals` rỗng | Bình thường: lần xuất bản đầu chèn thẳng vào hồ sơ (`UNVERIFIED`, nguồn `MAPPING`); đề xuất chỉ có khi hồ sơ đã có dữ liệu. |
+| UI báo "Lỗi contract…" | Mở console trình duyệt, đọc dòng `[contract]` (đường dẫn trường + mã zod, không có giá trị) và gửi kèm khi báo lỗi. |
 | Job xong nhưng chưa thấy hồ sơ | Kiểm cờ publication và chờ scheduler, xem mã lỗi an toàn; không sửa DB. |
 | 401 `UNAUTHORIZED` | Token môi trường không khớp hash backend hoặc sai cửa sổ; sinh lại cặp token/hash và khởi động lại backend. |
 | 403 `TLS_REQUIRED` | HTTP từ địa chỉ không loopback; dùng loopback local, máy khác cần HTTPS được cấu hình riêng. |

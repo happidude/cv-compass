@@ -16,7 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class MappingRemoteFixtures {
     public static final JsonMapper JSON = JsonMapper.builder().build();
     public static final String RAW =
-            "\uD83D\uDE00 Synthetic Person e\u0301\nOTHER\n1990-05\nMeadow Labs\nEngineer\n2020-01 2022-03";
+            "\uD83D\uDE00 Synthetic Person e\u0301\nOTHER\n1990-05\nMeadow Labs\nEngineer\n2020-01 2022-03\nSynthetic Reviewer";
 
     private MappingRemoteFixtures() {}
 

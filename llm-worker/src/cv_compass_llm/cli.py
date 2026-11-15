@@ -9,6 +9,7 @@ from time import perf_counter
 from typing import Literal
 
 from .batch_io import input_directory, prepare_output, write_json
+from .check import run_check
 from .compare import compare
 from .config import ENV_KEYS, PullConfigError, load_config, load_pull_config
 from .gold import draft_gold
@@ -100,6 +101,10 @@ def parser() -> argparse.ArgumentParser:
     pull = commands.add_parser('pull')
     pull.add_argument('--env-file')
     pull.add_argument('--once', action='store_true')
+    pull.add_argument('--log-level')
+    check = commands.add_parser('check')
+    check.add_argument('--env-file')
+    check.add_argument('--log-level')
     draft = commands.add_parser('draft-gold')
     draft.add_argument('--results', required=True)
     draft.add_argument('--output', required=True)
@@ -124,10 +129,16 @@ def main(argv: list[str] | None = None) -> int:
     """Execute a command while keeping paths and source values out of diagnostics."""
     args = parser().parse_args(argv)
     try:
+        if args.command == 'check':
+            return run_check(
+                os.environ, Path(args.env_file) if args.env_file is not None else None,
+                env_file_explicit=args.env_file is not None, cli=vars(args),
+            )
         if args.command == 'pull':
             config = load_pull_config(
                 os.environ, Path(args.env_file) if args.env_file is not None else None,
                 env_file_explicit=args.env_file is not None,
+                cli=vars(args),
             )
             llm = config.llm
             try:
