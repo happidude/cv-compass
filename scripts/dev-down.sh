@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-unset CVC_LLM_WORKER_TOKEN
 repo=$(cd -- "${BASH_SOURCE[0]%/*}/.." && pwd)
 run_dir="$repo/.dev/run"
-services='backend,frontend,ocr-worker,llm-worker'
+services='backend,frontend'
 stop_database=false dry_run=false failed=false
-usage() { echo 'Usage: scripts/dev-down.sh [--service backend,frontend,ocr-worker,llm-worker] [--stop-database] [--dry-run]'; }
+usage() { echo 'Usage: scripts/dev-down.sh [--service backend,frontend] [--stop-database] [--dry-run]'; }
 while (($#)); do
     case "$1" in
         --service) [[ $# -ge 2 && -n $2 ]] || { usage; exit 2; }; services=$2; shift 2;;
@@ -18,7 +17,7 @@ while (($#)); do
 done
 IFS=, read -ra selected <<< "$services"
 for svc in "${selected[@]}"; do
-    case "$svc" in backend|frontend|ocr-worker|llm-worker) ;; *) usage; exit 2;; esac
+    case "$svc" in backend|frontend) ;; *) usage; exit 2;; esac
 done
 proc_start() {
     local stat rest
@@ -65,8 +64,12 @@ stop_service() {
         rm -- "$file"; echo "STOPPED $svc"
     fi
 }
-echo 'Wait until no CV is PROCESSING before stopping workers.'
-for svc in llm-worker ocr-worker frontend backend; do
+for file in "$run_dir/ocr-worker.json" "$run_dir/llm-worker.json" "$run_dir/"*-worker.rec "${XDG_STATE_HOME:-$HOME/.local/state}/cv-compass-dev/run/"win-*.rec; do
+    [[ -f $file ]] || continue
+    svc=${file##*/}; svc=${svc%.*}; svc=${svc#win-}
+    echo "WARNING $svc: legacy worker record kept; dừng thủ công bằng Ctrl+C trong cửa sổ worker ($file)"
+done
+for svc in frontend backend; do
     for chosen in "${selected[@]}"; do
         if [[ $chosen == "$svc" ]]; then stop_service "$svc"; break; fi
     done
@@ -83,8 +86,8 @@ if $stop_database; then
             *) echo 'SKIP database: invalid mode record'; container=''; failed=true;;
         esac
         if [[ -n $container ]]; then
-            echo "env -u CVC_LLM_WORKER_TOKEN docker stop $container"
-            if ! $dry_run; then env -u CVC_LLM_WORKER_TOKEN docker stop "$container" || failed=true; fi
+            echo "docker stop $container"
+            if ! $dry_run; then docker stop "$container" || failed=true; fi
         fi
     fi
 else
