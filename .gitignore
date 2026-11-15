@@ -43,6 +43,7 @@ credentials/
 *.pfx
 
 # Local CV inputs and runtime storage
+/.dev/
 *.pdf
 /storage/
 /uploads/
