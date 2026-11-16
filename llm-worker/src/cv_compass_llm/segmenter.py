@@ -1,5 +1,6 @@
 """Line-based segmentation retaining original page ranges."""
 
+import re
 from dataclasses import dataclass
 
 from .ocr_input import Document, Page
@@ -8,11 +9,16 @@ from .schema import Issue
 EXPERIENCE_HEADINGS = (
     'experience', 'work experience', 'professional experience', 'employment history',
     'kinh nghiệm', 'kinh nghiệm làm việc', 'quá trình làm việc', 'quá trình công tác',
+    'work history', 'career history', 'employment', 'experiences',
+    'kinh nghiệm công tác', 'lịch sử làm việc', 'lịch sử công tác',
 )
 OTHER_HEADINGS = (
     'education', 'học vấn', 'skills', 'kỹ năng', 'projects', 'dự án', 'certifications',
     'chứng chỉ', 'summary', 'profile', 'references', 'interests', 'languages',
     'giới thiệu', 'mục tiêu nghề nghiệp', 'ngoại ngữ', 'sở thích', 'awards', 'giải thưởng',
+    'certificates', 'certificate', 'core skills', 'key skills', 'personal information',
+    'thông tin cá nhân', 'contact', 'liên hệ', 'objective', 'career objective', 'hobbies',
+    'activities', 'hoạt động', 'training', 'đào tạo', 'memberships', 'publications',
 )
 
 
@@ -79,22 +85,40 @@ def split_lines(pages: tuple[Page, ...]) -> list[Span]:
     return lines
 
 
+def normalize_heading(text: str) -> str:
+    """Remove heading decorations without accepting prose by prefix."""
+    text = text.strip()
+    while text and not text[0].isalpha():
+        text = text[1:]
+    text = re.sub(
+        r'^(?=[IVX])(?:XX|X?(?:IX|IV|V?I{0,3}))(?:[.)]\s*|\s*[-–]\s+)',
+        '', text, flags=re.IGNORECASE,
+    )
+    while text and not text[0].isalpha():
+        text = text[1:]
+    return ' '.join(text.rstrip(': -–.\t\r\n').split()).casefold()
+
+
 def scan_headings(
     lines: list[Span], experience_headings: tuple[str, ...], other_headings: tuple[str, ...],
 ) -> tuple[tuple[Block, ...], bool]:
     """Collect experience sections delimited by complete heading lines."""
-    starts = {heading.casefold() for heading in experience_headings}
-    stops = {heading.casefold() for heading in other_headings}
+    starts = {normalize_heading(heading) for heading in experience_headings}
+    stops = {normalize_heading(heading) for heading in other_headings}
     found, active = False, False
     selected: list[Span] = []
     blocks: list[Block] = []
     for line in lines:
-        heading = line.text.strip().casefold()
-        if heading in starts or heading in stops:
+        heading = normalize_heading(line.text)
+        parts = re.split(r'\s*(?:[&/,]|\band\b|\bvà\b)\s*', heading)
+        known = len(heading) <= 60 and all(part in starts | stops for part in parts)
+        if active and heading in ('projects', 'dự án'):
+            known = False
+        if known:
             if selected:
                 blocks.extend(split_spans(selected))
                 selected = []
-            active = heading in starts
+            active = parts[0] in starts
             found |= active
         elif active:
             selected.append(line)

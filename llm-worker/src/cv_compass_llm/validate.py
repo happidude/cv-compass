@@ -2,7 +2,8 @@
 
 import re
 
-from .evidence import locate, normalize
+from .dates import find_birth_dates, find_dates, has_present, normalize_date, parse_birth_date
+from .evidence import locate, source_value
 from .json_strict import strict_json
 from .schema import (
     EXPERIENCE_SCHEMA,
@@ -14,16 +15,11 @@ from .schema import (
 )
 from .segmenter import Block
 
-PRESENT = ('present', 'now', 'current', 'hiện tại', 'nay')
-DATE_TOKEN = re.compile(
-    r'(?<![\w/])(?:\d{4}-(?:0?[1-9]|1[0-2])(?!\d)|\d{1,2}/\d{4}|\d{4})(?![\w/])'
-)
 GENDERS = {
     'nam': 'MALE', 'male': 'MALE', 'nữ': 'FEMALE', 'female': 'FEMALE',
     'other': 'OTHER', 'khác': 'OTHER',
 }
 GENDER_LABEL = re.compile(r'^(?:gender|giới\s+tính)\s*[:-]\s*')
-PRESENT_TOKEN = re.compile(r'(?i)\b(?:present|now|current|hiện\s+tại|nay)\b')
 
 
 def matches_schema(value: object, schema: dict) -> bool:
@@ -72,10 +68,11 @@ def supported(
     if value is None:
         return None, None
     evidence = locate(quote, block)
-    if not normalize(value) or evidence is None or normalize(value) not in normalize(evidence.text):
+    original = source_value(value, evidence.text) if evidence is not None else None
+    if original is None:
         issues.append(Issue('QUOTE_NOT_FOUND', field))
         return None, None
-    return value, evidence
+    return original, evidence
 
 
 def _gender_value(text: str) -> str | None:
@@ -107,7 +104,7 @@ def validate_gender(
     item: dict, block: Block, issues: list[Issue],
 ) -> tuple[str | None, Evidence | None]:
     """Accept gender only on an explicit standalone or labelled source line."""
-    evidence = locate(item['quote'], block)
+    evidence = locate(item['quote'], block, ignore_case=False)
     value = _gender_value(item['quote'])
     line = _gender_source_line(evidence, block) if evidence is not None else None
     if value is None or item['value'] != value or line is None or _gender_value(line) != value:
@@ -120,19 +117,18 @@ def validate_birth_date(
     item: dict, block: Block, issues: list[Issue],
 ) -> tuple[str | None, Evidence | None]:
     """Normalize an explicit supported birth date without inferring missing parts."""
-    try:
-        value, present = normalize_date(item['value'])
-    except ValueError:
-        issues.append(Issue('INVALID_DATE', 'dateOfBirth'))
-        return None, None
-    if present:
+    value, ambiguous = parse_birth_date(item['value'])
+    if value is None:
         issues.append(Issue('INVALID_DATE', 'dateOfBirth'))
         return None, None
     evidence = locate(item['quote'], block)
-    tokens = date_tokens(evidence.text) if evidence is not None else []
-    if evidence is None or value not in tokens:
+    tokens = find_birth_dates(evidence.text) if evidence is not None else []
+    matches = [assumed for token, assumed in tokens if token == value]
+    if evidence is None or not matches:
         issues.append(Issue('QUOTE_NOT_FOUND', 'dateOfBirth'))
         return None, None
+    if ambiguous or any(matches):
+        issues.append(Issue('DOB_DAY_FIRST_ASSUMED', 'dateOfBirth'))
     return value, evidence
 
 
@@ -155,38 +151,6 @@ def validate_personal(text: str, block: Block) -> tuple[tuple[FieldValue, ...], 
     return tuple(fields), tuple(issues)
 
 
-def normalize_date(value: str) -> tuple[str | None, bool]:
-    """Normalize a supported date or detect an explicit ongoing marker."""
-    value = value.strip()
-    if value.casefold() in PRESENT:
-        return None, True
-    year, month = 0, None
-    if re.fullmatch(r'\d{4}', value):
-        year = int(value)
-    elif re.fullmatch(r'\d{1,2}/\d{4}', value):
-        raw_month, raw_year = value.split('/')
-        month, year = int(raw_month), int(raw_year)
-    elif re.fullmatch(r'\d{4}-\d{2}', value):
-        raw_year, raw_month = value.split('-')
-        year, month = int(raw_year), int(raw_month)
-    if not 1950 <= year <= 2100 or (month is not None and not 1 <= month <= 12):
-        raise ValueError('INVALID_DATE')
-    return (f'{year:04d}-{month:02d}' if month is not None else f'{year:04d}'), False
-
-
-def date_tokens(text: str) -> list[str]:
-    """Collect valid normalized dates from a verbatim period quote."""
-    tokens = []
-    for match in DATE_TOKEN.finditer(text):
-        try:
-            token, _ = normalize_date(match.group())
-            if token is not None:
-                tokens.append(token)
-        except ValueError:
-            pass
-    return tokens
-
-
 def validate_period(
     item: dict, block: Block, issues: list[Issue],
 ) -> tuple[str | None, str | None, bool, Evidence | None]:
@@ -197,8 +161,8 @@ def validate_period(
     if evidence is None:
         issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
         return None, None, False, None
-    tokens = date_tokens(evidence.text)
-    explicit_ongoing = PRESENT_TOKEN.search(evidence.text) is not None
+    tokens = find_dates(evidence.text)
+    explicit_ongoing = has_present(evidence.text)
     dates = []
     ongoing = item['ongoing']
     for key in ('start', 'end'):

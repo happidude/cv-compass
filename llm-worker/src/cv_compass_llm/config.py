@@ -136,13 +136,12 @@ def load_config(
     think = value('think', 'false').lower()
     if think not in ('true', 'false'):
         raise ValueError('INVALID_THINK')
-    num_ctx = value('num_ctx')
+    num_ctx = value('num_ctx', '8192')
     return LlmConfig(
         provider=provider, model=model,
         base_url=value('base_url', 'http://127.0.0.1:11434'), timeout_s=timeout,
         max_blocks=max_blocks, temperature=temperature, think=think == 'true',
-        num_ctx=(_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576)
-                 if num_ctx else None),
+        num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
     )
 
 

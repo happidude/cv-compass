@@ -195,7 +195,7 @@ class PullConfigTests(unittest.TestCase):
               patch('cv_compass_llm.cli.run_pull', return_value=0) as pull):
             self.assertEqual(main(['pull', '--once', '--env-file', str(self.path)]), 0)
         provider.assert_called_once_with('synthetic-model', base_url='http://127.0.0.1:11434',
-                                         timeout_s=120, temperature=0, think=False, num_ctx=None)
+                                         timeout_s=120, temperature=0, think=False, num_ctx=8192)
         self.assertEqual(pull.call_args.args[0].backend_url, self.env['CVC_LLM_BACKEND_URL'])
         self.assertEqual(pull.call_args.args[0].worker_token, TOKEN)
         self.assertIs(pull.call_args.args[1], provider.return_value)

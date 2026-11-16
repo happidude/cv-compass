@@ -54,8 +54,13 @@ thị, không dùng lọc hay xếp hạng.
 - Evidence chỉ có một page: quote trải qua nhiều trang bị loại với QUOTE_NOT_FOUND;
   không nối trang để tạo evidence giả. Quote nhiều dòng cùng trang được hỗ trợ.
 - Summary chỉ giữ giá trị nguyên văn có trong quote; không tạo bản tóm tắt.
-  dateOfBirth chỉ nhận YYYY, YYYY-MM, M/YYYY hoặc MM/YYYY và chuẩn hóa như date kinh nghiệm.
-  Dạng DD/MM/YYYY hiện bị bỏ; không đoán ngày sinh.
+  Title/company/location/fullName/summary cho phép khớp không phân biệt hoa thường
+  và gộp khoảng trắng, nhưng luôn lưu đoạn nguyên văn từ nguồn; không so khớp mờ hay bỏ dấu.
+  Casefold/lower chỉ dùng khi giữ độ dài từng ký tự; NFC chỉ dùng khi giữ độ dài.
+  dateOfBirth nhận ngày đầy đủ hợp lệ lịch và chuẩn hóa thành YYYY-MM-DD;
+  D/M/YYYY, D-M-YYYY, D.M.YYYY đọc ngày trước. Nếu ngày và tháng đều ≤ 12,
+  giữ giá trị kèm DOB_DAY_FIRST_ASSUMED. YYYY/YYYY-MM và các dạng tháng/năm
+  được chuẩn hóa nhưng không suy ra phần ngày/tháng còn thiếu; năm hai chữ số bị loại.
 - Date khác độ chính xác được so theo khoảng có thể có; cùng năm không suy ra tháng.
   Khi period không hợp lệ, bỏ cả start/end/ongoing và evidence period, giữ role/company.
 - Dòng đơn dài hơn 6000 ký tự không thể cắt ở ranh giới dòng: bỏ dòng đó và sinh
@@ -213,7 +218,10 @@ không tồn tại trả `ENV_FILE_NOT_FOUND`.
 | `CVC_LLM_MAX_BLOCKS` | `--max-blocks` | 20, số nguyên từ 0 |
 | `CVC_LLM_TEMPERATURE` | `--temperature` | 0, số hữu hạn từ 0 đến 2 |
 | `CVC_LLM_THINK` | `--think {true,false}` | false; file/môi trường không phân biệt hoa thường |
-| `CVC_LLM_NUM_CTX` | `--num-ctx` | Không gửi nếu chưa đặt; số nguyên từ 1 đến 1048576 |
+| `CVC_LLM_NUM_CTX` | `--num-ctx` | 8192; số nguyên từ 1 đến 1048576 |
+
+Với VRAM 4 GB, context mặc định 8192 có thể tràn sang CPU; giảm
+`CVC_LLM_NUM_CTX` nếu xử lý chậm.
 
 File `.env` phải là UTF-8 strict, tối đa 64 KiB. Dòng trống và dòng bắt đầu bằng
 `#` được bỏ qua; dòng còn lại có dạng `KEY=VALUE`, bỏ khoảng trắng ở hai đầu.

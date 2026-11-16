@@ -4,7 +4,7 @@ import json
 
 from .schema import EXPERIENCE_SCHEMA, PERSONAL_SCHEMA
 
-PROMPT_VERSION = 'llm-extraction-prompt/1'
+PROMPT_VERSION = 'llm-extraction-prompt/2'
 BEGIN = '<<<CV_DATA_BEGIN>>>'
 END = '<<<CV_DATA_END>>>'
 
@@ -20,8 +20,16 @@ def build_prompt(block_text: str, schema: dict) -> str:
         'Values must occur in their quote, except normalized dates and gender. '
         'Gender requires explicit Nam/Nữ/Male/Female/Other and normalizes to MALE/FEMALE/OTHER; '
         'it is display-only, never for filtering or ranking. '
-        'Dates use YYYY or YYYY-MM; ongoing requires explicit Present/Now/Current/Hiện tại/Nay. '
-        'Keep source date tokens in the period quote.\n'
+        'Experience dates use YYYY or YYYY-MM; birth dates may use YYYY-MM-DD. '
+        'Ongoing requires an explicit present marker, such as Present/Now/Current/Hiện tại/Nay. '
+        'Copy title/company with the exact letter case used in the CV. '
+        'Chép title/company đúng chữ hoa-thường như CV. '
+        'Company is only the company name, without industry descriptions or locations. '
+        'Company chỉ là tên công ty, không kèm mô tả ngành hoặc địa danh. '
+        'Use one record per position; projects, education and certificates are not jobs. '
+        'Tạo một record cho mỗi vị trí; dự án, học vấn và chứng chỉ không phải công việc. '
+        'The period quote must contain verbatim date tokens from the CV. '
+        'Quote period phải chứa nguyên văn token ngày trong CV.\n'
         + BEGIN + '\n' + escaped + '\n' + END
     )
 
