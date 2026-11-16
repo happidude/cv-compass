@@ -3,6 +3,8 @@
 import re
 from dataclasses import dataclass
 
+from . import contacts
+from .dates import find_dates, has_present
 from .ocr_input import Document, Page
 from .schema import Issue
 
@@ -19,6 +21,13 @@ OTHER_HEADINGS = (
     'certificates', 'certificate', 'core skills', 'key skills', 'personal information',
     'thông tin cá nhân', 'contact', 'liên hệ', 'objective', 'career objective', 'hobbies',
     'activities', 'hoạt động', 'training', 'đào tạo', 'memberships', 'publications',
+)
+PERSONAL_LABELS = re.compile(
+    r'\b(?:' + '|'.join(re.escape(label) for label in (
+        'name', 'full name', 'họ tên', 'họ và tên', 'date of birth', 'day of birth',
+        'ngày sinh', 'gender', 'giới tính', 'personal information', 'personal details',
+        'thông tin cá nhân',
+    )) + r')\b',
 )
 
 
@@ -45,20 +54,36 @@ class Block:
         )
 
 
+def _is_job_boundary(text: str) -> bool:
+    """Recognize explicit period lines or job introduction labels."""
+    return bool(
+        re.search(r'^(?:from|từ)\b', text.strip(), re.IGNORECASE)
+        or has_present(text)
+        or (find_dates(text) and re.search(r'[-–—]|\b(?:to|đến)\b', text, re.IGNORECASE))
+    )
+
+
 def split_spans(spans: list[Span], limit: int = 6000) -> tuple[Block, ...]:
-    """Group complete lines into blocks within the character limit."""
+    """Group lines within the limit, preferring the last preceding job boundary."""
     blocks: list[Block] = []
     current: list[Span] = []
     size = 0
     for span in spans:
+        while current and size + len(span.text) + (
+            current[-1].page != span.page or current[-1].end != span.start
+        ) > limit:
+            cut = next((
+                index for index in range(len(current) - 1, 0, -1)
+                if _is_job_boundary(current[index].text)
+            ), len(current))
+            blocks.append(Block(tuple(current[:cut])))
+            current = current[cut:]
+            # Carrying a job changes which page/gap separators belong to this block.
+            size = len(Block(tuple(current)).text)
         separator = bool(current and (
             current[-1].page != span.page or current[-1].end != span.start
         ))
-        cost = len(span.text) + separator
-        if current and size + cost > limit:
-            blocks.append(Block(tuple(current)))
-            current, size = [], 0
-        size += len(span.text) + (separator if current else 0)
+        size += len(span.text) + separator
         current.append(span)
     if current:
         blocks.append(Block(tuple(current)))
@@ -66,10 +91,14 @@ def split_spans(spans: list[Span], limit: int = 6000) -> tuple[Block, ...]:
 
 
 def build_header(pages: tuple[Page, ...]) -> Block:
-    """Take at most 3000 characters from the first successful page."""
+    """Take a page prefix, preferring personal markers in the first three ok pages."""
     if not pages:
         return Block(())
-    page = pages[0]
+    page = next((
+        page for page in pages[:3]
+        if PERSONAL_LABELS.search(page.raw_text.casefold())
+        or any(re.search(contacts.PATTERNS[key], page.raw_text) for key in ('email', 'phone'))
+    ), pages[0])
     text = page.raw_text[:3000]
     return Block((Span(page.number, 0, len(text), text, page.raw_text),))
 
