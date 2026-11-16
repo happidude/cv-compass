@@ -87,7 +87,8 @@ py -3.14 -m cv_compass_llm compare --results C:\cv-compass-synthetic\run-01 --go
 `--limit` không bắt buộc; giá trị 0 tạo lượt rỗng. `--max-blocks` mặc định 20.
 Mỗi file tạo `<stem>.result.json` (kết quả có evidence và `seconds`) hoặc
 `<stem>.error.json` (chỉ mã lỗi đọc/parse OCR), rồi tiếp tục file kế tiếp.
-`run-summary.json` chứa `files`, `ok`, lỗi và issue theo mã, `total_seconds`,
+`run-summary.json` chứa `files`, `ok`, lỗi và `issues` theo mã, `issues_by_field`
+theo `code.field` (chỉ `code` khi field là null), `total_seconds`,
 `average_seconds`, `provider`, `prompt_version`. Thời gian tổng/trung bình của
 lượt batch gồm cả file lỗi và ghi artifact; `seconds` của result đo đọc/trích xuất
 trước khi ghi file. Lỗi provider vẫn theo contract L1a: issue `PROVIDER_ERROR`,
@@ -104,13 +105,46 @@ giá trị trích xuất. Mã thoát 0 khi hoàn tất (kể cả từng file l�
 an toàn đường dẫn hoặc I/O của lệnh không hợp lệ. Lỗi ngoài dự kiến chỉ in
 `INTERNAL_ERROR`, không traceback hay message exception. Không ghi/xóa trong input.
 
-Gold gồm đúng `status`, `personal`, `experiences`. `personal` bắt buộc đủ bốn key
-`fullName`, `gender`, `location`, `dateOfBirth`, giá trị chuỗi hoặc null.
-Mỗi experience bắt buộc `title`, `company`, `start`, `end` (chuỗi hoặc null) và
-`ongoing` (boolean). Gold không có evidence, contacts, summary hay issue.
+## Gold v2 và so khớp
+
+Gold v2 gồm đúng `schemaVersion: "experience-gold/2"`, `status`, `personal`,
+`experiences`. Mỗi công ty chứa danh sách `positions` không rỗng, ví dụ tổng hợp:
+
+```json
+{
+  "schemaVersion": "experience-gold/2",
+  "status": "DRAFT",
+  "personal": {"fullName": null, "gender": null, "location": null, "dateOfBirth": null},
+  "experiences": [{
+    "company": "Acme Synthetic", "companyLocation": null,
+    "start": "2018", "end": "2024", "ongoing": false,
+    "positions": [
+      {"title": "MANAGER", "start": "2020", "end": "2024", "ongoing": false},
+      {"title": "EXECUTIVE", "start": "2018", "end": "2020", "ongoing": false}
+    ]
+  }]
+}
+```
+
+Các object phải đủ và đúng tập key; giá trị chuỗi có thể null, `ongoing` phải là
+boolean. `company` và `title` không được cùng null trong một vị trí. Date kinh
+nghiệm nhận `YYYY` hoặc `YYYY-MM` với tháng 01–12; `dateOfBirth` nhận thêm
+`YYYY-MM-DD` hợp lệ lịch. `ongoing=true` buộc `end=null`. Gold không có evidence,
+contacts, summary hay issue. Sai định dạng trả `INVALID_GOLD`.
+
+Gold v1 không có `schemaVersion` vẫn đọc được: mỗi mục phẳng thành một vị trí,
+giữ kiểm tra kiểu dữ liệu cũ để tương thích (kiểm nghiêm ở trên áp dụng cho v2),
+gộp các mục **liền nhau** có company khác null và bằng nhau sau NFC, casefold,
+gộp/strip khoảng trắng. Giữ thứ tự và chuỗi công ty đầu tiên; company null không
+gộp, cùng công ty xuất hiện lại sau công ty khác vẫn là nhóm riêng. Quy tắc này
+cũng áp dụng cho draft và kết quả trích xuất phẳng khi so khớp.
+
 `draft-gold` chỉ tạo trạng thái `DRAFT`; con người kiểm tra, sửa và đổi thành
-`CONFIRMED`. Lệnh cho phép thư mục gold đã có nội dung, bỏ qua mọi gold đã tồn tại
-và đếm `skipped_existing`; không ghi đè. Output vẫn phải ngoài repo, tách khỏi
+`CONFIRMED`. Nháp luôn là v2, `companyLocation=null`, kỳ công ty có
+`start=null`, `end=null`, `ongoing=false` để người duyệt điền khoảng chung nếu CV
+có ghi; vị trí giữ date của từng mục. Lệnh cho phép thư mục gold đã có nội dung,
+bỏ qua mọi gold đã tồn tại và đếm `skipped_existing`; không ghi đè.
+Output vẫn phải ngoài repo, tách khỏi
 results. `draft-gold` không biết thư mục OCR input của lần `run` trước: không chọn
 output trùng hoặc nằm trong thư mục OCR đó. File result không hợp lệ được đếm
 trong `errors`.
@@ -123,13 +157,34 @@ không hợp lệ; `invalid_results` chỉ kiểm/đếm result ghép với gold
 File lỗi không đóng góp số liệu.
 So sánh dùng NFC, casefold và gộp/strip khoảng trắng; null khác chuỗi rỗng.
 Personal có `correct`, `wrong`, `missing`, `extra`; hai phía cùng null tính là
-`correct`. Experience khớp theo bộ `(title, company, (start, end, ongoing))` và
-riêng từng thành phần, dùng multiset trong từng CV để không đếm trùng vượt gold.
-Experience có title/company/start/end đều null và ongoing false bị loại khỏi cả
-khớp exact lẫn các thành phần, không đóng góp mẫu số. Thành phần title/company
-null và period hoàn toàn chưa biết không được tính là khớp riêng.
-Mỗi nhóm có `matched`, `predicted`, `gold`, `precision`, `recall`;
-mẫu số 0 cho tỷ lệ 0. `average_seconds` chỉ tính các CV đã so khớp. Không dùng
+`correct`.
+
+Kỳ công ty dùng nguyên bộ `(start, end, ongoing)` đã ghi trong gold nếu có start,
+end hoặc ongoing; nếu chưa có thì suy từ vị trí: start sớm nhất, end muộn nhất,
+ongoing nếu bất kỳ vị trí nào ongoing (khi đó end=null). Kết quả trích xuất luôn
+suy kỳ công ty từ vị trí. Khi chọn biên, `YYYY` sớm là `YYYY-01`, muộn là
+`YYYY-12`; giữ chuỗi gốc được chọn, không tự thêm tháng. Kỳ hiệu lực vị trí dùng
+date riêng khi có start **và** (end hoặc ongoing), còn lại dùng kỳ công ty.
+Hai phía áp dụng cùng quy tắc; các key date vẫn so khớp nguyên giá trị đã chọn.
+
+Kinh nghiệm dùng bốn nhóm multiset trong từng CV:
+
+| Nhóm | Key |
+| --- | --- |
+| `companies` | company |
+| `companyPeriods` | (company, start, end, ongoing) của công ty |
+| `titles` | (company, title) |
+| `positions` | (company, title, kỳ hiệu lực vị trí) |
+
+**`positions` là chỉ số bộ ba dùng cho ngưỡng 90%.** Mỗi nhóm có `matched`,
+`predicted`, `gold`, `precision`, `recall`; multiset không cho dự đoán lặp khớp
+vượt số lần xuất hiện trong gold. Key thiếu company bị loại; `titles` và
+`positions` cần thêm title khác null. `companyPeriods` loại kỳ hoàn toàn chưa
+biết `(null, null, false)`. Các key bị loại không đóng góp mẫu số.
+`companyLocation` chưa chấm vì kết quả chưa có field này; output ghi
+`"companyLocation": "NOT_SCORED"`.
+
+Mẫu số 0 cho tỷ lệ 0. `average_seconds` chỉ tính các CV đã so khớp. Không dùng
 thứ tự experience để ghép, không tìm gần đúng hay suy ra danh tính.
 Không có `--json` thì in từng chỉ số; có cờ thì in cùng số liệu JSON.
 
@@ -269,7 +324,9 @@ thời gian lỗi kết nối được reset; các poll hết việc liên tiế
 Tiến độ block tính cả lời gọi personal và các block kinh nghiệm thực
 sự xử lý (sau giới hạn `max_blocks`); chỉ số bắt đầu từ 1.
 Log chỉ có metadata: attempt rút còn 8 ký tự, số trang/ký tự, thời gian, tổng issue
-theo mã cố định (`issues=NONE:0` khi không có issue). Model dạng URL/đường dẫn
+theo mã và field cố định (ví dụ `issues=INVALID_DATE.start:1,QUOTE_NOT_FOUND.title:2`;
+field null chỉ ghi mã, `issues=NONE:0` khi không có issue). Allowlist mã giữ nguyên.
+Model dạng URL/đường dẫn
 tuyệt đối được che bằng `REDACTED`. Origin chỉ hiện host:port; không ghi OCR, prompt, output, evidence,
 giá trị ứng viên, token/hash, URL đầy đủ, đường dẫn hay message exception.
 Logger riêng chỉ được cấu hình trong lúc chạy lệnh; stdout bộ đếm giữ nguyên.

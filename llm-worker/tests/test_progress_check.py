@@ -26,6 +26,7 @@ from cv_compass_llm.providers.base import ProviderError
 from cv_compass_llm.providers.fake import FakeProvider
 from cv_compass_llm.pull import _Attempt, run_pull
 from cv_compass_llm.pull_payload import input_document
+from cv_compass_llm.schema import ExtractionResult, Issue
 
 MARKER = 'SENTINEL_PII_7f3a'
 TOKEN = MARKER + '_' + 'x' * 43
@@ -113,6 +114,46 @@ class ProgressTests(unittest.TestCase):
         for line in err.splitlines():
             self.assertRegex(line, r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d INFO '
                                    r'event=[a-z_]+(?: [^\s=]+=[^\s]+)*$')
+
+    def test_extraction_done_counts_fields_and_preserves_code_allowlist(self):
+        issues = (
+            Issue('QUOTE_NOT_FOUND', 'title'), Issue('QUOTE_NOT_FOUND', 'title'),
+            Issue('QUOTE_NOT_FOUND', 'company'), Issue('INVALID_DATE', 'start'),
+            Issue('BLOCK_LIMIT_REACHED'),
+            Issue('PROVIDER_ERROR', 'personal'), Issue(MARKER, 'title'),
+            Issue('FIELD_DISABLED', 'fullName'),
+        )
+        extraction = ExtractionResult((), (), issues, 'synthetic', 'fake')
+        with patch('cv_compass_llm.pull.extract', return_value=extraction):
+            result, out, err, records = self.run_worker(Backend())
+        self.assertEqual(result, 0)
+        self.assertEqual(out, 'claimed=1 accepted=1 failed=0\n')
+        done = [row.getMessage() for row in records
+                if row.getMessage().startswith('event=extraction_done ')]
+        self.assertEqual(len(done), 1)
+        self.assertTrue(done[0].endswith(
+            'issues=BLOCK_LIMIT_REACHED:1,INVALID_DATE.start:1,'
+            'PROVIDER_ERROR.personal:1,'
+            'QUOTE_NOT_FOUND.company:1,QUOTE_NOT_FOUND.title:2'
+        ))
+        self.assertNotIn('FIELD_DISABLED', err)
+
+    def test_extraction_done_logs_invalid_json_field_before_failure(self):
+        extraction = ExtractionResult(
+            (), (), (Issue('LLM_INVALID_JSON', 'experiences'),), 'synthetic', 'fake',
+        )
+        backend = Backend()
+        with patch('cv_compass_llm.pull.extract', return_value=extraction):
+            result, out, err, records = self.run_worker(backend)
+        self.assertEqual(result, 0)
+        self.assertEqual(out, 'claimed=1 accepted=0 failed=1\n')
+        done = [row.getMessage() for row in records
+                if row.getMessage().startswith('event=extraction_done ')]
+        self.assertEqual(len(done), 1)
+        self.assertTrue(done[0].endswith('issues=LLM_INVALID_JSON.experiences:1'))
+        self.assertIn('event=failed attempt=a0000000 code=INVALID_OUTPUT', err)
+        self.assertEqual(json.loads(backend.requests('failure')[0][3]), {'code': 'INVALID_OUTPUT'})
+        self.assertFalse(backend.requests('result'))
 
     def test_waiting_throttled_for_empty_503_and_unreachable(self):
         for status, code in ((204, 'NO_WORK'), (503, 'MAPPING_REMOTE_UNAVAILABLE'),

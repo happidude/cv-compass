@@ -1,33 +1,39 @@
 """Aggregate-only comparison against explicitly confirmed gold."""
 
-import unicodedata
 from collections import Counter
 from pathlib import Path
 
 from .batch_io import input_directory
-from .gold import PERSONAL_FIELDS, load_gold, result_values
-
-
-def normalize(value: str | None) -> str | None:
-    """Normalize Unicode, case and whitespace without inferring values."""
-    if value is None:
-        return None
-    return ' '.join(unicodedata.normalize('NFC', value).casefold().split())
+from .gold import (
+    PERSONAL_FIELDS,
+    company_period,
+    effective_period,
+    group_experiences,
+    load_gold,
+    normalize,
+    result_values,
+)
 
 
 def experience_keys(items: list[dict], kind: str) -> Counter:
     """Build a multiset so duplicate predictions cannot inflate matches."""
     keys = []
     for item in items:
-        title, company = normalize(item['title']), normalize(item['company'])
-        period = (normalize(item['start']), normalize(item['end']), item['ongoing'])
-        if title is None and company is None and period == (None, None, False):
+        company = normalize(item['company'])
+        if company is None:
             continue
-        key = {'exact': (title, company, period), 'title': title,
-               'company': company, 'period': period}[kind]
-        # Unknown individual components must not count as successful matches.
-        if key is not None and not (kind == 'period' and period == (None, None, False)):
-            keys.append(key)
+        period = company_period(item)
+        if kind == 'companies':
+            keys.append(company)
+        elif kind == 'companyPeriods':
+            if period != (None, None, False):
+                keys.append((company, *period))
+        else:
+            for position in item['positions']:
+                title = normalize(position['title'])
+                if title is not None:
+                    keys.append((company, title) if kind == 'titles' else
+                                (company, title, effective_period(position, period)))
     return Counter(keys)
 
 
@@ -37,11 +43,12 @@ def compare(results: str | Path, gold: str | Path) -> dict:
     personal = {key: dict.fromkeys(('correct', 'wrong', 'missing', 'extra'), 0)
                 for key in PERSONAL_FIELDS}
     experiences = {kind: {'matched': 0, 'predicted': 0, 'gold': 0}
-                   for kind in ('exact', 'title', 'company', 'period')}
+                   for kind in ('companies', 'companyPeriods', 'titles', 'positions')}
     summary = {
         'compared': 0, 'skipped_draft': 0, 'missing_results': 0,
         'unpaired_results': 0, 'invalid_gold': 0, 'invalid_results': 0,
         'personal': personal, 'experiences': experiences, 'average_seconds': 0.0,
+        'companyLocation': 'NOT_SCORED',
     }
     gold_paths = sorted(references.glob('*.gold.json'))
     summary['unpaired_results'] = sum(
@@ -67,6 +74,7 @@ def compare(results: str | Path, gold: str | Path) -> dict:
             summary['invalid_results'] += 1
             continue
         summary['compared'] += 1
+        records = group_experiences(records)
         summary['average_seconds'] += (
             seconds - summary['average_seconds']
         ) / summary['compared']
