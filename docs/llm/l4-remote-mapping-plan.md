@@ -70,7 +70,7 @@ Giới hạn body (review L5): lệnh điều khiển (claim/lease/failure) ≤ 
   "personal": {
     "fullName":    {"value": "…", "evidence": {"page": 1, "start": 0, "end": 5, "text": "…"}},
     "gender":      {"value": "MALE|FEMALE|OTHER", "evidence": {"page": 1, "start": 9, "end": 12, "text": "…"}},
-    "dateOfBirth": {"value": "YYYY|YYYY-MM", "evidence": {"page": 1, "start": 20, "end": 27, "text": "…"}},
+    "dateOfBirth": {"value": "YYYY|YYYY-MM|YYYY-MM-DD", "evidence": {"page": 1, "start": 20, "end": 27, "text": "…"}},
     "email": null, "phone": null, "location": null, "summary": null
   },
   "experiences": [
@@ -104,7 +104,7 @@ Chạy trong `PUT /result`, theo thứ tự; lỗi ở bất kỳ bước nào �
    (`fullName, email, phone, location, summary`, title, company, other) `value` phải bằng `text` sau chuẩn hóa khoảng trắng;
    gender/ngày được phép khác dạng chữ (Nam → MALE, `05/1990` → `1990-05`) nhưng phải có evidence hợp lệ.
    Sai bất kỳ giá trị nào → **từ chối cả kết quả** 422 `INVALID_EVIDENCE` (M7): attempt `FAILED`, tính một lượt thử, job theo backoff hiện tại.
-5. **Quy tắc ngày:** `YYYY` hoặc `YYYY-MM`, tháng 1–12, năm 1950–2100 (dateOfBirth 1900–2100), `start ≤ end`, `ongoing=true` ⇒ `end=null`.
+5. **Quy tắc ngày:** `YYYY` hoặc `YYYY-MM`, tháng 1–12, năm 1950–2100 (dateOfBirth 1900–2100, nhận thêm `YYYY-MM-DD` hợp lệ lịch), `start ≤ end`, `ongoing=true` ⇒ `end=null`.
    Sai → 422 `INVALID_RESULT` (attempt `FAILED` như bước 4).
 6. **Dựng envelope** (backend): `PersonalInfoMappingResult(3, extractionId, ocrSchemaVersion, configId, configRevision,
    "llm-extraction/1.0", "NEEDS_REVIEW", incompleteSource, reason, values, inputSha256, documentId, profileRevision,

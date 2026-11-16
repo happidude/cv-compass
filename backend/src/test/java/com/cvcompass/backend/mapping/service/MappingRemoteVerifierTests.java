@@ -97,6 +97,45 @@ class MappingRemoteVerifierTests {
     }
 
     @Test
+    void dateOfBirthAcceptsYearMonthAndValidDayOnly() {
+        for (String dob :
+                List.of(
+                        "1987",
+                        "1987-02",
+                        "1987-02-01",
+                        "2000-02-29",
+                        "1900-01-01",
+                        "2100-12-31")) {
+            var body = MappingRemoteFixtures.result(hash);
+            ((ObjectNode) body.path("personal").path("dateOfBirth")).put("value", dob);
+            assertThat(verify(body).personalInfo().get("dateOfBirth").raw()).isEqualTo(dob);
+        }
+        for (String dob :
+                List.of(
+                        "1990-02-31",
+                        "1987-13-01",
+                        "1899-01-01",
+                        "1987-2-1",
+                        "2101-01-01",
+                        "1900-02-29",
+                        "1987-02-00",
+                        " 1987-02-01")) {
+            var body = MappingRemoteFixtures.result(hash);
+            ((ObjectNode) body.path("personal").path("dateOfBirth")).put("value", dob);
+            assertThatThrownBy(() -> verify(body)).hasMessage("INVALID_RESULT");
+        }
+    }
+
+    @Test
+    void experiencePeriodStillRejectsDayPrecision() {
+        for (String key : List.of("start", "end")) {
+            var body = MappingRemoteFixtures.result(hash);
+            ((ObjectNode) body.path("experiences").get(0)).put(key, "2020-05-15");
+            assertThatThrownBy(() -> verify(body)).hasMessage("INVALID_RESULT");
+        }
+    }
+
+    @Test
     void compactParserRejectsDuplicatesTrailingDataAndLongStrings() {
         for (String raw :
                 List.of("{\"a\":1,\"a\":2}", "{} {}", "{\"a\":\"" + "x".repeat(2001) + "\"}"))

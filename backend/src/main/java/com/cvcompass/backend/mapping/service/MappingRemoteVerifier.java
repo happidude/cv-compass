@@ -21,6 +21,8 @@ import com.cvcompass.backend.mapping.dto.PersonalInfoMappingResult;
 import com.cvcompass.backend.mapping.dto.PersonalInfoMappingResult.PersonalField;
 import com.cvcompass.backend.mapping.remote.MappingRemoteException;
 import com.cvcompass.backend.mapping.remote.MappingRemoteJson;
+import java.time.DateTimeException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -120,7 +122,7 @@ public class MappingRemoteVerifier {
                                 Set.of("gender", "dateOfBirth").contains(field) ? null : raw));
                 if (field.equals("gender"))
                     require(Set.of("MALE", "FEMALE", "OTHER").contains(raw), 422, "INVALID_RESULT");
-                if (field.equals("dateOfBirth")) date(raw, 1900);
+                if (field.equals("dateOfBirth")) birthDate(raw);
             }
             boolean enabled = definition.fieldDefinitions().get(field).enabled();
             String normalized = null;
@@ -331,6 +333,30 @@ public class MappingRemoteVerifier {
 
     private static String whitespace(String value) {
         return value.replaceAll("(?U)\\s+", " ").strip();
+    }
+
+    // Birth dates may carry a day; experience periods stay YYYY/YYYY-MM only (see date()).
+    private static void birthDate(String value) {
+        require(
+                value.matches("[0-9]{4}(?:-(?:0[1-9]|1[0-2])(?:-[0-9]{2})?)?"),
+                422,
+                "INVALID_RESULT");
+        if (value.length() < 10) {
+            date(value, 1900);
+            return;
+        }
+        int year = Integer.parseInt(value.substring(0, 4));
+        require(year >= 1900 && year <= 2100, 422, "INVALID_RESULT");
+        boolean valid = true;
+        try {
+            LocalDate.of(
+                    year,
+                    Integer.parseInt(value.substring(5, 7)),
+                    Integer.parseInt(value.substring(8)));
+        } catch (DateTimeException e) {
+            valid = false;
+        }
+        require(valid, 422, "INVALID_RESULT");
     }
 
     private static PartialDate date(String value, int minimum) {
