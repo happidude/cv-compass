@@ -13,7 +13,13 @@ from unittest.mock import patch
 from cv_compass_llm.batch_io import find_repository, prepare_output
 from cv_compass_llm.cli import main, run_batch
 from cv_compass_llm.compare import compare
-from cv_compass_llm.gold import PERSONAL_FIELDS, draft_gold, load_gold
+from cv_compass_llm.gold import (
+    PERSONAL_FIELDS,
+    SCHEMA_VERSION,
+    draft_gold,
+    group_experiences,
+    load_gold,
+)
 from cv_compass_llm.prompts import PROMPT_VERSION
 from cv_compass_llm.providers import FakeProvider, ProviderError
 
@@ -150,6 +156,7 @@ class BatchTests(DirectoryTests):
         self.assertEqual(summary['ok'], 2)
         self.assertEqual(summary['errors'], {'INVALID_JSON': 1})
         self.assertEqual(summary['issues'], {})
+        self.assertEqual(summary['issues_by_field'], {})
         self.assertEqual(summary['provider'], 'fake')
         self.assertEqual(summary['prompt_version'], PROMPT_VERSION)
         self.assertEqual(read(self.output / 'run-summary.json'), summary)
@@ -171,6 +178,7 @@ class BatchTests(DirectoryTests):
         summary = run_batch(self.source, self.output, provider, limit=1, repo_root=self.repo)
         self.assertEqual(summary['files'], 1)
         self.assertEqual(summary['issues'], {'PROVIDER_ERROR': 1})
+        self.assertEqual(summary['issues_by_field'], {'PROVIDER_ERROR.personal': 1})
         self.assertIn('SELECTED_MARKER', provider.prompts[0])
         self.assertNotIn('UNSELECTED_MARKER', provider.prompts[0])
         self.assertFalse((self.output / 'z.result.json').exists())
@@ -283,7 +291,8 @@ class GoldTests(DirectoryTests):
         counts = draft_gold(self.source, self.output, repo_root=self.repo)
         self.assertEqual(counts, {'created': 1, 'skipped_existing': 1, 'errors': 1})
         self.assertEqual(read(self.output / 'a.gold.json'), {
-            'status': 'DRAFT', 'personal': personal, 'experiences': [item],
+            'schemaVersion': SCHEMA_VERSION, 'status': 'DRAFT', 'personal': personal,
+            'experiences': group_experiences([item]),
         })
         self.assertEqual(existing.read_bytes(), original)
         counts = draft_gold(self.source, self.output, repo_root=self.repo)
@@ -297,7 +306,10 @@ class GoldTests(DirectoryTests):
         for status in ('DRAFT', 'CONFIRMED'):
             valid['status'] = status
             save(path, valid)
-            self.assertEqual(load_gold(path), valid)
+            self.assertEqual(load_gold(path), dict(
+                valid, schemaVersion=SCHEMA_VERSION,
+                experiences=group_experiences(valid['experiences']),
+            ))
         invalid = [None, [], {}, dict(valid, status='draft'), dict(valid, extra=True)]
         for section, key, value in (('personal', 'fullName', 1),
                                     ('personal', 'gender', False),
@@ -381,10 +393,10 @@ class CompareTests(DirectoryTests):
             'location': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
             'dateOfBirth': {'correct': 0, 'wrong': 1, 'missing': 0, 'extra': 1},
         })
-        for kind, matched in (('exact', 1), ('title', 2), ('company', 1), ('period', 2)):
+        for kind in ('companies', 'companyPeriods', 'titles', 'positions'):
             self.assertEqual(metrics['experiences'][kind], {
-                'matched': matched, 'predicted': 3, 'gold': 3,
-                'precision': matched / 3, 'recall': matched / 3,
+                'matched': 1, 'predicted': 3, 'gold': 3,
+                'precision': 1 / 3, 'recall': 1 / 3,
             })
 
     def test_cli_only_prints_aggregates(self) -> None:
@@ -445,14 +457,15 @@ class CompareTests(DirectoryTests):
         save(self.output / 'a.gold.json', reference)
         save(self.source / 'a.result.json', result_record({}, [item, item]))
         metrics = compare(self.source, self.output)
-        self.assertEqual(metrics['experiences']['exact']['matched'], 1)
-        self.assertEqual(metrics['experiences']['exact']['precision'], 0.5)
+        self.assertEqual(metrics['experiences']['positions']['matched'], 1)
+        self.assertEqual(metrics['experiences']['positions']['precision'], 0.5)
+        self.assertEqual(metrics['experiences']['companies']['predicted'], 1)
         reference['experiences'] = [dict(item, company=None, start=None)]
         save(self.output / 'a.gold.json', reference)
         save(self.source / 'a.result.json', result_record({}, reference['experiences']))
         metrics = compare(self.source, self.output)
-        self.assertEqual(metrics['experiences']['company']['matched'], 0)
-        self.assertEqual(metrics['experiences']['period']['matched'], 0)
+        for counts in metrics['experiences'].values():
+            self.assertEqual(counts['matched'], 0)
 
     def test_entirely_unknown_experiences_are_excluded(self) -> None:
         """Exclude wholly unknown records from exact and component denominators."""
@@ -488,7 +501,7 @@ class CompareTests(DirectoryTests):
         self.assertEqual(metrics['unpaired_results'], 1)
         self.assertEqual(metrics['skipped_draft'], 1)
         self.assertEqual(metrics['average_seconds'], 0)
-        self.assertEqual(metrics['experiences']['exact']['precision'], 0)
+        self.assertEqual(metrics['experiences']['positions']['precision'], 0)
 
     def test_cli_missing_directories_are_private(self) -> None:
         """Return only a fixed code when either comparison directory is absent."""

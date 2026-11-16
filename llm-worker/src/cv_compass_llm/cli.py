@@ -48,6 +48,7 @@ def run_batch(
         paths = paths[:limit]
     target = prepare_output(source, output_dir, repo_root=repo_root)
     errors, issues = Counter(), Counter()
+    issues_by_field = Counter()
     ok, total_seconds = 0, 0.0
     for path in paths:
         started = perf_counter()
@@ -63,10 +64,15 @@ def run_batch(
             payload['seconds'] = perf_counter() - started
             write_json(target / (path.stem + '.result.json'), payload)
             issues.update(issue.code for issue in result.issues)
+            issues_by_field.update(
+                issue.code if issue.field is None else f'{issue.code}.{issue.field}'
+                for issue in result.issues
+            )
             ok += 1
         total_seconds += perf_counter() - started
     summary = {
         'files': len(paths), 'ok': ok, 'errors': dict(errors), 'issues': dict(issues),
+        'issues_by_field': dict(issues_by_field),
         'total_seconds': total_seconds,
         'average_seconds': total_seconds / len(paths) if paths else 0.0,
         'provider': provider.name, 'prompt_version': PROMPT_VERSION,

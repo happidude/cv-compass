@@ -246,7 +246,8 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
 
                 result = extract(document, observed, max_blocks=config.llm.max_blocks,
                                  on_block=on_block)
-                issues = Counter(issue.code for issue in result.issues
+                issues = Counter((issue.code if issue.field is None
+                                  else f'{issue.code}.{issue.field}') for issue in result.issues
                                  if issue.code in WORKER_ISSUES | {'LLM_INVALID_JSON',
                                                                   'PROVIDER_ERROR'})
                 event('extraction_done', attempt=attempt.short_id,
