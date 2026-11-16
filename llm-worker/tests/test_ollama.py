@@ -105,6 +105,35 @@ class OllamaTests(unittest.TestCase):
             for num_ctx in (None, 1, 1048576):
                 self.provider(temperature=temperature, think=False, num_ctx=num_ctx)
 
+    def test_per_call_options_override_without_mutating_defaults(self) -> None:
+        provider = self.provider(num_ctx=4096, timeout_s=2)
+        original = provider._opener.open
+        with patch.object(provider._opener, 'open', wraps=original) as opened:
+            provider.generate('synthetic', {}, num_ctx=24576, timeout_s=9)
+            self.assertEqual(opened.call_args.kwargs['timeout'], 9)
+            provider.generate('synthetic', {}, num_ctx=None, timeout_s=None)
+            self.assertEqual(opened.call_args.kwargs['timeout'], 2)
+        self.assertEqual([call[1]['options']['num_ctx'] for call in self.server.requests],
+                         [24576, 4096])
+        self.assertEqual((provider.num_ctx, provider.timeout_s), (4096, 2))
+
+    def test_invalid_per_call_options_never_reach_transport(self) -> None:
+        provider = self.provider()
+        for key, values, code in (
+            ('num_ctx', (0, -1, 1048577, True, 1.5, '8192'), 'INVALID_NUM_CTX'),
+            ('timeout_s', (0, -1, float('nan'), float('inf'), True, '900'), 'INVALID_TIMEOUT'),
+        ):
+            for value in values:
+                with self.subTest(key=key, value=value):
+                    with self.assertRaisesRegex(ValueError, '^' + code + '$'):
+                        provider.generate('synthetic', {}, **{key: value})
+        self.assertFalse(self.server.requests)
+
+    def test_per_call_timeout_is_used_by_socket(self) -> None:
+        self.server.delay = 0.15
+        with self.assertRaisesRegex(ProviderError, '^OLLAMA_TIMEOUT$'):
+            self.provider(timeout_s=2).generate('synthetic', {}, timeout_s=0.02)
+
     def test_http_error_has_fixed_code(self) -> None:
         """Discard the HTTP error body instead of exposing its contents."""
         self.server.status, self.server.body = 500, b'PRIVATE_RESPONSE_MARKER'

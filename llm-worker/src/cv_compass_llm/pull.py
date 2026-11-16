@@ -14,7 +14,7 @@ from .backend_client import BackendClient, BackendError, encode
 from .config import PullConfig
 from .pipeline import extract
 from .progress import command_logging, endpoint, event, model_name
-from .prompts import PROMPT_VERSION
+from .prompts import PROMPT_VERSION, WHOLE_PROMPT_VERSION
 from .providers.base import ProviderError
 from .pull_payload import (
     ENGINE,
@@ -53,13 +53,18 @@ class _ObservedProvider:
         self.supervisor = supervisor
         self.failure = None
 
-    def generate(self, prompt: str, json_schema: dict) -> str:
+    def generate(
+        self, prompt: str, json_schema: dict, *,
+        num_ctx: int | None = None, timeout_s: float | None = None,
+    ) -> str:
         if self.failure:
             raise ProviderError(self.failure)
         if self.supervisor.lost or self.supervisor.outcome_started:
             raise ProviderError('PROVIDER_TIMEOUT')
         try:
-            return self.provider.generate(prompt, json_schema)
+            options = {key: value for key, value in
+                       (('num_ctx', num_ctx), ('timeout_s', timeout_s)) if value is not None}
+            return self.provider.generate(prompt, json_schema, **options)
         except ProviderError as error:
             self.failure = ('PROVIDER_TIMEOUT' if str(error) in
                             ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT') else 'PROVIDER_ERROR')
@@ -245,15 +250,19 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                           block=f'{index}/{total}', seconds=f'{seconds:.3f}')
 
                 result = extract(document, observed, max_blocks=config.llm.max_blocks,
-                                 on_block=on_block)
+                                 on_block=on_block, mode=config.llm.mode,
+                                 whole_timeout=config.llm.whole_timeout)
                 issues = Counter((issue.code if issue.field is None
                                   else f'{issue.code}.{issue.field}') for issue in result.issues
                                  if issue.code in WORKER_ISSUES | {'LLM_INVALID_JSON',
                                                                   'PROVIDER_ERROR'})
-                event('extraction_done', attempt=attempt.short_id,
+                fallback = ({'fallback': 'blocks'} if any(
+                    issue.code == 'WHOLE_TOO_LONG' for issue in result.issues
+                ) else {})
+                event('extraction_done', attempt=attempt.short_id, mode=config.llm.mode,
                       seconds=f'{time.monotonic() - started:.3f}',
                       issues=','.join(f'{code}:{issues[code]}' for code in sorted(issues))
-                      or 'NONE:0')
+                      or 'NONE:0', **fallback)
                 if observed.failure:
                     failure = observed.failure
                     event('provider_error', level=logging.ERROR, attempt=attempt.short_id,
@@ -321,7 +330,9 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
 
 def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
     counts = Counter(claimed=0, accepted=0, failed=0)
-    provenance = {'model': config.llm.model, 'promptVersion': PROMPT_VERSION,
+    provenance = {'model': config.llm.model,
+                  'promptVersion': (WHOLE_PROMPT_VERSION if config.llm.mode == 'whole'
+                                    else PROMPT_VERSION),
                   'workerVersion': config.worker_version}
     client = BackendClient(config)
     claim_body = encode({'protocol': PROTOCOL, 'engineVersions': [ENGINE],
@@ -338,7 +349,8 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
 
     model = model_name(config.llm.model) if config.llm.model != config.worker_token else 'REDACTED'
     event('worker_start', model=model, ollama=endpoint(config.llm.base_url),
-          backend=endpoint(config.backend_url), poll_s=config.poll_s, log_level=config.log_level)
+          backend=endpoint(config.backend_url), poll_s=config.poll_s, log_level=config.log_level,
+          mode=config.llm.mode)
     try:
         token, key = secrets.token_urlsafe(32), str(uuid4())
         while True:

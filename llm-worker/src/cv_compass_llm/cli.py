@@ -15,7 +15,7 @@ from .config import ENV_KEYS, PullConfigError, load_config, load_pull_config
 from .gold import draft_gold
 from .ocr_input import load_document
 from .pipeline import extract
-from .prompts import PROMPT_VERSION
+from .prompts import PROMPT_VERSION, WHOLE_PROMPT_VERSION
 from .providers.base import LlmProvider
 from .providers.ollama import OllamaProvider
 from .pull import run_pull
@@ -29,17 +29,21 @@ CLI_ERRORS = {
     'INVALID_LIMIT', 'OLLAMA_HOST_NOT_LOCAL', 'INVALID_MODEL', 'INVALID_TIMEOUT',
     'MISSING_CONFIG', 'INVALID_PROVIDER', 'ENV_FILE_NOT_FOUND', 'INVALID_ENV_FILE',
     'INVALID_TEMPERATURE', 'INVALID_THINK', 'INVALID_NUM_CTX',
+    'INVALID_MODE', 'INVALID_WHOLE_TIMEOUT',
 }
 
 
 def run_batch(
     input_dir: str | Path, output_dir: str | Path, provider: LlmProvider, *,
     max_blocks: int = 20, limit: int | None = None,
+    mode: str = 'blocks', whole_timeout: float = 900,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> dict:
     """Extract sorted OCR files without modifying any input artifact."""
     if type(max_blocks) is not int or max_blocks < 0:
         raise ValueError('INVALID_MAX_BLOCKS')
+    if mode not in ('blocks', 'whole'):
+        raise ValueError('INVALID_MODE')
     if limit is not None and (type(limit) is not int or limit < 0):
         raise ValueError('INVALID_LIMIT')
     source = input_directory(input_dir)
@@ -59,7 +63,8 @@ def run_batch(
             errors[code] += 1
             write_json(target / (path.stem + '.error.json'), {'error': code})
         else:
-            result = extract(document, provider, max_blocks=max_blocks)
+            result = extract(document, provider, max_blocks=max_blocks,
+                             mode=mode, whole_timeout=whole_timeout)
             payload = result.to_dict()
             payload['seconds'] = perf_counter() - started
             write_json(target / (path.stem + '.result.json'), payload)
@@ -75,7 +80,9 @@ def run_batch(
         'issues_by_field': dict(issues_by_field),
         'total_seconds': total_seconds,
         'average_seconds': total_seconds / len(paths) if paths else 0.0,
-        'provider': provider.name, 'prompt_version': PROMPT_VERSION,
+        'provider': provider.name,
+        'prompt_version': WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION,
+        'mode': mode, 'whole_fallbacks': issues['WHOLE_TOO_LONG'],
     }
     write_json(target / 'run-summary.json', summary)
     return summary
@@ -98,6 +105,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--model')
     run.add_argument('--base-url')
     run.add_argument('--timeout')
+    run.add_argument('--mode', metavar='{blocks,whole}')
+    run.add_argument('--whole-timeout')
     run.add_argument('--max-blocks')
     run.add_argument('--temperature')
     run.add_argument('--think', choices=('true', 'false'))
@@ -167,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             summary = run_batch(
                 args.input, args.output, provider, max_blocks=config.max_blocks, limit=args.limit,
+                mode=config.mode, whole_timeout=config.whole_timeout,
             )
             print(f'processed={summary["files"]} ok={summary["ok"]} '
                   f'errors={sum(summary["errors"].values())}')

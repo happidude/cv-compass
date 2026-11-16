@@ -63,7 +63,7 @@ thị, không dùng lọc hay xếp hạng.
   được chuẩn hóa nhưng không suy ra phần ngày/tháng còn thiếu; năm hai chữ số bị loại.
 - Date khác độ chính xác được so theo khoảng có thể có; cùng năm không suy ra tháng.
   Khi period không hợp lệ, bỏ cả start/end/ongoing và evidence period, giữ role/company.
-- Dòng đơn dài hơn 6000 ký tự không thể cắt ở ranh giới dòng: bỏ dòng đó và sinh
+- Trong mode `blocks`, dòng đơn dài hơn 6000 ký tự không thể cắt ở ranh giới dòng: bỏ dòng đó và sinh
   BLOCK_LINE_TOO_LONG. Không ép cắt giữa dòng hoặc gửi khối vượt giới hạn.
 - Gender chỉ được giữ khi quote có biên token và dòng OCR gốc là giá trị đứng riêng
   hoặc nhãn Giới tính/Gender với dấu hai chấm hoặc gạch nối; không suy từ tên/địa danh.
@@ -94,7 +94,7 @@ Mỗi file tạo `<stem>.result.json` (kết quả có evidence và `seconds`) h
 `<stem>.error.json` (chỉ mã lỗi đọc/parse OCR), rồi tiếp tục file kế tiếp.
 `run-summary.json` chứa `files`, `ok`, lỗi và `issues` theo mã, `issues_by_field`
 theo `code.field` (chỉ `code` khi field là null), `total_seconds`,
-`average_seconds`, `provider`, `prompt_version`. Thời gian tổng/trung bình của
+`average_seconds`, `provider`, `prompt_version`, `mode`, `whole_fallbacks`. Thời gian tổng/trung bình của
 lượt batch gồm cả file lỗi và ghi artifact; `seconds` của result đo đọc/trích xuất
 trước khi ghi file. Lỗi provider vẫn theo contract L1a: issue `PROVIDER_ERROR`,
 không làm hỏng cả file. Lỗi HTTP cụ thể có mã cố định ở ranh giới provider.
@@ -215,6 +215,8 @@ không tồn tại trả `ENV_FILE_NOT_FOUND`.
 | `CVC_LLM_MODEL` | `--model` | Bắt buộc, tag model đã chuẩn bị |
 | `CVC_LLM_BASE_URL` | `--base-url` | `http://127.0.0.1:11434`, chỉ HTTP loopback như trên |
 | `CVC_LLM_TIMEOUT_S` | `--timeout` | 120, số hữu hạn lớn hơn 0 |
+| `CVC_LLM_MODE` | `--mode` | `blocks`; chỉ nhận `blocks` hoặc `whole` |
+| `CVC_LLM_WHOLE_TIMEOUT_S` | `--whole-timeout` | 900, số hữu hạn lớn hơn 0; chỉ dùng cho whole |
 | `CVC_LLM_MAX_BLOCKS` | `--max-blocks` | 20, số nguyên từ 0 |
 | `CVC_LLM_TEMPERATURE` | `--temperature` | 0, số hữu hạn từ 0 đến 2 |
 | `CVC_LLM_THINK` | `--think {true,false}` | false; file/môi trường không phân biệt hoa thường |
@@ -235,10 +237,50 @@ chỉ `.env.example` được track, không ghi bí mật hoặc nội dung CV v
 Thiếu provider/model trả `MISSING_CONFIG`; provider không hợp lệ trả
 `INVALID_PROVIDER`. Giá trị sai trả mã tương ứng `INVALID_TIMEOUT`,
 `INVALID_MAX_BLOCKS`, `INVALID_TEMPERATURE`, `INVALID_THINK`, `INVALID_NUM_CTX`.
+Mode và timeout whole sai trả `INVALID_MODE`, `INVALID_WHOLE_TIMEOUT` tương ứng.
 Base URL không hợp lệ trả `OLLAMA_HOST_NOT_LOCAL`. Sai cú pháp CLI (kể cả
 `--think` ngoài hai lựa chọn) trả `INVALID_ARGUMENTS`. Lỗi chỉ in mã cố định,
 không in giá trị, tên khóa lạ, nội dung file hay đường dẫn; mã thoát là 2.
 `draft-gold` và `compare` không đọc cấu hình này.
+
+## E5 — Trích xuất toàn CV bằng mode whole
+
+Mặc định vẫn là `blocks`. Bật `run --mode whole` hoặc đặt `CVC_LLM_MODE=whole`
+trong môi trường tiến trình/`.env`; ưu tiên CLI > môi trường > `.env`. `pull`
+chọn mode qua cấu hình môi trường/`.env`. Whole gửi toàn bộ text các trang `ok`
+trong một lời gọi với schema gộp `{personal, experiences}`, kể cả thông tin cá nhân
+ở trang sau thư xin việc/trang bìa và vị trí công việc ngoài heading kinh nghiệm.
+Contacts regex, kiểm evidence/ngày và khử kinh nghiệm trùng vẫn dùng quy tắc chung.
+Evidence luôn thuộc một trang; whole báo tiến độ `1/1` và không dùng `max_blocks`.
+
+Context được chọn tự động từ 8192, 16384, 24576, 32768 theo
+`ceil(len(prompt) / 2.5) + 4096`, thay cho `CVC_LLM_NUM_CTX` ở lời gọi whole.
+Timeout whole mặc định 900 giây, đổi bằng `--whole-timeout` hoặc
+`CVC_LLM_WHOLE_TIMEOUT_S`; timeout này cũng áp dụng cho từng thao tác socket.
+Nếu ước lượng vượt 32768, CV đó dùng lại `blocks` với context/timeout/giới hạn block
+thông thường; issue nội bộ `WHOLE_TOO_LONG` được đếm trong `run-summary.json`
+(`whole_fallbacks` là số CV fallback). Pull ghi `mode=whole fallback=blocks`
+trong `extraction_done` và không gửi issue này cho backend.
+
+`prompt_version` của kết quả/batch whole và `provenance.promptVersion` lúc claim
+của pull whole luôn là `llm-extraction-prompt/whole-1`, kể cả CV fallback blocks,
+để provenance lúc submit khớp claim. Contract backend và payload bản gọn giữ nguyên.
+Log `worker_start` và `extraction_done` ghi mode, không chứa nội dung CV.
+
+Với VRAM 4 GB, các bậc 16k/24k có thể đẩy một phần xử lý sang CPU, làm tăng thời
+gian chạy. Người dùng có thể tự đặt `OLLAMA_FLASH_ATTENTION=1` và
+`OLLAMA_KV_CACHE_TYPE=q8_0` cho tiến trình Ollama; worker không đặt các biến này.
+Whole ưu tiên độ đầy đủ; đo trên cùng bộ OCR tổng hợp và cùng gold đã xác nhận:
+
+```powershell
+py -3.14 -m cv_compass_llm run --input C:\cv-compass-synthetic\ocr --output C:\cv-compass-synthetic\run-blocks --mode blocks
+py -3.14 -m cv_compass_llm run --input C:\cv-compass-synthetic\ocr --output C:\cv-compass-synthetic\run-whole --mode whole --whole-timeout 900
+py -3.14 -m cv_compass_llm compare --results C:\cv-compass-synthetic\run-blocks --gold C:\cv-compass-synthetic\gold --json
+py -3.14 -m cv_compass_llm compare --results C:\cv-compass-synthetic\run-whole --gold C:\cv-compass-synthetic\gold --json
+```
+
+So sánh metric từ `compare` cùng `total_seconds`, `average_seconds` và
+`whole_fallbacks` trong summary; mỗi lượt cần thư mục output mới hoặc rỗng ngoài repo.
 
 ## L5 — Worker kéo việc từ backend
 

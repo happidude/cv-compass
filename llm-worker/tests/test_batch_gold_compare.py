@@ -159,6 +159,8 @@ class BatchTests(DirectoryTests):
         self.assertEqual(summary['issues_by_field'], {})
         self.assertEqual(summary['provider'], 'fake')
         self.assertEqual(summary['prompt_version'], PROMPT_VERSION)
+        self.assertEqual(summary['mode'], 'blocks')
+        self.assertEqual(summary['whole_fallbacks'], 0)
         self.assertEqual(read(self.output / 'run-summary.json'), summary)
         result = read(self.output / 'a.result.json')
         self.assertEqual(result['fields'][0]['value'], 'SYNTHETIC_NAME_MARKER')

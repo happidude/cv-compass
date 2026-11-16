@@ -8,6 +8,7 @@ from .json_strict import strict_json
 from .schema import (
     EXPERIENCE_SCHEMA,
     PERSONAL_SCHEMA,
+    WHOLE_SCHEMA,
     Evidence,
     Experience,
     FieldValue,
@@ -137,6 +138,10 @@ def validate_personal(text: str, block: Block) -> tuple[tuple[FieldValue, ...], 
     data = parse_response(text, PERSONAL_SCHEMA)
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
+    return _personal(data, block)
+
+
+def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[Issue, ...]]:
     fields, issues = [], []
     validators = {'gender': validate_gender, 'dateOfBirth': validate_birth_date}
     for key, item in data['personal'].items():
@@ -203,6 +208,10 @@ def validate_experiences(
     data = parse_response(text, EXPERIENCE_SCHEMA)
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
+    return _experiences(data, block)
+
+
+def _experiences(data: dict, block: Block) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     experiences, issues = [], []
     for item in data['experiences']:
         title, title_evidence = supported(
@@ -220,3 +229,15 @@ def validate_experiences(
         ) if value is not None}
         experiences.append(Experience(title, company, start, end, ongoing, evidence))
     return tuple(experiences), tuple(issues)
+
+
+def validate_whole(
+    text: str, block: Block,
+) -> tuple[tuple[FieldValue, ...], tuple[Experience, ...], tuple[Issue, ...]]:
+    """Parse once and apply the same evidence rules as block extraction."""
+    data = parse_response(text, WHOLE_SCHEMA)
+    if data is None:
+        return (), (), (Issue('LLM_INVALID_JSON'),)
+    fields, personal_issues = _personal(data, block)
+    experiences, experience_issues = _experiences(data, block)
+    return fields, experiences, (*personal_issues, *experience_issues)

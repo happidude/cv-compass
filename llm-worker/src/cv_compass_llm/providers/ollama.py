@@ -15,6 +15,14 @@ from .base import ProviderError
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 
+def _validate_call_options(num_ctx: int | None, timeout_s: float) -> None:
+    if (isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float))
+            or not math.isfinite(timeout_s) or timeout_s <= 0):
+        raise ValueError('INVALID_TIMEOUT')
+    if num_ctx is not None and (type(num_ctx) is not int or not 1 <= num_ctx <= 1048576):
+        raise ValueError('INVALID_NUM_CTX')
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(
         self, req: Request, fp: BinaryIO, code: int, msg: str, headers: Message, newurl: str,
@@ -45,16 +53,12 @@ class OllamaProvider:
             raise ValueError('OLLAMA_HOST_NOT_LOCAL')
         if not isinstance(model, str) or not model.strip():
             raise ValueError('INVALID_MODEL')
-        if (isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float))
-                or not math.isfinite(timeout_s) or timeout_s <= 0):
-            raise ValueError('INVALID_TIMEOUT')
+        _validate_call_options(num_ctx, timeout_s)
         if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
                 or not 0 <= temperature <= 2 or not math.isfinite(temperature)):
             raise ValueError('INVALID_TEMPERATURE')
         if type(think) is not bool:
             raise ValueError('INVALID_THINK')
-        if num_ctx is not None and (type(num_ctx) is not int or not 1 <= num_ctx <= 1048576):
-            raise ValueError('INVALID_NUM_CTX')
         self.model = model
         self.name = 'ollama:' + model
         self.url = urlunsplit((url.scheme, url.netloc, '/api/chat', '', ''))
@@ -64,21 +68,27 @@ class OllamaProvider:
         self.num_ctx = num_ctx
         self._opener = build_opener(ProxyHandler({}), _NoRedirect())
 
-    def generate(self, prompt: str, json_schema: dict) -> str:
+    def generate(
+        self, prompt: str, json_schema: dict, *,
+        num_ctx: int | None = None, timeout_s: float | None = None,
+    ) -> str:
         """Return bounded chat content or a content-free transport error."""
+        num_ctx = self.num_ctx if num_ctx is None else num_ctx
+        timeout_s = self.timeout_s if timeout_s is None else timeout_s
+        _validate_call_options(num_ctx, timeout_s)
         payload = {
             'model': self.model, 'messages': [{'role': 'user', 'content': prompt}],
             'format': json_schema, 'stream': False, 'think': self.think,
             'options': {'temperature': self.temperature if self.temperature else 0},
         }
-        if self.num_ctx is not None:
-            payload['options']['num_ctx'] = self.num_ctx
+        if num_ctx is not None:
+            payload['options']['num_ctx'] = num_ctx
         try:
             request = Request(
                 self.url, data=json.dumps(payload).encode('utf-8'),
                 headers={'Content-Type': 'application/json'}, method='POST',
             )
-            with self._opener.open(request, timeout=self.timeout_s) as response:
+            with self._opener.open(request, timeout=timeout_s) as response:
                 data = response.read(MAX_RESPONSE_BYTES + 1)
         except HTTPError as error:
             code = error.code

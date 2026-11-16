@@ -70,3 +70,7 @@ EXPERIENCE_SCHEMA = object_schema({'experiences': {'type': 'array', 'items': obj
     'ongoing': {'type': 'boolean'},
     'quotes': object_schema({key: NULL_STRING for key in ('title', 'company', 'period')}),
 })}})
+WHOLE_SCHEMA = object_schema({
+    'personal': PERSONAL_SCHEMA['properties']['personal'],
+    'experiences': EXPERIENCE_SCHEMA['properties']['experiences'],
+})
