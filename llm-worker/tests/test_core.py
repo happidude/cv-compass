@@ -107,7 +107,7 @@ class SegmentEvidenceTests(unittest.TestCase):
 
     def test_all_heading_variants_and_stops(self) -> None:
         for heading in (
-            'EXPERIENCE', 'Work Experience', 'professional experience', 'employment history',
+            'EXPERIENCE', 'Work Experience', 'Professional experience', 'Employment history',
             'KINH NGHIỆM', 'Kinh nghiệm làm việc', 'Quá trình làm việc', 'Quá trình công tác',
         ):
             for stop in ('Education', 'Học vấn', 'Skills', 'Kỹ năng', 'Chứng chỉ'):
