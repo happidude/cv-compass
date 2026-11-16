@@ -85,14 +85,18 @@ class PeriodRegressionTests(unittest.TestCase):
                 ev = value.evidence['period']
                 self.assertEqual(ev.text, text[ev.start:ev.end])
 
-    def test_day_precision_birth_date_is_dropped(self) -> None:
-        for value in ('03/01/2000', '2000-01'):
-            fields, issues = validate_personal(json.dumps(personal(
-                dateOfBirth={'value': value, 'quote': '03/01/2000'},
-            )), block('03/01/2000'))
-            self.assertFalse(fields)
-            self.assertEqual(issues[0].code,
-                             'INVALID_DATE' if '/' in value else 'QUOTE_NOT_FOUND')
+    def test_day_precision_birth_date_is_retained_without_losing_precision(self) -> None:
+        fields, issues = validate_personal(json.dumps(personal(
+            dateOfBirth={'value': '03/01/2000', 'quote': '03/01/2000'},
+        )), block('03/01/2000'))
+        self.assertEqual(fields[0].value, '2000-01-03')
+        self.assertEqual([(i.code, i.field) for i in issues],
+                         [('DOB_DAY_FIRST_ASSUMED', 'dateOfBirth')])
+        fields, issues = validate_personal(json.dumps(personal(
+            dateOfBirth={'value': '2000-01', 'quote': '03/01/2000'},
+        )), block('03/01/2000'))
+        self.assertFalse(fields)
+        self.assertEqual(issues[0].code, 'QUOTE_NOT_FOUND')
 
     def test_roleless_experience_always_has_issue(self) -> None:
         values, issues = validate_experiences(response(experience(

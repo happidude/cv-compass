@@ -37,7 +37,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.max_blocks, 20)
         self.assertEqual(config.temperature, 0)
         self.assertIs(config.think, False)
-        self.assertIsNone(config.num_ctx)
+        self.assertEqual(config.num_ctx, 8192)
         with self.assertRaises(FrozenInstanceError):
             config.model = 'synthetic-other'
 
@@ -82,7 +82,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.model, 'synthetic-file')
             self.assertEqual(config.timeout_s, 17)
             self.assertEqual(config.max_blocks, 20)
-            self.assertIsNone(config.num_ctx)
+            self.assertEqual(config.num_ctx, 8192)
 
     def test_missing_required_settings(self) -> None:
         for cli in ({}, {'provider': 'ollama'}, {'model': 'synthetic-model'},
