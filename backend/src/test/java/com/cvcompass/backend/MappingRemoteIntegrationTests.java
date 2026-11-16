@@ -348,6 +348,22 @@ class MappingRemoteIntegrationTests {
     }
 
     @Test
+    void fullDateOfBirthResultIsStoredAndPublishable() {
+        long job = seed();
+        var claim = claim(UUID.randomUUID());
+        var body = MappingRemoteFixtures.result((String) claim.data().get("inputSha256"));
+        ((ObjectNode) body.path("personal").path("dateOfBirth")).put("value", "1990-05-15");
+        remote.result("synthetic_worker", id(claim), HASH, body.toString());
+        long resultId =
+                jdbc.queryForObject(
+                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        Long.class,
+                        job);
+        assertThat(completed.publishable(completed.read(resultId).orElseThrow())).isPresent();
+        assertThat(publication.publish(resultId)).isTrue();
+    }
+
+    @Test
     void invalidEvidenceConsumesAttemptAndNeverWritesResult() {
         long job = seed();
         var claim = claim(UUID.randomUUID());
