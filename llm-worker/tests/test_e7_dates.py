@@ -153,10 +153,13 @@ class BirthDatePayloadTests(unittest.TestCase):
         text = 'DOB: July 28th,1982'
         quote = 'July 28th,1982'
         provider = FakeProvider(
-            {
-                **personal(dateOfBirth={'value': quote, 'quote': quote}),
-                'experiences': [],
-            }
+            [
+                {
+                    **personal(dateOfBirth={'value': quote, 'quote': quote}),
+                    'experiences': [],
+                },
+                personal(dateOfBirth={'value': quote, 'quote': quote}),
+            ]
         )
         result = extract(document(text), provider, mode='whole')
         self.assertFalse(result.issues)

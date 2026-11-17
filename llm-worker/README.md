@@ -262,10 +262,12 @@ không in giá trị, tên khóa lạ, nội dung file hay đường dẫn; mã 
 Mặc định vẫn là `blocks`. Bật `run --mode whole` hoặc đặt `CVC_LLM_MODE=whole`
 trong môi trường tiến trình/`.env`; ưu tiên CLI > môi trường > `.env`. `pull`
 chọn mode qua cấu hình môi trường/`.env`. Whole gửi toàn bộ text các trang `ok`
-trong một lời gọi với schema gộp `{personal, experiences}`, kể cả thông tin cá nhân
-ở trang sau thư xin việc/trang bìa và vị trí công việc ngoài heading kinh nghiệm.
+trong một lời gọi với schema gộp `{personal, experiences}` để lấy các vị trí công việc
+ngoài heading kinh nghiệm. Prompt và schema của lời gọi whole giữ nguyên bản cũ;
+pipeline bỏ giá trị và issue personal của lời gọi đó rồi gọi personal riêng trên header.
 Contacts regex, kiểm evidence/ngày và khử kinh nghiệm trùng vẫn dùng quy tắc chung.
-Evidence luôn thuộc một trang; whole báo tiến độ `1/1` và không dùng `max_blocks`.
+Evidence luôn thuộc một trang; whole thông thường báo tiến độ `1/2`, `2/2` và
+không dùng `max_blocks`. Lời gọi personal dùng context/timeout thông thường.
 
 Context được chọn tự động từ 8192, 16384, 24576, 32768 theo
 `ceil(len(prompt) / 2.5) + 4096`, thay cho `CVC_LLM_NUM_CTX` ở lời gọi whole.
@@ -277,8 +279,8 @@ thông thường; issue nội bộ `WHOLE_TOO_LONG` được đếm trong `run-s
 trong `extraction_done` và không gửi issue này cho backend.
 
 `prompt_version` của kết quả/batch whole và `provenance.promptVersion` lúc claim
-của pull whole luôn là `llm-extraction-prompt/whole-1`, kể cả CV fallback blocks,
-để provenance lúc submit khớp claim. Contract backend và payload bản gọn giữ nguyên.
+của pull whole luôn là `llm-extraction-prompt/whole-2`, kể cả CV fallback blocks,
+để provenance lúc submit khớp claim. Mode blocks dùng `llm-extraction-prompt/3`.
 Log `worker_start` và `extraction_done` ghi mode, không chứa nội dung CV.
 
 Với VRAM 4 GB, các bậc 16k/24k có thể đẩy một phần xử lý sang CPU, làm tăng thời
@@ -295,6 +297,30 @@ py -3.14 -m cv_compass_llm compare --results C:\cv-compass-synthetic\run-whole -
 
 So sánh metric từ `compare` cùng `total_seconds`, `average_seconds` và
 `whole_fallbacks` trong summary; mỗi lượt cần thư mục output mới hoặc rỗng ngoài repo.
+
+### E8 — Personal và summary
+
+Cả hai mode chọn trang có dấu hiệu personal trong ba trang `ok` đầu tiên (E6),
+mặc định trang `ok` đầu tiên, rồi thêm trang liền kế nếu trang đó có text `ok`.
+Header tối đa 8000 ký tự kể cả dấu xuống dòng nối trang; offset vẫn tính theo
+code point của từng trang nguồn.
+
+Schema personal riêng nhận summary là `null` hoặc danh sách 1–8 đoạn
+`{quoteStart, quoteEnd}`. Model chép khoảng 5–12 từ đầu/cuối mỗi đoạn Summary,
+Profile, Career Objective, Tóm tắt, Định hướng nghề nghiệp hoặc Mục tiêu nghề nghiệp.
+Validator lấy nguyên văn giữa hai mốc, nối các phần theo thứ tự đọc bằng `\n`,
+tổng tối đa 6000 ký tự. Đoạn vắt trang tách thành evidence cho từng trang;
+toàn summary tối đa 8 evidence, tăng theo `(page, start)` và không chồng nhau.
+Mốc thiếu, ngược, chồng lấn hoặc kết quả quá dài bị bỏ kèm `QUOTE_NOT_FOUND.summary`.
+
+Matcher chỉ dành cho personal chịu khác biệt nháy cong/thẳng, gạch `–—‐`/`-`,
+khoảng trắng quanh dấu câu và NFD/NFC, giữ offset và giá trị nguyên văn nguồn.
+Không sửa chữ/số hay bỏ dấu. Phone nhận cả ký tự OCR rời, dấu chấm và mã `(+84)`;
+loại chuỗi ngày/năm, giữ nguyên văn số điện thoại.
+
+`FieldValue.evidence` giữ phần đầu; `additional_evidence` chứa các phần tiếp theo
+của summary, rỗng với field thông thường. Payload compact gửi summary evidence
+là object khi một phần, mảng khi nhiều phần, theo contract E9.
 
 ## L5 — Worker kéo việc từ backend
 
@@ -360,9 +386,11 @@ personal, phần còn lại và URL vào `other`. Field tắt là null, experien
 là `[]`, `other` tắt là `[]`; vượt `maxItems` thì giữ thứ tự và thêm
 `OTHER_TRUNCATED`. Không cắt kết quả vượt 1 MiB. Issue của L1 dùng field con
 kinh nghiệm được đổi thành `experiences`; chỉ mã issue do worker sở hữu được gửi.
-Email/phone tắt cũng bị loại khỏi `other`. Evidence của field chuỗi được thu hẹp
+Email/phone tắt cũng bị loại khỏi `other`. Evidence của field chuỗi, kể cả summary một phần, được thu hẹp
 về đúng lát cắt của value trong quote, so theo Unicode whitespace của backend,
-giữ offset code point và nguyên văn nguồn. Không tìm được thì bỏ field kèm
+giữ offset code point và nguyên văn nguồn. Summary nhiều phần giữ từng evidence nguồn,
+kiểm giá trị bằng các text nối theo thứ tự sau chuẩn hóa khoảng trắng; mọi summary
+vẫn tối đa 6000 ký tự. Không tìm được thì bỏ field kèm
 `QUOTE_NOT_FOUND`; gender, dateOfBirth và period giữ quote gốc. Ngày ngoài giới
 hạn verifier hoặc period sai thứ tự/ongoing có end bị bỏ kèm `INVALID_DATE`;
 period lỗi được xóa đồng thời start/end/ongoing và evidence period.

@@ -88,3 +88,159 @@ def locate(quote: str | None, block: Block, *, ignore_case: bool = True) -> Evid
                     span.page, span.start + left, span.start + right, span.text[left:right]
                 )
     return None
+
+
+_PERSONAL_PUNCTUATION = str.maketrans(
+    {'‘': "'", '’': "'", '“': '"', '”': '"', '–': '-', '—': '-', '‐': '-'}
+)
+
+
+def personal_text(text: str, *, fold: bool = False) -> tuple[str, list[tuple[int, int]]]:
+    """Normalize harmless personal quote differences with code-point source ranges."""
+    chars: list[str] = []
+    offsets: list[tuple[int, int]] = []
+    index = 0
+    while index < len(text):
+        end = index + 1
+        while end < len(text) and (
+            unicodedata.combining(text[end])
+            or len(unicodedata.normalize('NFC', text[index : end + 1]))
+            < len(unicodedata.normalize('NFC', text[index:end]))
+            + len(unicodedata.normalize('NFC', text[end]))
+        ):
+            end += 1
+        normalized = unicodedata.normalize('NFC', text[index:end]).translate(_PERSONAL_PUNCTUATION)
+        for char in normalized:
+            if fold and _safe_case(char):
+                char = char.casefold()
+            chars.append(char)
+            offsets.append((index, end))
+        index = end
+    result: list[str] = []
+    ranges: list[tuple[int, int]] = []
+    index = 0
+    while index < len(chars):
+        char = chars[index]
+        if char.isspace():
+            end = index + 1
+            while end < len(chars) and chars[end].isspace():
+                end += 1
+            # Spaces remain mandatory between words; only punctuation-adjacent spaces vary.
+            if (
+                result
+                and end < len(chars)
+                and not unicodedata.category(result[-1]).startswith('P')
+                and not unicodedata.category(chars[end]).startswith('P')
+            ):
+                result.append(' ')
+                ranges.append((offsets[index][0], offsets[end - 1][1]))
+            index = end
+            continue
+        result.append(char)
+        ranges.append(offsets[index])
+        index += 1
+    return ''.join(result), ranges
+
+
+def find_personal(
+    quote: str | None, text: str, *, ignore_case: bool = True
+) -> tuple[int, int] | None:
+    """Match personal text without edits to letters, digits or punctuation tokens."""
+    if not isinstance(quote, str):
+        return None
+    for fold in (False, True) if ignore_case else (False,):
+        target, _ = personal_text(quote, fold=fold)
+        if len(target) < 2:
+            return None
+        normalized, offsets = personal_text(text, fold=fold)
+        start = normalized.find(target)
+        while start >= 0:
+            end = start + len(target)
+            # Never accept only part of a canonically normalized source cluster.
+            if (start == 0 or offsets[start] != offsets[start - 1]) and (
+                end == len(offsets) or offsets[end - 1] != offsets[end]
+            ):
+                return offsets[start][0], offsets[end - 1][1]
+            start = normalized.find(target, start + 1)
+    return None
+
+
+def personal_groups(block: Block) -> tuple[Span, ...]:
+    """Join only contiguous source spans on the same page."""
+    groups: list[Span] = []
+    for span in block.spans:
+        if groups and groups[-1].page == span.page and groups[-1].end == span.start:
+            previous = groups.pop()
+            groups.append(
+                Span(
+                    span.page,
+                    previous.start,
+                    span.end,
+                    previous.text + span.text,
+                    previous.raw_text,
+                )
+            )
+        else:
+            groups.append(span)
+    return tuple(groups)
+
+
+def locate_personal(
+    quote: str | None, block: Block, *, ignore_case: bool = True
+) -> Evidence | None:
+    """Locate a personal quote on one page using its original offsets."""
+    for span in personal_groups(block):
+        match = find_personal(quote, span.text, ignore_case=ignore_case)
+        if match is not None:
+            start, end = match
+            return Evidence(span.page, span.start + start, span.start + end, span.text[start:end])
+    return None
+
+
+def summary_evidence(items: list[dict], block: Block) -> tuple[Evidence, ...] | None:
+    """Recover ordered full paragraphs, splitting page crossings into literal evidence."""
+    groups = personal_groups(block)
+    text = '\n'.join(span.text for span in groups)
+    ranges = []
+    offset = 0
+    for span in groups:
+        ranges.append((offset, offset + len(span.text), span))
+        offset += len(span.text) + 1
+    evidence: list[Evidence] = []
+    previous_end = 0
+    for item in items:
+        start_match = find_personal(item['quoteStart'], text[previous_end:])
+        if start_match is None:
+            return None
+        start = (previous_end + start_match[0], previous_end + start_match[1])
+        end_match = find_personal(item['quoteEnd'], text[start[0] :])
+        end = (start[0] + end_match[0], start[0] + end_match[1]) if end_match is not None else None
+        if end is None or end[1] < start[1]:
+            return None
+        selected = []
+        for left, right, span in ranges:
+            begin, finish = max(start[0], left), min(end[1], right)
+            if begin < finish:
+                selected.append(
+                    Evidence(
+                        span.page,
+                        span.start + begin - left,
+                        span.start + finish - left,
+                        text[begin:finish],
+                    )
+                )
+        # A crossing must be between adjacent pages, never over missing OCR or source gaps.
+        if not selected or any(
+            right.page != left.page + 1 for left, right in zip(selected, selected[1:])
+        ):
+            return None
+        evidence.extend(selected)
+        previous_end = end[1]
+    if not 1 <= len(evidence) <= 8 or len('\n'.join(item.text for item in evidence)) > 6000:
+        return None
+    if any(
+        (right.page, right.start) < (left.page, left.end)
+        for left, right in zip(evidence, evidence[1:])
+    ):
+        return None
+    return tuple(evidence)

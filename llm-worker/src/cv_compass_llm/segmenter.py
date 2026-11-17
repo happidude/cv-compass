@@ -159,7 +159,7 @@ def split_spans(spans: list[Span], limit: int = 6000) -> tuple[Block, ...]:
 
 
 def build_header(pages: tuple[Page, ...]) -> Block:
-    """Take a page prefix, preferring personal markers in the first three ok pages."""
+    """Take the personal page and its successor, retaining source offsets."""
     if not pages:
         return Block(())
     page = next(
@@ -167,12 +167,26 @@ def build_header(pages: tuple[Page, ...]) -> Block:
             page
             for page in pages[:3]
             if PERSONAL_LABELS.search(page.raw_text.casefold())
-            or any(re.search(contacts.PATTERNS[key], page.raw_text) for key in ('email', 'phone'))
+            or any(
+                field.key in ('email', 'phone')
+                for field in contacts.extract_contacts(Document((page,)))
+            )
         ),
         pages[0],
     )
-    text = page.raw_text[:3000]
-    return Block((Span(page.number, 0, len(text), text, page.raw_text),))
+    selected = (page,) + tuple(p for p in pages if p.number == page.number + 1)
+    spans = []
+    remaining = 8000
+    for selected_page in selected:
+        if spans:
+            remaining -= 1  # Block.text inserts a page separator.
+        text = selected_page.raw_text[:remaining]
+        if text:
+            spans.append(Span(selected_page.number, 0, len(text), text, selected_page.raw_text))
+        remaining -= len(text)
+        if remaining <= 1:
+            break
+    return Block(tuple(spans))
 
 
 def split_lines(pages: tuple[Page, ...]) -> list[Span]:

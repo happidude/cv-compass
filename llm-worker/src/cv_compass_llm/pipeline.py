@@ -14,8 +14,15 @@ from .prompts import (
     build_whole_prompt,
 )
 from .providers.base import LlmProvider, ProviderError
-from .schema import EXPERIENCE_SCHEMA, PERSONAL_SCHEMA, WHOLE_SCHEMA, ExtractionResult, Issue
-from .segmenter import Block, segment, split_lines
+from .schema import (
+    EXPERIENCE_SCHEMA,
+    PERSONAL_KEYS,
+    PERSONAL_SCHEMA,
+    WHOLE_SCHEMA,
+    ExtractionResult,
+    Issue,
+)
+from .segmenter import Block, build_header, segment, split_lines
 from .validate import validate_experiences, validate_personal, validate_whole
 
 
@@ -37,6 +44,7 @@ def extract(
     issues = []
     experiences = []
     if mode == 'whole':
+        header = build_header(tuple(p for p in document.pages if p.status == 'ok'))
         block = Block(tuple(split_lines(tuple(p for p in document.pages if p.status == 'ok'))))
         prompt = build_whole_prompt(block.text)
         estimate = ceil(len(prompt) / 2.5) + 4096
@@ -52,18 +60,18 @@ def extract(
             except ProviderError:
                 issues.append(Issue('PROVIDER_ERROR'))
             else:
-                values, experiences, errors = validate_whole(response, block)
-                fields.extend(values)
-                issues.extend(errors)
+                _, experiences, errors = validate_whole(response, block)
+                issues.extend(error for error in errors if error.field not in PERSONAL_KEYS)
             if on_block is not None:
-                on_block(1, 1, perf_counter() - started)
+                on_block(1, 1 + bool(header.spans), perf_counter() - started)
     if mode == 'blocks' or any(issue.code == 'WHOLE_TOO_LONG' for issue in issues):
         header, blocks, segment_issues = segment(document)
         issues.extend(segment_issues)
     else:
-        header, blocks = Block(()), ()
-    total = bool(header.spans) + min(len(blocks), max_blocks)
-    index = 0
+        blocks = ()
+    whole_called = mode == 'whole' and not any(i.code == 'WHOLE_TOO_LONG' for i in issues)
+    total = int(whole_called) + bool(header.spans) + min(len(blocks), max_blocks)
+    index = int(whole_called)
 
     def completed(started: float) -> None:
         nonlocal index
