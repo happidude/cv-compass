@@ -15,8 +15,12 @@ class FakeProvider:
         self.calls: list[tuple[dict, int | None, float | None]] = []
 
     def generate(
-        self, prompt: str, json_schema: dict, *,
-        num_ctx: int | None = None, timeout_s: float | None = None,
+        self,
+        prompt: str,
+        json_schema: dict,
+        *,
+        num_ctx: int | None = None,
+        timeout_s: float | None = None,
     ) -> str:
         """Record the prompt and consume one predetermined response."""
         self.prompts.append(prompt)

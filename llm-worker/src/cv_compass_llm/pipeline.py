@@ -20,9 +20,13 @@ from .validate import validate_experiences, validate_personal, validate_whole
 
 
 def extract(
-    document: Document, provider: LlmProvider, *, max_blocks: int = 20,
+    document: Document,
+    provider: LlmProvider,
+    *,
+    max_blocks: int = 20,
     on_block: Callable[[int, int, float], None] | None = None,
-    mode: str = 'blocks', whole_timeout: float = 900,
+    mode: str = 'blocks',
+    whole_timeout: float = 900,
 ) -> ExtractionResult:
     """Extract supported CV values while isolating provider block failures."""
     if type(max_blocks) is not int or max_blocks < 0:
@@ -36,15 +40,15 @@ def extract(
         block = Block(tuple(split_lines(tuple(p for p in document.pages if p.status == 'ok'))))
         prompt = build_whole_prompt(block.text)
         estimate = ceil(len(prompt) / 2.5) + 4096
-        num_ctx = next((size for size in (8192, 16384, 24576, 32768)
-                        if size >= estimate), None)
+        num_ctx = next((size for size in (8192, 16384, 24576, 32768) if size >= estimate), None)
         if num_ctx is None:
             issues.append(Issue('WHOLE_TOO_LONG'))
         else:
             started = perf_counter() if on_block is not None else 0
             try:
-                response = provider.generate(prompt, WHOLE_SCHEMA,
-                                             num_ctx=num_ctx, timeout_s=whole_timeout)
+                response = provider.generate(
+                    prompt, WHOLE_SCHEMA, num_ctx=num_ctx, timeout_s=whole_timeout
+                )
             except ProviderError:
                 issues.append(Issue('PROVIDER_ERROR'))
             else:
@@ -98,6 +102,9 @@ def extract(
         if key not in unique:
             unique[key] = experience
     return ExtractionResult(
-        tuple(fields), tuple(unique.values()), tuple(issues),
-        WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION, provider.name,
+        tuple(fields),
+        tuple(unique.values()),
+        tuple(issues),
+        WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION,
+        provider.name,
     )

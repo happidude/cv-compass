@@ -31,7 +31,11 @@ def build_prompt(block_text: str, schema: dict) -> str:
         'Tạo một record cho mỗi vị trí; dự án, học vấn và chứng chỉ không phải công việc. '
         'The period quote must contain verbatim date tokens from the CV. '
         'Quote period phải chứa nguyên văn token ngày trong CV.\n'
-        + BEGIN + '\n' + escaped + '\n' + END
+        + BEGIN
+        + '\n'
+        + escaped
+        + '\n'
+        + END
     )
 
 
@@ -50,6 +54,5 @@ def build_whole_prompt(text: str) -> str:
     return (
         'The CV may include a cover letter or cover page. '
         'Personal information may appear on any page. '
-        'List EVERY job position in the entire CV.\n'
-        + build_prompt(text, WHOLE_SCHEMA)
+        'List EVERY job position in the entire CV.\n' + build_prompt(text, WHOLE_SCHEMA)
     )

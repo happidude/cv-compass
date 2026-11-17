@@ -17,12 +17,21 @@ from .schema import (
 from .segmenter import Block
 
 GENDERS = {
-    'nam': 'MALE', 'male': 'MALE', 'nữ': 'FEMALE', 'female': 'FEMALE',
-    'other': 'OTHER', 'khác': 'OTHER',
+    'nam': 'MALE',
+    'male': 'MALE',
+    'nữ': 'FEMALE',
+    'female': 'FEMALE',
+    'other': 'OTHER',
+    'khác': 'OTHER',
 }
 GENDER_LABEL = re.compile(r'^(?:gender|giới\s+tính)\s*[:-]\s*')
 GENERIC_NAME_HEADINGS = {
-    'curriculum vitae', 'cv', 'resume', 'résumé', 'sơ yếu lý lịch', 'lý lịch',
+    'curriculum vitae',
+    'cv',
+    'resume',
+    'résumé',
+    'sơ yếu lý lịch',
+    'lý lịch',
 }
 
 
@@ -47,9 +56,9 @@ def matches_schema(value: object, schema: dict) -> bool:
         )
     if kind == 'object':
         return (
-            isinstance(value, dict) and set(value) == set(schema['properties'])
-            and all(matches_schema(value[key], spec)
-                    for key, spec in schema['properties'].items())
+            isinstance(value, dict)
+            and set(value) == set(schema['properties'])
+            and all(matches_schema(value[key], spec) for key, spec in schema['properties'].items())
         )
     return False
 
@@ -66,7 +75,11 @@ def parse_response(text: str, schema: dict) -> dict | None:
 
 
 def supported(
-    value: str | None, quote: str | None, block: Block, field: str, issues: list[Issue],
+    value: str | None,
+    quote: str | None,
+    block: Block,
+    field: str,
+    issues: list[Issue],
 ) -> tuple[str | None, Evidence | None]:
     """Retain a value only when its quote and text are supported."""
     if value is None:
@@ -92,9 +105,7 @@ def _gender_source_line(evidence: Evidence, block: Block) -> str | None:
         source = span.raw_text if span.raw_text is not None else span.text
         origin = 0 if span.raw_text is not None else span.start
         start, end = evidence.start - origin, evidence.end - origin
-        if (start and source[start - 1].isalnum()) or (
-            end < len(source) and source[end].isalnum()
-        ):
+        if (start and source[start - 1].isalnum()) or (end < len(source) and source[end].isalnum()):
             return None
         offset = 0
         for line in source.splitlines(keepends=True):
@@ -105,7 +116,9 @@ def _gender_source_line(evidence: Evidence, block: Block) -> str | None:
 
 
 def validate_gender(
-    item: dict, block: Block, issues: list[Issue],
+    item: dict,
+    block: Block,
+    issues: list[Issue],
 ) -> tuple[str | None, Evidence | None]:
     """Accept gender only on an explicit standalone or labelled source line."""
     evidence = locate(item['quote'], block, ignore_case=False)
@@ -118,7 +131,9 @@ def validate_gender(
 
 
 def validate_birth_date(
-    item: dict, block: Block, issues: list[Issue],
+    item: dict,
+    block: Block,
+    issues: list[Issue],
 ) -> tuple[str | None, Evidence | None]:
     """Normalize an explicit supported birth date without inferring missing parts."""
     value, ambiguous = parse_birth_date(item['value'])
@@ -150,7 +165,10 @@ def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[I
     for key, item in data['personal'].items():
         if item is None:
             continue
-        if key == 'fullName' and ' '.join(item['value'].casefold().split()) in GENERIC_NAME_HEADINGS:
+        if (
+            key == 'fullName'
+            and ' '.join(item['value'].casefold().split()) in GENERIC_NAME_HEADINGS
+        ):
             issues.append(Issue('QUOTE_NOT_FOUND', 'fullName'))
             continue
         if key in validators:
@@ -163,7 +181,9 @@ def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[I
 
 
 def validate_period(
-    item: dict, block: Block, issues: list[Issue],
+    item: dict,
+    block: Block,
+    issues: list[Issue],
 ) -> tuple[str | None, str | None, bool, Evidence | None]:
     """Validate quoted dates, ongoing status and chronological order."""
     if item['start'] is None and item['end'] is None and not item['ongoing']:
@@ -208,7 +228,8 @@ def validate_period(
 
 
 def validate_experiences(
-    text: str, block: Block,
+    text: str,
+    block: Block,
 ) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     """Validate experience records and retain their source evidence."""
     data = parse_response(text, EXPERIENCE_SCHEMA)
@@ -221,24 +242,39 @@ def _experiences(data: dict, block: Block) -> tuple[tuple[Experience, ...], tupl
     experiences, issues = [], []
     for item in data['experiences']:
         title, title_evidence = supported(
-            item['title'], item['quotes']['title'], block, 'title', issues,
+            item['title'],
+            item['quotes']['title'],
+            block,
+            'title',
+            issues,
         )
         company, company_evidence = supported(
-            item['company'], item['quotes']['company'], block, 'company', issues,
+            item['company'],
+            item['quotes']['company'],
+            block,
+            'company',
+            issues,
         )
         start, end, ongoing, period = validate_period(item, block, issues)
         if title is None and company is None:
             issues.append(Issue('EXPERIENCE_WITHOUT_ROLE'))
             continue
-        evidence = {key: value for key, value in (
-            ('title', title_evidence), ('company', company_evidence), ('period', period),
-        ) if value is not None}
+        evidence = {
+            key: value
+            for key, value in (
+                ('title', title_evidence),
+                ('company', company_evidence),
+                ('period', period),
+            )
+            if value is not None
+        }
         experiences.append(Experience(title, company, start, end, ongoing, evidence))
     return tuple(experiences), tuple(issues)
 
 
 def validate_whole(
-    text: str, block: Block,
+    text: str,
+    block: Block,
 ) -> tuple[tuple[FieldValue, ...], tuple[Experience, ...], tuple[Issue, ...]]:
     """Parse once and apply the same evidence rules as block extraction."""
     data = parse_response(text, WHOLE_SCHEMA)

@@ -50,27 +50,61 @@ class ExtractionResult:
 def object_schema(properties: dict) -> dict:
     """Build a strict object schema requiring every declared key."""
     return {
-        'type': 'object', 'properties': properties, 'required': list(properties),
+        'type': 'object',
+        'properties': properties,
+        'required': list(properties),
         'additionalProperties': False,
     }
 
 
 NULL_STRING = {'type': ['string', 'null']}
 PERSONAL_KEYS = ('fullName', 'gender', 'location', 'dateOfBirth', 'summary')
-PERSONAL_SCHEMA = object_schema({'personal': object_schema({
-    key: {'anyOf': [object_schema({
-        'value': ({'type': 'string', 'enum': ['MALE', 'FEMALE', 'OTHER']}
-                  if key == 'gender' else {'type': 'string'}),
-        'quote': {'type': 'string'},
-    }), {'type': 'null'}]}
-    for key in PERSONAL_KEYS
-})})
-EXPERIENCE_SCHEMA = object_schema({'experiences': {'type': 'array', 'items': object_schema({
-    'title': NULL_STRING, 'company': NULL_STRING, 'start': NULL_STRING, 'end': NULL_STRING,
-    'ongoing': {'type': 'boolean'},
-    'quotes': object_schema({key: NULL_STRING for key in ('title', 'company', 'period')}),
-})}})
-WHOLE_SCHEMA = object_schema({
-    'personal': PERSONAL_SCHEMA['properties']['personal'],
-    'experiences': EXPERIENCE_SCHEMA['properties']['experiences'],
-})
+PERSONAL_SCHEMA = object_schema(
+    {
+        'personal': object_schema(
+            {
+                key: {
+                    'anyOf': [
+                        object_schema(
+                            {
+                                'value': (
+                                    {'type': 'string', 'enum': ['MALE', 'FEMALE', 'OTHER']}
+                                    if key == 'gender'
+                                    else {'type': 'string'}
+                                ),
+                                'quote': {'type': 'string'},
+                            }
+                        ),
+                        {'type': 'null'},
+                    ]
+                }
+                for key in PERSONAL_KEYS
+            }
+        )
+    }
+)
+EXPERIENCE_SCHEMA = object_schema(
+    {
+        'experiences': {
+            'type': 'array',
+            'items': object_schema(
+                {
+                    'title': NULL_STRING,
+                    'company': NULL_STRING,
+                    'start': NULL_STRING,
+                    'end': NULL_STRING,
+                    'ongoing': {'type': 'boolean'},
+                    'quotes': object_schema(
+                        {key: NULL_STRING for key in ('title', 'company', 'period')}
+                    ),
+                }
+            ),
+        }
+    }
+)
+WHOLE_SCHEMA = object_schema(
+    {
+        'personal': PERSONAL_SCHEMA['properties']['personal'],
+        'experiences': EXPERIENCE_SCHEMA['properties']['experiences'],
+    }
+)

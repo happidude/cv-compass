@@ -27,16 +27,26 @@ from cv_compass_llm.schema import Evidence, Experience, ExtractionResult, FieldV
 
 TOKEN = 'synthetic_worker_credential_' + 'x' * 32
 ATTEMPT_ID = 'a0000000-0000-4000-8000-000000000001'
-RAW = ('🧪 Synthetic Person\nSynthetic Place\nfirst@example.invalid\n'
-       'second@example.invalid\n0123456789\n0987654321\nhttps://example.invalid/profile\n'
-       'Experience\nEducation\n')
-NULL_PERSONAL = {'personal': {key: None for key in
-                             ('fullName', 'gender', 'location', 'dateOfBirth', 'summary')}}
+RAW = (
+    '🧪 Synthetic Person\nSynthetic Place\nfirst@example.invalid\n'
+    'second@example.invalid\n0123456789\n0987654321\nhttps://example.invalid/profile\n'
+    'Experience\nEducation\n'
+)
+NULL_PERSONAL = {
+    'personal': {key: None for key in ('fullName', 'gender', 'location', 'dateOfBirth', 'summary')}
+}
 
 
 def config(url):
-    return PullConfig(LlmConfig('ollama', 'synthetic-model', 'http://127.0.0.1:11434',
-                                2, 20, 0, False, None), url, TOKEN, 'dev', 1, 1, 3)
+    return PullConfig(
+        LlmConfig('ollama', 'synthetic-model', 'http://127.0.0.1:11434', 2, 20, 0, False, None),
+        url,
+        TOKEN,
+        'dev',
+        1,
+        1,
+        3,
+    )
 
 
 def instant(seconds):
@@ -45,13 +55,20 @@ def instant(seconds):
 
 def claim(*, interval='PT30S', hard=300, lease=120):
     return {
-        'attemptId': ATTEMPT_ID, 'engineVersion': ENGINE, 'inputSha256': 'a' * 64,
-        'leaseExpiresAt': instant(lease), 'hardDeadlineAt': instant(hard),
-        'heartbeatInterval': interval, 'status': 'ACTIVE',
-        'definition': {'schemaVersion': 4, 'engineCompatibility': ENGINE, 'revision': 'test',
-                       'fields': {key: {'enabled': key != 'location'}
-                                  for key in (*PERSONAL, 'experiences')},
-                       'other': {'enabled': True, 'maxItems': 2}},
+        'attemptId': ATTEMPT_ID,
+        'engineVersion': ENGINE,
+        'inputSha256': 'a' * 64,
+        'leaseExpiresAt': instant(lease),
+        'hardDeadlineAt': instant(hard),
+        'heartbeatInterval': interval,
+        'status': 'ACTIVE',
+        'definition': {
+            'schemaVersion': 4,
+            'engineCompatibility': ENGINE,
+            'revision': 'test',
+            'fields': {key: {'enabled': key != 'location'} for key in (*PERSONAL, 'experiences')},
+            'other': {'enabled': True, 'maxItems': 2},
+        },
     }
 
 
@@ -104,7 +121,7 @@ def backend_server(backend):
             self.end_headers()
             try:
                 self.wfile.write(raw)
-            except (BrokenPipeError, ConnectionResetError):
+            except BrokenPipeError, ConnectionResetError:
                 pass
 
         do_POST = do_GET = do_PUT = handle_request
@@ -125,13 +142,13 @@ class PullConfigTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / 'synthetic.env'
-        self.path.write_text('CVC_LLM_PROVIDER=ollama\nCVC_LLM_MODEL=synthetic-model\n',
-                             encoding='utf-8')
+        self.path.write_text(
+            'CVC_LLM_PROVIDER=ollama\nCVC_LLM_MODEL=synthetic-model\n', encoding='utf-8'
+        )
         self.env = {'CVC_LLM_BACKEND_URL': 'http://127.0.0.1', 'CVC_LLM_WORKER_TOKEN': TOKEN}
 
     def load(self, env=None):
-        return load_pull_config(self.env if env is None else env, self.path,
-                                env_file_explicit=True)
+        return load_pull_config(self.env if env is None else env, self.path, env_file_explicit=True)
 
     def test_required_keys_and_no_value_diagnostics(self):
         for key in ('CVC_LLM_BACKEND_URL', 'CVC_LLM_WORKER_TOKEN'):
@@ -151,17 +168,24 @@ class PullConfigTests(unittest.TestCase):
             with self.subTest(key=key):
                 environment = dict(self.env, **{key: value})
                 out = io.StringIO()
-                with (patch.dict(os.environ, environment, clear=True), redirect_stdout(out)):
+                with patch.dict(os.environ, environment, clear=True), redirect_stdout(out):
                     self.assertEqual(main(['pull', '--once', '--env-file', str(self.path)]), 2)
                 self.assertEqual(out.getvalue(), f'{key} {code}\n')
                 self.assertNotIn(value, out.getvalue())
                 self.assertNotIn(TOKEN, out.getvalue())
 
     def test_url_policy(self):
-        for url in ('http://example.invalid', 'http://127.0.0.2', 'http://127.0.0.1/',
-                    'http://user:pass@localhost', 'https://example.invalid/path',
-                    'https://example.invalid?', 'https://example.invalid#',
-                    'http://localhost:0', 'http://localhost:99999'):
+        for url in (
+            'http://example.invalid',
+            'http://127.0.0.2',
+            'http://127.0.0.1/',
+            'http://user:pass@localhost',
+            'https://example.invalid/path',
+            'https://example.invalid?',
+            'https://example.invalid#',
+            'http://localhost:0',
+            'http://localhost:99999',
+        ):
             with self.subTest(url=url):
                 with self.assertRaisesRegex(ValueError, 'BACKEND_URL_NOT_ALLOWED'):
                     self.load(dict(self.env, CVC_LLM_BACKEND_URL=url))
@@ -190,12 +214,20 @@ class PullConfigTests(unittest.TestCase):
         self.assertEqual(out.getvalue() + err.getvalue(), 'INVALID_ARGUMENTS\n')
 
     def test_cli_loads_provider_and_passes_once(self):
-        with (patch.dict(os.environ, self.env, clear=True),
-              patch('cv_compass_llm.cli.OllamaProvider') as provider,
-              patch('cv_compass_llm.cli.run_pull', return_value=0) as pull):
+        with (
+            patch.dict(os.environ, self.env, clear=True),
+            patch('cv_compass_llm.cli.OllamaProvider') as provider,
+            patch('cv_compass_llm.cli.run_pull', return_value=0) as pull,
+        ):
             self.assertEqual(main(['pull', '--once', '--env-file', str(self.path)]), 0)
-        provider.assert_called_once_with('synthetic-model', base_url='http://127.0.0.1:11434',
-                                         timeout_s=120, temperature=0, think=False, num_ctx=8192)
+        provider.assert_called_once_with(
+            'synthetic-model',
+            base_url='http://127.0.0.1:11434',
+            timeout_s=120,
+            temperature=0,
+            think=False,
+            num_ctx=8192,
+        )
         self.assertEqual(pull.call_args.args[0].backend_url, self.env['CVC_LLM_BACKEND_URL'])
         self.assertEqual(pull.call_args.args[0].worker_token, TOKEN)
         self.assertIs(pull.call_args.args[1], provider.return_value)
@@ -205,15 +237,18 @@ class PullConfigTests(unittest.TestCase):
 class PullTests(unittest.TestCase):
     def run_worker(self, backend, provider=None, *, once=True, overrides=None):
         out, err = io.StringIO(), io.StringIO()
-        with (backend_server(backend) as url, redirect_stdout(out), redirect_stderr(err)):
+        with backend_server(backend) as url, redirect_stdout(out), redirect_stderr(err):
             settings = config(url)
             if overrides:
                 settings = replace(settings, **overrides)
             result = run_pull(settings, provider or FakeProvider(NULL_PERSONAL), once=once)
         self.assertTrue(err.getvalue().splitlines())
         for line in err.getvalue().splitlines():
-            self.assertRegex(line, r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d '
-                                   r'(INFO|WARNING|ERROR) event=[a-z_]+(?: [^\s=]+=[^\s]+)*$')
+            self.assertRegex(
+                line,
+                r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d '
+                r'(INFO|WARNING|ERROR) event=[a-z_]+(?: [^\s=]+=[^\s]+)*$',
+            )
         for marker in (RAW, 'Synthetic Person', 'example.invalid', TOKEN, 'private-output'):
             self.assertNotIn(marker, out.getvalue() + err.getvalue())
         return result, out.getvalue()
@@ -221,14 +256,19 @@ class PullTests(unittest.TestCase):
     def test_complete_flow_headers_and_compact_payload(self):
         backend = Backend()
         response = json.loads(json.dumps(NULL_PERSONAL))
-        response['personal']['fullName'] = {'value': 'Synthetic Person', 'quote': '🧪 Synthetic Person'}
+        response['personal']['fullName'] = {
+            'value': 'Synthetic Person',
+            'quote': '🧪 Synthetic Person',
+        }
         response['personal']['location'] = {'value': 'Synthetic Place', 'quote': 'Synthetic Place'}
         provider = FakeProvider(response)
         result, output = self.run_worker(backend, provider)
         self.assertEqual(result, 0)
         self.assertIn('claimed=1 accepted=1 failed=0', output)
         self.assertTrue(provider.prompts)
-        requests = backend.requests('claims') + backend.requests('input') + backend.requests('result')
+        requests = (
+            backend.requests('claims') + backend.requests('input') + backend.requests('result')
+        )
         self.assertEqual(len(requests), 3)
         headers = [{key.lower(): value for key, value in row[2].items()} for row in requests]
         lease = headers[0]['x-lease-token']
@@ -249,14 +289,19 @@ class PullTests(unittest.TestCase):
         self.assertEqual(payload['inputSha256'], backend.claim['inputSha256'])
         for item in [value for value in payload['personal'].values() if value] + payload['other']:
             evidence = item['evidence']
-            self.assertEqual(RAW[evidence['start']:evidence['end']], evidence['text'])
+            self.assertEqual(RAW[evidence['start'] : evidence['end']], evidence['text'])
         self.assertEqual(payload['personal']['fullName']['evidence']['start'], 2)
 
     def test_claim_and_result_disconnect_replay_exact_bytes_and_headers(self):
         backend = Backend()
+
         def hook(method, path, body):
-            if path.endswith(('/claims', '/result')) and len(backend.requests(path.rsplit('/', 1)[1])) == 1:
+            if (
+                path.endswith(('/claims', '/result'))
+                and len(backend.requests(path.rsplit('/', 1)[1])) == 1
+            ):
                 return 'disconnect'
+
         backend.hook = hook
         with patch('cv_compass_llm.backend_client.time.sleep') as sleep:
             self.run_worker(backend)
@@ -297,7 +342,8 @@ class PullTests(unittest.TestCase):
         backend = Backend()
         backend.hook = lambda method, path, body: (
             (503, {'code': 'MAPPING_REMOTE_UNAVAILABLE'})
-            if path.endswith('/claims') and len(backend.requests('claims')) == 1 else None
+            if path.endswith('/claims') and len(backend.requests('claims')) == 1
+            else None
         )
         with patch('cv_compass_llm.backend_client.time.sleep') as sleep:
             self.run_worker(backend)
@@ -307,6 +353,7 @@ class PullTests(unittest.TestCase):
 
     def test_poll_after_204_and_exhausted_503_reuses_uncertain_claim(self):
         backend = Backend()
+
         def hook(method, path, body):
             if path.endswith('/claims'):
                 count = len(backend.requests('claims'))
@@ -317,11 +364,14 @@ class PullTests(unittest.TestCase):
                 if count == 6:
                     raise_shutdown.set()
                     return 204, {}
+
         backend.hook = hook
         raise_shutdown = threading.Event()
+
         def sleep(_delay):
             if raise_shutdown.is_set():
                 raise KeyboardInterrupt
+
         with patch('cv_compass_llm.pull.time.sleep', side_effect=sleep):
             result, _ = self.run_worker(backend, once=False)
         self.assertEqual(result, 130)
@@ -351,17 +401,24 @@ class PullTests(unittest.TestCase):
                 backend = Backend()
                 backend.claim = claim(interval='PT0.02S')
                 if lose:
+
                     def hook(method, path, body):
                         if path.endswith('/lease'):
                             backend.lease_seen.set()
-                            return lose, {'code': 'STALE_ATTEMPT' if lose == 409 else 'UNAUTHORIZED'}
+                            return lose, {
+                                'code': 'STALE_ATTEMPT' if lose == 409 else 'UNAUTHORIZED'
+                            }
+
                     backend.hook = hook
+
                 class SlowProvider:
                     name = 'synthetic'
+
                     def generate(self, prompt, schema):
                         if not backend.lease_seen.wait(3):
                             raise AssertionError('heartbeat missing')
                         return json.dumps(NULL_PERSONAL)
+
                 self.run_worker(backend, SlowProvider())
                 self.assertTrue(backend.requests('lease'))
                 self.assertEqual(len(backend.requests('result')), 0 if lose else 1)
@@ -371,18 +428,25 @@ class PullTests(unittest.TestCase):
         backend = Backend()
         backend.claim = claim(interval='PT0.1S', hard=0.35, lease=0.3)
         failure_seen = threading.Event()
+
         def hook(method, path, body):
             if path.endswith('/failure'):
                 failure_seen.set()
+
         backend.hook = hook
+
         class SlowProvider:
             name = 'synthetic'
+
             def generate(self, prompt, schema):
                 if not failure_seen.wait(3):
                     raise AssertionError('timeout failure missing')
                 return json.dumps(NULL_PERSONAL)
+
         self.run_worker(backend, SlowProvider())
-        self.assertEqual(json.loads(backend.requests('failure')[0][3]), {'code': 'PROVIDER_TIMEOUT'})
+        self.assertEqual(
+            json.loads(backend.requests('failure')[0][3]), {'code': 'PROVIDER_TIMEOUT'}
+        )
         self.assertFalse(backend.requests('result'))
 
     def test_short_lease_is_renewed_before_heartbeat_interval(self):
@@ -390,24 +454,33 @@ class PullTests(unittest.TestCase):
             with self.subTest(ttl=ttl):
                 backend = Backend()
                 backend.claim = claim(interval='PT1S', hard=10, lease=ttl)
+
                 class SlowProvider:
                     name = 'synthetic'
+
                     def generate(self, prompt, schema):
                         if not backend.lease_seen.wait(3):
                             raise AssertionError('short lease was not renewed')
                         return json.dumps(NULL_PERSONAL)
+
                 _, output = self.run_worker(backend, SlowProvider())
                 self.assertTrue(backend.requests('lease'))
                 self.assertEqual(len(backend.requests('result')), 1)
                 self.assertNotIn('LEASE_EXPIRED', output)
 
     def test_result_conflicts_and_validation_errors_are_not_retried_or_changed(self):
-        for status, code in ((409, 'OUTCOME_CONFLICT'), (409, 'LEASE_EXPIRED'),
-                             (409, 'STALE_ATTEMPT'), (422, 'INVALID_EVIDENCE'),
-                             (422, 'INVALID_RESULT'), (413, 'RESULT_TOO_LARGE')):
+        for status, code in (
+            (409, 'OUTCOME_CONFLICT'),
+            (409, 'LEASE_EXPIRED'),
+            (409, 'STALE_ATTEMPT'),
+            (422, 'INVALID_EVIDENCE'),
+            (422, 'INVALID_RESULT'),
+            (413, 'RESULT_TOO_LARGE'),
+        ):
             backend = Backend()
-            backend.hook = lambda method, path, body: ((status, {'code': code})
-                                                      if path.endswith('/result') else None)
+            backend.hook = lambda method, path, body: (
+                (status, {'code': code}) if path.endswith('/result') else None
+            )
             _, output = self.run_worker(backend)
             self.assertIn(code + '=1', output)
             self.assertEqual(len(backend.requests('result')), 1)
@@ -415,9 +488,7 @@ class PullTests(unittest.TestCase):
 
     def test_shutdown_after_uncertain_result_does_not_send_different_outcome(self):
         backend = Backend()
-        backend.hook = lambda method, path, body: (
-            'disconnect' if path.endswith('/result') else None
-        )
+        backend.hook = lambda method, path, body: 'disconnect' if path.endswith('/result') else None
         with patch('cv_compass_llm.backend_client.time.sleep', side_effect=KeyboardInterrupt):
             result, _ = self.run_worker(backend)
         self.assertEqual(result, 130)
@@ -428,17 +499,20 @@ class PullTests(unittest.TestCase):
         for phase in ('construction', 'start'):
             with self.subTest(phase=phase):
                 backend = Backend()
+
                 def interrupted_factory(*args):
                     if phase == 'construction':
                         raise KeyboardInterrupt
                     attempt = _Attempt(*args)
                     attempt.thread.start = Mock(side_effect=KeyboardInterrupt)
                     return attempt
+
                 with patch('cv_compass_llm.pull._Attempt', side_effect=interrupted_factory):
                     result, _ = self.run_worker(backend)
                 self.assertEqual(result, 130)
-                self.assertEqual(json.loads(backend.requests('failure')[0][3]),
-                                 {'code': 'WORKER_SHUTDOWN'})
+                self.assertEqual(
+                    json.loads(backend.requests('failure')[0][3]), {'code': 'WORKER_SHUTDOWN'}
+                )
                 self.assertFalse(backend.requests('input'))
                 self.assertFalse(backend.requests('result'))
 
@@ -450,19 +524,26 @@ class PullTests(unittest.TestCase):
         self.assertFalse(backend.requests('failure'))
 
     def test_invalid_input_unsupported_engine_and_shutdown(self):
-        for scenario, code in (('input', 'INVALID_INPUT'), ('engine', 'UNSUPPORTED_ENGINE'),
-                               ('shutdown', 'WORKER_SHUTDOWN'), ('exception', 'INTERNAL_ERROR')):
+        for scenario, code in (
+            ('input', 'INVALID_INPUT'),
+            ('engine', 'UNSUPPORTED_ENGINE'),
+            ('shutdown', 'WORKER_SHUTDOWN'),
+            ('exception', 'INTERNAL_ERROR'),
+        ):
             backend = Backend()
             if scenario == 'input':
                 backend.input = {'pages': [{'page': 1, 'raw_text': ''}]}
             if scenario == 'engine':
                 backend.claim['engineVersion'] = 'unknown'
+
             class Provider:
                 name = 'synthetic'
+
                 def generate(self, prompt, schema):
                     if scenario == 'shutdown':
                         raise KeyboardInterrupt
                     raise RuntimeError('private-output')
+
             result, _ = self.run_worker(backend, Provider())
             self.assertEqual(result, 130 if scenario == 'shutdown' else 0)
             self.assertEqual(json.loads(backend.requests('failure')[0][3]), {'code': code})
@@ -473,9 +554,15 @@ class PullTests(unittest.TestCase):
     def test_redirect_is_not_followed_and_proxies_are_ignored(self):
         backend = Backend()
         backend.hook = lambda *_args: (302, {})
-        with patch.dict(os.environ, {'http_proxy': 'http://127.0.0.1:1',
-                                    'HTTP_PROXY': 'http://127.0.0.1:1', 'no_proxy': '',
-                                    'NO_PROXY': ''}):
+        with patch.dict(
+            os.environ,
+            {
+                'http_proxy': 'http://127.0.0.1:1',
+                'HTTP_PROXY': 'http://127.0.0.1:1',
+                'no_proxy': '',
+                'NO_PROXY': '',
+            },
+        ):
             _, output = self.run_worker(backend)
         self.assertIn('BACKEND_REDIRECT=1', output)
         self.assertEqual(len(backend.calls), 1)
@@ -491,8 +578,10 @@ class PullTests(unittest.TestCase):
             self.run_worker(backend)
 
     def test_response_limits_and_unknown_error_body_remain_private(self):
-        for path, limit in (('/claims', 64 * 1024),
-                            ('/attempts/' + ATTEMPT_ID + '/input', 16 * 1024 * 1024)):
+        for path, limit in (
+            ('/claims', 64 * 1024),
+            ('/attempts/' + ATTEMPT_ID + '/input', 16 * 1024 * 1024),
+        ):
             backend = Backend()
             backend.hook = lambda *_args: (200, b'x' * (limit + 1))
             with backend_server(backend) as url:
@@ -507,13 +596,17 @@ class PullTests(unittest.TestCase):
 
 class PayloadTests(unittest.TestCase):
     def test_input_adapter_retains_page_offsets_and_blank_pages(self):
-        document = input_document({'pages': [{'page': 1, 'raw_text': ''},
-                                             {'page': 2, 'raw_text': '🧪 synthetic'}]})
+        document = input_document(
+            {'pages': [{'page': 1, 'raw_text': ''}, {'page': 2, 'raw_text': '🧪 synthetic'}]}
+        )
         self.assertEqual(document.pages[0].status, 'blank')
         self.assertEqual(document.pages[1].number, 2)
-        for value in ({'pages': []}, {'pages': [{'page': True, 'raw_text': 'a'}]},
-                      {'pages': [{'page': 2, 'raw_text': 'a'}]},
-                      {'pages': [{'page': 1, 'raw_text': None}]}):
+        for value in (
+            {'pages': []},
+            {'pages': [{'page': True, 'raw_text': 'a'}]},
+            {'pages': [{'page': 2, 'raw_text': 'a'}]},
+            {'pages': [{'page': 1, 'raw_text': None}]},
+        ):
             with self.assertRaisesRegex(ValueError, '^INVALID_INPUT$'):
                 input_document(value)
 
@@ -521,10 +614,19 @@ class PayloadTests(unittest.TestCase):
         evidence = Evidence(1, 0, 1, 'x')
         result = ExtractionResult(
             (FieldValue('url', 'x', evidence),),
-            (Experience('x', None, None, None, False,
-                        {'title': evidence, 'company': evidence, 'period': evidence}),),
+            (
+                Experience(
+                    'x',
+                    None,
+                    None,
+                    None,
+                    False,
+                    {'title': evidence, 'company': evidence, 'period': evidence},
+                ),
+            ),
             (Issue('QUOTE_NOT_FOUND', 'period'), Issue('FIELD_DISABLED', 'fullName')),
-            'synthetic', 'fake',
+            'synthetic',
+            'fake',
         )
         pinned = claim()
         pinned['definition']['other']['enabled'] = False
@@ -537,8 +639,13 @@ class PayloadTests(unittest.TestCase):
 
     def test_oversized_result_is_rejected_without_truncation(self):
         value = 'x' * (1024 * 1024)
-        result = ExtractionResult((FieldValue('summary', value, Evidence(1, 0, len(value), value)),),
-                                  (), (), 'synthetic', 'fake')
+        result = ExtractionResult(
+            (FieldValue('summary', value, Evidence(1, 0, len(value), value)),),
+            (),
+            (),
+            'synthetic',
+            'fake',
+        )
         with self.assertRaisesRegex(ValueError, '^RESULT_TOO_LARGE$'):
             compact_result(result, claim(), {})
 
@@ -550,10 +657,13 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
 
     def assert_verifier_strings(self, payload, pages):
         """Independently mirror Java (?U) whitespace equality and code-point slicing."""
+
         def whitespace(text):
             return re.sub(
                 r'[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a'
-                r'\u2028\u2029\u202f\u205f\u3000]+', ' ', text,
+                r'\u2028\u2029\u202f\u205f\u3000]+',
+                ' ',
+                text,
             ).strip(' \u001c\u001d\u001e\u001f')
 
         def check(value, evidence):
@@ -561,7 +671,7 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
             self.assertLess(evidence['start'], evidence['end'])
             self.assertGreaterEqual(evidence['start'], 0)
             self.assertLessEqual(evidence['end'], len(raw))
-            self.assertEqual(raw[evidence['start']:evidence['end']], evidence['text'])
+            self.assertEqual(raw[evidence['start'] : evidence['end']], evidence['text'])
             self.assertEqual(whitespace(value), whitespace(evidence['text']))
 
         for key, field in payload['personal'].items():
@@ -578,33 +688,48 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
         raw = '🧪 prefix 😀 Name: Synthetic\u00a0 \nPerson; suffix'
         quote_start = raw.index('😀')
         evidence = Evidence(1, quote_start, len(raw), raw[quote_start:])
-        fields = [FieldValue(key, 'Synthetic Person', evidence) for key in
-                  ('fullName', 'email', 'phone', 'location', 'summary', 'url')]
-        fields += [FieldValue('email', 'Synthetic Person', evidence),
-                   FieldValue('phone', 'Synthetic Person', evidence)]
+        fields = [
+            FieldValue(key, 'Synthetic Person', evidence)
+            for key in ('fullName', 'email', 'phone', 'location', 'summary', 'url')
+        ]
+        fields += [
+            FieldValue('email', 'Synthetic Person', evidence),
+            FieldValue('phone', 'Synthetic Person', evidence),
+        ]
         pinned = claim()
         pinned['definition']['fields']['location']['enabled'] = True
         pinned['definition']['other']['maxItems'] = 50
-        experience = Experience('Synthetic Person', 'Synthetic\tPerson', None, None,
-                                False, {'title': evidence, 'company': evidence})
+        experience = Experience(
+            'Synthetic Person',
+            'Synthetic\tPerson',
+            None,
+            None,
+            False,
+            {'title': evidence, 'company': evidence},
+        )
         payload = self.payload(fields, (experience,), pinned)
         self.assert_verifier_strings(payload, {1: raw})
-        self.assertEqual(payload['personal']['fullName']['evidence']['start'],
-                         raw.index('Synthetic'))
-        self.assertEqual(payload['personal']['fullName']['evidence']['text'],
-                         'Synthetic\u00a0 \nPerson')
+        self.assertEqual(
+            payload['personal']['fullName']['evidence']['start'], raw.index('Synthetic')
+        )
+        self.assertEqual(
+            payload['personal']['fullName']['evidence']['text'], 'Synthetic\u00a0 \nPerson'
+        )
         self.assertEqual(len(payload['other']), 3)
         self.assertFalse(payload['issues'])
 
     def test_unmatched_strings_are_removed_with_quote_issues(self):
         evidence = Evidence(1, 0, 5, 'other')
-        fields = [FieldValue(key, 'missing', evidence) for key in
-                  ('fullName', 'email', 'phone', 'location', 'summary', 'url')]
+        fields = [
+            FieldValue(key, 'missing', evidence)
+            for key in ('fullName', 'email', 'phone', 'location', 'summary', 'url')
+        ]
         fields += [FieldValue('email', 'missing', evidence)]
         pinned = claim()
         pinned['definition']['fields']['location']['enabled'] = True
-        experience = Experience('missing', 'missing', None, None, False,
-                                {'title': evidence, 'company': evidence})
+        experience = Experience(
+            'missing', 'missing', None, None, False, {'title': evidence, 'company': evidence}
+        )
         payload = self.payload(fields, (experience,), pinned)
         self.assertTrue(all(value is None for value in payload['personal'].values()))
         self.assertEqual(payload['other'], [])
@@ -612,9 +737,10 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
         self.assertIsNone(payload['experiences'][0]['company'])
         self.assertEqual(payload['experiences'][0]['evidence'], {})
         self.assertEqual({issue['code'] for issue in payload['issues']}, {'QUOTE_NOT_FOUND'})
-        self.assertEqual({issue['field'] for issue in payload['issues']},
-                         {'fullName', 'email', 'phone', 'location', 'summary', 'other',
-                          'experiences'})
+        self.assertEqual(
+            {issue['field'] for issue in payload['issues']},
+            {'fullName', 'email', 'phone', 'location', 'summary', 'other', 'experiences'},
+        )
         self.assert_verifier_strings(payload, {1: 'other'})
 
     def test_python_only_whitespace_does_not_bypass_backend_equality(self):
@@ -625,8 +751,10 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
 
     def test_gender_birth_and_period_quotes_are_not_narrowed(self):
         evidence = Evidence(1, 0, 19, 'Gender: Other; 2000')
-        fields = (FieldValue('gender', 'OTHER', evidence),
-                  FieldValue('dateOfBirth', '2000', evidence))
+        fields = (
+            FieldValue('gender', 'OTHER', evidence),
+            FieldValue('dateOfBirth', '2000', evidence),
+        )
         experience = Experience(None, None, '2000', None, True, {'period': evidence})
         payload = self.payload(fields, (experience,))
         for key in ('gender', 'dateOfBirth'):
@@ -635,13 +763,22 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
 
     def test_invalid_birth_dates_are_omitted(self):
         evidence = Evidence(1, 0, 1, 'x')
-        for value in ('1899', '2101', '2000-00', '2000-13', '2000-1', '2000-02-30',
-                      '２０００', ' 2000'):
+        for value in (
+            '1899',
+            '2101',
+            '2000-00',
+            '2000-13',
+            '2000-1',
+            '2000-02-30',
+            '２０００',
+            ' 2000',
+        ):
             with self.subTest(value=value):
                 payload = self.payload((FieldValue('dateOfBirth', value, evidence),))
                 self.assertIsNone(payload['personal']['dateOfBirth'])
-                self.assertEqual(payload['issues'], [{'code': 'INVALID_DATE',
-                                                      'field': 'dateOfBirth'}])
+                self.assertEqual(
+                    payload['issues'], [{'code': 'INVALID_DATE', 'field': 'dateOfBirth'}]
+                )
         for value in ('1900', '2100', '1900-01', '2100-12', '2000-01-01'):
             payload = self.payload((FieldValue('dateOfBirth', value, evidence),))
             self.assertEqual(payload['personal']['dateOfBirth']['value'], value)
@@ -650,46 +787,65 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
     def test_invalid_experience_periods_are_cleared_together(self):
         evidence = Evidence(1, 0, 1, 'x')
         for start, end, ongoing in (
-            ('1949', None, False), (None, '2101', False), ('2000-00', None, False),
-            (None, '2000-13', False), ('2000-1', None, False),
-            ('２０００', None, False), ('2000-01-01', None, False),
-            ('2001', '2000', False), ('2000-12', '2000-11', False),
-            ('2000', '2001', True), (None, '2000', True),
+            ('1949', None, False),
+            (None, '2101', False),
+            ('2000-00', None, False),
+            (None, '2000-13', False),
+            ('2000-1', None, False),
+            ('２０００', None, False),
+            ('2000-01-01', None, False),
+            ('2001', '2000', False),
+            ('2000-12', '2000-11', False),
+            ('2000', '2001', True),
+            (None, '2000', True),
         ):
             with self.subTest(start=start, end=end, ongoing=ongoing):
-                experience = Experience('x', 'x', start, end, ongoing,
-                                        {'title': evidence, 'company': evidence, 'period': evidence})
+                experience = Experience(
+                    'x',
+                    'x',
+                    start,
+                    end,
+                    ongoing,
+                    {'title': evidence, 'company': evidence, 'period': evidence},
+                )
                 payload = self.payload(experiences=(experience,))
                 row = payload['experiences'][0]
                 self.assertIsNone(row['start'])
                 self.assertIsNone(row['end'])
                 self.assertIs(row['ongoing'], False)
                 self.assertEqual(set(row['evidence']), {'title', 'company'})
-                self.assertEqual(payload['issues'], [{'code': 'INVALID_DATE',
-                                                      'field': 'experiences'}])
+                self.assertEqual(
+                    payload['issues'], [{'code': 'INVALID_DATE', 'field': 'experiences'}]
+                )
                 self.assert_verifier_strings(payload, {1: 'x'})
 
     def test_valid_partial_periods_follow_backend_interval_order(self):
         evidence = Evidence(1, 0, 1, 'x')
         for start, end, ongoing in (
-            ('1950', '2100-12', False), ('2000-12', '2000', False),
-            ('2000', '2000-01', False), ('2000', None, True),
-            (None, None, True), (None, None, False),
+            ('1950', '2100-12', False),
+            ('2000-12', '2000', False),
+            ('2000', '2000-01', False),
+            ('2000', None, True),
+            (None, None, True),
+            (None, None, False),
         ):
             with self.subTest(start=start, end=end, ongoing=ongoing):
-                experience = Experience('x', None, start, end, ongoing,
-                                        {'title': evidence, 'period': evidence})
+                experience = Experience(
+                    'x', None, start, end, ongoing, {'title': evidence, 'period': evidence}
+                )
                 payload = self.payload(experiences=(experience,))
                 row = payload['experiences'][0]
                 self.assertEqual((row['start'], row['end'], row['ongoing']), (start, end, ongoing))
-                self.assertEqual('period' in row['evidence'],
-                                 start is not None or end is not None or ongoing)
+                self.assertEqual(
+                    'period' in row['evidence'], start is not None or end is not None or ongoing
+                )
                 self.assertFalse(payload['issues'])
 
     def test_disabled_contact_labels_never_leak_into_other(self):
         evidence = Evidence(1, 0, 1, 'x')
-        fields = [FieldValue(key, 'x', evidence) for key in
-                  ('email', 'email', 'phone', 'phone', 'url')]
+        fields = [
+            FieldValue(key, 'x', evidence) for key in ('email', 'email', 'phone', 'phone', 'url')
+        ]
         for other_enabled in (True, False):
             pinned = claim()
             pinned['definition']['fields']['email']['enabled'] = False
@@ -698,6 +854,7 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
             payload = self.payload(fields, pinned=pinned)
             self.assertIsNone(payload['personal']['email'])
             self.assertIsNone(payload['personal']['phone'])
-            self.assertEqual([item['label'] for item in payload['other']],
-                             ['url'] if other_enabled else [])
+            self.assertEqual(
+                [item['label'] for item in payload['other']], ['url'] if other_enabled else []
+            )
             self.assert_verifier_strings(payload, {1: 'x'})

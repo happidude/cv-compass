@@ -17,7 +17,7 @@ def load_json(path: str | Path, code: str) -> object:
         if len(data) > MAX_JSON_BYTES:
             raise ValueError
         return strict_json(data.decode('utf-8'))
-    except (OSError, ValueError, UnicodeError):
+    except OSError, ValueError, UnicodeError:
         raise ValueError(code) from None
 
 
@@ -38,12 +38,16 @@ def input_directory(path: str | Path) -> Path:
 
 def find_repository() -> Path | None:
     """Find the package repository without relying on the working directory."""
-    return next((parent for parent in Path(__file__).resolve().parents
-                 if (parent / '.git').exists()), None)
+    return next(
+        (parent for parent in Path(__file__).resolve().parents if (parent / '.git').exists()), None
+    )
 
 
 def prepare_output(
-    source: Path, output: str | Path, *, allow_existing: bool = False,
+    source: Path,
+    output: str | Path,
+    *,
+    allow_existing: bool = False,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> Path:
     """Keep writes outside the repository and source, failing closed without a repo."""
@@ -53,8 +57,14 @@ def prepare_output(
     if repo is not None:
         repo = repo.resolve()
     # Reject ancestors too: they can contain the source or repository artifacts.
-    if (target == source or source in target.parents or target in source.parents
-            or repo is None or target == repo or repo in target.parents):
+    if (
+        target == source
+        or source in target.parents
+        or target in source.parents
+        or repo is None
+        or target == repo
+        or repo in target.parents
+    ):
         raise ValueError('UNSAFE_OUTPUT')
     if target.exists():
         if not target.is_dir():

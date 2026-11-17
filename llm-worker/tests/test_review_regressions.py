@@ -27,12 +27,18 @@ class GenderRegressionTests(unittest.TestCase):
         ):
             with self.subTest(case=quote):
                 header, _, _ = segment(document(text))
-                fields, issues = validate_personal(json.dumps(personal(
-                    gender={'value': value, 'quote': quote},
-                )), header)
+                fields, issues = validate_personal(
+                    json.dumps(
+                        personal(
+                            gender={'value': value, 'quote': quote},
+                        )
+                    ),
+                    header,
+                )
                 self.assertFalse(fields)
-                self.assertEqual([(issue.code, issue.field) for issue in issues],
-                                 [('QUOTE_NOT_FOUND', 'gender')])
+                self.assertEqual(
+                    [(issue.code, issue.field) for issue in issues], [('QUOTE_NOT_FOUND', 'gender')]
+                )
 
     def test_explicit_gender_lines_and_label_separators(self) -> None:
         for line, quote, value in (
@@ -46,21 +52,31 @@ class GenderRegressionTests(unittest.TestCase):
             with self.subTest(case=quote):
                 text = 'Ứng viên mẫu Z\n' + line + '\nNơi ở mẫu'
                 header, _, _ = segment(document(text))
-                fields, issues = validate_personal(json.dumps(personal(
-                    gender={'value': value, 'quote': quote},
-                )), header)
+                fields, issues = validate_personal(
+                    json.dumps(
+                        personal(
+                            gender={'value': value, 'quote': quote},
+                        )
+                    ),
+                    header,
+                )
                 self.assertFalse(issues)
                 self.assertEqual(fields[0].value, value)
                 ev = fields[0].evidence
-                self.assertEqual(ev.text, text[ev.start:ev.end])
+                self.assertEqual(ev.text, text[ev.start : ev.end])
 
     def test_header_truncation_does_not_hide_gender_line_suffix(self) -> None:
         text = 'x' * 2995 + '\nMale synthetic suffix'
         header, _, _ = segment(document(text))
         self.assertTrue(header.text.endswith('Male'))
-        fields, issues = validate_personal(json.dumps(personal(
-            gender={'value': 'MALE', 'quote': 'Male'},
-        )), header)
+        fields, issues = validate_personal(
+            json.dumps(
+                personal(
+                    gender={'value': 'MALE', 'quote': 'Male'},
+                )
+            ),
+            header,
+        )
         self.assertFalse(fields)
         self.assertEqual(issues[0].code, 'QUOTE_NOT_FOUND')
 
@@ -75,36 +91,65 @@ class PeriodRegressionTests(unittest.TestCase):
         ):
             with self.subTest(period=period):
                 text = 'Role-Z Org-Z\n' + period
-                values, issues = validate_experiences(response(experience(
-                    start=start, end=end, period=period,
-                )), block(text))
+                values, issues = validate_experiences(
+                    response(
+                        experience(
+                            start=start,
+                            end=end,
+                            period=period,
+                        )
+                    ),
+                    block(text),
+                )
                 self.assertFalse(issues)
                 value = values[0]
-                self.assertEqual((value.start, value.end, value.ongoing),
-                                 (expected_start, expected_end, ongoing))
+                self.assertEqual(
+                    (value.start, value.end, value.ongoing), (expected_start, expected_end, ongoing)
+                )
                 ev = value.evidence['period']
-                self.assertEqual(ev.text, text[ev.start:ev.end])
+                self.assertEqual(ev.text, text[ev.start : ev.end])
 
     def test_day_precision_birth_date_is_retained_without_losing_precision(self) -> None:
-        fields, issues = validate_personal(json.dumps(personal(
-            dateOfBirth={'value': '03/01/2000', 'quote': '03/01/2000'},
-        )), block('03/01/2000'))
+        fields, issues = validate_personal(
+            json.dumps(
+                personal(
+                    dateOfBirth={'value': '03/01/2000', 'quote': '03/01/2000'},
+                )
+            ),
+            block('03/01/2000'),
+        )
         self.assertEqual(fields[0].value, '2000-01-03')
-        self.assertEqual([(i.code, i.field) for i in issues],
-                         [('DOB_DAY_FIRST_ASSUMED', 'dateOfBirth')])
-        fields, issues = validate_personal(json.dumps(personal(
-            dateOfBirth={'value': '2000-01', 'quote': '03/01/2000'},
-        )), block('03/01/2000'))
+        self.assertEqual(
+            [(i.code, i.field) for i in issues], [('DOB_DAY_FIRST_ASSUMED', 'dateOfBirth')]
+        )
+        fields, issues = validate_personal(
+            json.dumps(
+                personal(
+                    dateOfBirth={'value': '2000-01', 'quote': '03/01/2000'},
+                )
+            ),
+            block('03/01/2000'),
+        )
         self.assertFalse(fields)
         self.assertEqual(issues[0].code, 'QUOTE_NOT_FOUND')
 
     def test_roleless_experience_always_has_issue(self) -> None:
-        values, issues = validate_experiences(response(experience(
-            title=None, company=None, start=None, end=None, period=None,
-        )), block('synthetic'))
+        values, issues = validate_experiences(
+            response(
+                experience(
+                    title=None,
+                    company=None,
+                    start=None,
+                    end=None,
+                    period=None,
+                )
+            ),
+            block('synthetic'),
+        )
         self.assertFalse(values)
-        self.assertEqual([(issue.code, issue.field) for issue in issues],
-                         [('EXPERIENCE_WITHOUT_ROLE', None)])
+        self.assertEqual(
+            [(issue.code, issue.field) for issue in issues], [('EXPERIENCE_WITHOUT_ROLE', None)]
+        )
 
 
 class OffsetAndPipelineRegressionTests(unittest.TestCase):
@@ -116,32 +161,40 @@ class OffsetAndPipelineRegressionTests(unittest.TestCase):
         self.assertEqual(ev.page, 2)
         self.assertEqual(ev.start, len('prefix\n'))
         self.assertEqual(ev.text, 'Role-Z \t\n  Org-Z')
-        self.assertEqual(ev.text, doc.pages[1].raw_text[ev.start:ev.end])
+        self.assertEqual(ev.text, doc.pages[1].raw_text[ev.start : ev.end])
 
     def test_extract_preserves_second_page_evidence(self) -> None:
         doc = document('Ứng viên mẫu Z\nExperience\n', 'Ω\nRole-Z Org-Z\n2019-2021')
-        provider = FakeProvider([
-            personal(), {'experiences': [
-                experience(start='2019', end='2021', period='2019-2021'),
-            ]},
-        ])
+        provider = FakeProvider(
+            [
+                personal(),
+                {
+                    'experiences': [
+                        experience(start='2019', end='2021', period='2019-2021'),
+                    ]
+                },
+            ]
+        )
         result = extract(doc, provider)
         self.assertFalse(result.issues)
         self.assertEqual(len(result.experiences), 1)
         for ev in result.experiences[0].evidence.values():
             self.assertEqual(ev.page, 2)
-            self.assertEqual(ev.text, doc.pages[1].raw_text[ev.start:ev.end])
+            self.assertEqual(ev.text, doc.pages[1].raw_text[ev.start : ev.end])
 
     def test_personal_provider_error_leaves_experience_extraction_running(self) -> None:
-        provider = FakeProvider([
-            ProviderError('synthetic failure'),
-            {'experiences': [experience()]},
-        ])
+        provider = FakeProvider(
+            [
+                ProviderError('synthetic failure'),
+                {'experiences': [experience()]},
+            ]
+        )
         result = extract(document('Experience\nRole-Z Org-Z 1/2020 - 2021-02'), provider)
         self.assertEqual(len(provider.prompts), 2)
         self.assertEqual(len(result.experiences), 1)
-        self.assertEqual([(issue.code, issue.field) for issue in result.issues],
-                         [('PROVIDER_ERROR', 'personal')])
+        self.assertEqual(
+            [(issue.code, issue.field) for issue in result.issues], [('PROVIDER_ERROR', 'personal')]
+        )
 
     def test_no_successful_page_means_no_provider_call(self) -> None:
         for doc in (
@@ -167,7 +220,7 @@ class OffsetAndPipelineRegressionTests(unittest.TestCase):
             self.assertLessEqual(len(item.text), 6000)
             self.assertTrue(item.text.endswith('\n'))
             for span in item.spans:
-                self.assertEqual(text[span.start:span.end], span.text)
+                self.assertEqual(text[span.start : span.end], span.text)
 
 
 class SharedJsonRegressionTests(unittest.TestCase):
