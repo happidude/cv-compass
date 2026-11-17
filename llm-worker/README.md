@@ -316,7 +316,8 @@ Mốc thiếu, ngược, chồng lấn hoặc kết quả quá dài bị bỏ k�
 Matcher chỉ dành cho personal chịu khác biệt nháy cong/thẳng, gạch `–—‐`/`-`,
 khoảng trắng quanh dấu câu và NFD/NFC, giữ offset và giá trị nguyên văn nguồn.
 Không sửa chữ/số hay bỏ dấu. Phone nhận cả ký tự OCR rời, dấu chấm và mã `(+84)`;
-loại chuỗi ngày/năm, giữ nguyên văn số điện thoại.
+loại chuỗi ngày/năm, giữ nguyên văn số điện thoại. Số bắt đầu bằng `0` nhận 9–10 chữ số sau số 0
+(di động và máy bàn như `028 3822 1234`).
 
 `FieldValue.evidence` giữ phần đầu; `additional_evidence` chứa các phần tiếp theo
 của summary, rỗng với field thông thường. Payload compact gửi summary evidence

@@ -321,6 +321,19 @@ class PhoneOcrTests(unittest.TestCase):
                 self.assertEqual(fields[0].evidence, Evidence(1, 7, 7 + len(phone), phone))
                 self.assertEqual(build_header(document('Cover', phone).pages).spans[0].page, 2)
 
+    def test_landline_and_mobile_lengths_after_leading_zero(self):
+        for phone in (
+            '028 3822 1234',
+            '024.3822.1234',
+            '0912 345 678',
+            '0912345678',
+            '02838221234',
+        ):
+            with self.subTest(phone=phone):
+                fields = extract_contacts(document('Phone: ' + phone))
+                self.assertEqual(len(fields), 1)
+                self.assertEqual(fields[0].value, phone)
+
     def test_dates_years_and_overlong_numbers_are_not_phones(self):
         for text in (
             '01.01.2020',
@@ -329,7 +342,8 @@ class PhoneOcrTests(unittest.TestCase):
             '0 2020 2021 0',
             '01/01/2020',
             '10900000000',
-            '09000000000',
+            '090000000000',
+            '0 912 345 678 901',
             '+840900000000',
         ):
             with self.subTest(text=text):
