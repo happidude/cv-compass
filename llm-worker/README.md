@@ -366,6 +366,12 @@ giữ offset code point và nguyên văn nguồn. Không tìm được thì bỏ
 `QUOTE_NOT_FOUND`; gender, dateOfBirth và period giữ quote gốc. Ngày ngoài giới
 hạn verifier hoặc period sai thứ tự/ongoing có end bị bỏ kèm `INVALID_DATE`;
 period lỗi được xóa đồng thời start/end/ongoing và evidence period.
+Payload nhận DOB `YYYY`, `YYYY-MM` hoặc `YYYY-MM-DD` hợp lệ lịch, năm 1900–2100;
+period chỉ nhận `YYYY` hoặc `YYYY-MM`, năm 1950–2100. Parser nhận tháng tiếng Anh
+nối năm bằng khoảng trắng hoặc `-`, `–`, `—` (ví dụ `Jan -2019`), và DOB có ngày
+như `July 28th,1982`/`28th July 1982` mà không gắn `DOB_DAY_FIRST_ASSUMED`.
+Parser DOB hiện chỉ nhận năm 1950–2100 theo giới hạn có sẵn trong `_parts`;
+payload chấp nhận năm 1900–2100 như mô tả ở trên.
 
 Stdout chỉ có số đếm `claimed=… accepted=… failed=…` và mã lỗi cố định kèm số
 đếm; không có body, đường dẫn, token hoặc thông tin ứng viên. Mã lỗi backend

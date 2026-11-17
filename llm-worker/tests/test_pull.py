@@ -635,14 +635,14 @@ class PayloadVerifierRegressionTests(unittest.TestCase):
 
     def test_invalid_birth_dates_are_omitted(self):
         evidence = Evidence(1, 0, 1, 'x')
-        for value in ('1899', '2101', '2000-00', '2000-13', '2000-1', '2000-01-01',
+        for value in ('1899', '2101', '2000-00', '2000-13', '2000-1', '2000-02-30',
                       '２０００', ' 2000'):
             with self.subTest(value=value):
                 payload = self.payload((FieldValue('dateOfBirth', value, evidence),))
                 self.assertIsNone(payload['personal']['dateOfBirth'])
                 self.assertEqual(payload['issues'], [{'code': 'INVALID_DATE',
                                                       'field': 'dateOfBirth'}])
-        for value in ('1900', '2100', '1900-01', '2100-12'):
+        for value in ('1900', '2100', '1900-01', '2100-12', '2000-01-01'):
             payload = self.payload((FieldValue('dateOfBirth', value, evidence),))
             self.assertEqual(payload['personal']['dateOfBirth']['value'], value)
             self.assertFalse(payload['issues'])

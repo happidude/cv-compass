@@ -118,10 +118,10 @@ class JobBoundaryTests(unittest.TestCase):
             if span.raw_text is not None:
                 self.assertEqual(span.text, span.raw_text[span.start:span.end])
 
-    def test_existing_date_parser_precision_for_boundary_examples(self) -> None:
-        self.assertEqual(find_dates('Sep-2011'), ['2011'])
+    def test_date_parser_preserves_month_precision_for_boundary_examples(self) -> None:
+        self.assertEqual(find_dates('Sep-2011'), ['2011-09'])
         self.assertEqual(find_dates('Jan 2021'), ['2021-01'])
-        self.assertEqual(find_dates('From: Sep-2011 To Mar- 2016 :'), ['2011', '2016'])
+        self.assertEqual(find_dates('From: Sep-2011 To Mar- 2016 :'), ['2011-09', '2016-03'])
 
     def test_two_long_jobs_split_before_second_job_in_both_segmentation_paths(self) -> None:
         first = 'From: Jan 2010 To Jan 2011\n' + ('a' * 99 + '\n') * 35
