@@ -9,7 +9,14 @@ MONTHS = (
     ('october', 'oct'), ('november', 'nov'), ('december', 'dec'),
 )
 MONTH_NUMBERS = {name: number for number, names in enumerate(MONTHS, 1) for name in names}
-ENGLISH = r'(?:' + '|'.join(MONTH_NUMBERS) + r')\.?[,]?\s+[0-9]{4}'
+ENGLISH_MONTH = r'(?:' + '|'.join(MONTH_NUMBERS) + r')'
+ENGLISH = '(' + ENGLISH_MONTH + r')\.?[,]?(?:\s*[-–—]\s*|\s+)([0-9]{4})'
+ENGLISH_MONTH_DAY = (
+    '(' + ENGLISH_MONTH + r')\.?\s+([0-9]{1,2})(?:st|nd|rd|th)?(?:,\s*|\s+)([0-9]{4})'
+)
+ENGLISH_DAY_MONTH = (
+    r'([0-9]{1,2})(?:st|nd|rd|th)?\s+(' + ENGLISH_MONTH + r')\.?[,]?\s+([0-9]{4})'
+)
 VIETNAMESE = r'(?:tháng\s+|t)[0-9]{1,2}(?:[/.-]|\s+năm\s+)[0-9]{4}'
 NUMERIC = (
     r'(?:[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}'
@@ -18,7 +25,8 @@ NUMERIC = (
 )
 # Delimiters next to digits belong to the numeric token, not a nested date.
 DATE_TOKEN = re.compile(
-    r'(?<![\w/])(?<![0-9][.,:])(?:' + VIETNAMESE + '|' + ENGLISH + '|' + NUMERIC
+    r'(?<![\w/])(?<![0-9][.,:])(?:' + VIETNAMESE + '|' + ENGLISH_MONTH_DAY
+    + '|' + ENGLISH_DAY_MONTH + '|' + ENGLISH + '|' + NUMERIC
     + r')(?!\w|[/.][0-9]|,[0-9])', re.IGNORECASE,
 )
 PRESENT = ('present', 'now', 'current', 'today', 'to date',
@@ -46,9 +54,12 @@ def _parts(text: str) -> tuple[int, int | None, int | None, bool] | None:
         day_first = True
     elif match := re.fullmatch(r'(?:tháng\s+|t)([0-9]{1,2})(?:[/.-]|\s+năm\s+)([0-9]{4})', text):
         month, year = map(int, match.groups())
-    elif re.fullmatch(ENGLISH, text):
-        name, raw_year = text.split()
-        month, year = MONTH_NUMBERS[name.rstrip('.,')], int(raw_year)
+    elif match := re.fullmatch(ENGLISH_MONTH_DAY, text):
+        month, day, year = MONTH_NUMBERS[match[1]], int(match[2]), int(match[3])
+    elif match := re.fullmatch(ENGLISH_DAY_MONTH, text):
+        day, month, year = int(match[1]), MONTH_NUMBERS[match[2]], int(match[3])
+    elif match := re.fullmatch(ENGLISH, text):
+        month, year = MONTH_NUMBERS[match[1]], int(match[2])
     if not 1950 <= year <= 2100 or (month is not None and not 1 <= month <= 12):
         return None
     if day is not None:

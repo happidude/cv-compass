@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import asdict
+from datetime import date
 
 from .backend_client import encode
 from .ocr_input import Document, Page
@@ -30,8 +31,16 @@ def _string_evidence(value: str, evidence: Evidence) -> dict | None:
                            evidence.start + match.end(), match.group()))
 
 
-def _date_valid(value: str | None, minimum: int) -> bool:
-    return value is None or (
+def _date_valid(value: str | None, minimum: int, *, allow_day: bool = False) -> bool:
+    if value is None:
+        return True
+    if allow_day and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value):
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError:
+            return False
+        return minimum <= parsed.year <= 2100
+    return (
         re.fullmatch(r'[0-9]{4}(?:-(?:0[1-9]|1[0-2]))?', value) is not None
         and minimum <= int(value[:4]) <= 2100
     )
@@ -82,7 +91,7 @@ def compact_result(result: ExtractionResult, claim: dict, provenance: dict) -> b
             continue
         seen.add(field.key)
         issue_field = field.key if primary else 'other'
-        if field.key == 'dateOfBirth' and not _date_valid(field.value, 1900):
+        if field.key == 'dateOfBirth' and not _date_valid(field.value, 1900, allow_day=True):
             issues.append({'code': 'INVALID_DATE', 'field': issue_field})
             continue
         evidence = (asdict(field.evidence) if field.key in ('gender', 'dateOfBirth')
