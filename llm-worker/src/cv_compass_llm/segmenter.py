@@ -85,8 +85,8 @@ def split_lines(pages: tuple[Page, ...]) -> list[Span]:
     return lines
 
 
-def normalize_heading(text: str) -> str:
-    """Remove heading decorations without accepting prose by prefix."""
+def _strip_heading_prefix(text: str) -> str:
+    """Remove numeric, symbolic and Roman numeral heading prefixes."""
     text = text.strip()
     while text and not text[0].isalpha():
         text = text[1:]
@@ -96,7 +96,22 @@ def normalize_heading(text: str) -> str:
     )
     while text and not text[0].isalpha():
         text = text[1:]
-    return ' '.join(text.rstrip(': -–.\t\r\n').split()).casefold()
+    return text
+
+
+def _is_heading_candidate(text: str) -> bool:
+    """Check source casing and punctuation before normalization loses them."""
+    text = text.strip()
+    if text.endswith('.'):
+        return False
+    text = _strip_heading_prefix(text)
+    return bool(text and text[0].isupper())
+
+
+def normalize_heading(text: str) -> str:
+    """Remove heading decorations without accepting prose by prefix."""
+    text = _strip_heading_prefix(text)
+    return ' '.join(text.rstrip(': -–\t\r\n').split()).casefold()
 
 
 def scan_headings(
@@ -109,6 +124,10 @@ def scan_headings(
     selected: list[Span] = []
     blocks: list[Block] = []
     for line in lines:
+        if not _is_heading_candidate(line.text):
+            if active:
+                selected.append(line)
+            continue
         heading = normalize_heading(line.text)
         parts = re.split(r'\s*(?:[&/,]|\band\b|\bvà\b)\s*', heading)
         known = len(heading) <= 60 and all(part in starts | stops for part in parts)

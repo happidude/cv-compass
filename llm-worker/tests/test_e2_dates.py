@@ -207,11 +207,11 @@ class HeadingPromptTests(unittest.TestCase):
 
     def test_decorated_and_new_headings(self) -> None:
         for heading in (
-            'work history', 'career history', 'employment', 'experiences',
-            'kinh nghiệm công tác', 'lịch sử làm việc', 'lịch sử công tác',
+            'Work history', 'Career history', 'Employment', 'Experiences',
+            'Kinh nghiệm công tác', 'Lịch sử làm việc', 'Lịch sử công tác',
             'KINH NGHIỆM LÀM VIỆC:', '2. Work Experience', 'II. KINH NGHIỆM',
             'I. Work Experience', 'II) Work Experience',
-            'IV - Work Experience', '• Work Experience –', '🛠 3) WORK   EXPERIENCE.',
+            'IV - Work Experience', '• Work Experience –', '🛠 3) WORK   EXPERIENCE',
             'WORK EXPERIENCE & PROJECTS',
         ):
             with self.subTest(heading=heading):
@@ -221,9 +221,9 @@ class HeadingPromptTests(unittest.TestCase):
 
     def test_compound_stops_and_known_parts_only(self) -> None:
         for heading in (
-            'certificates', 'certificate', 'core skills', 'key skills', 'personal information',
-            'thông tin cá nhân', 'contact', 'liên hệ', 'objective', 'career objective', 'hobbies',
-            'activities', 'hoạt động', 'training', 'đào tạo', 'memberships', 'publications',
+            'Certificates', 'Certificate', 'Core skills', 'Key skills', 'Personal information',
+            'Thông tin cá nhân', 'Contact', 'Liên hệ', 'Objective', 'Career objective', 'Hobbies',
+            'Activities', 'Hoạt động', 'Training', 'Đào tạo', 'Memberships', 'Publications',
             'EDUCATION & CERTIFICATIONS', 'Education / Skills', 'Education, Training',
             'Education and Skills', 'Học vấn và Kỹ năng', 'Education & Work Experience',
             'Projects / Work Experience',
