@@ -114,12 +114,40 @@ public class MappingRemoteVerifier {
             if (!node.isNull()) {
                 exact(node, Set.of("value", "evidence"));
                 raw = string(node.path("value"));
-                require(!raw.isBlank(), 422, "INVALID_RESULT");
-                evidence.add(
-                        evidence(
-                                input,
-                                node.path("evidence"),
-                                Set.of("gender", "dateOfBirth").contains(field) ? null : raw));
+                JsonNode spans = node.path("evidence");
+                if (field.equals("summary") && spans.isArray()) {
+                    require(
+                            !raw.isBlank() && spans.size() >= 1 && spans.size() <= 8,
+                            422,
+                            "INVALID_EVIDENCE");
+                    var texts = new ArrayList<String>();
+                    Evidence previous = null;
+                    for (JsonNode span : spans) {
+                        Evidence current = evidence(input, span, null);
+                        require(
+                                previous == null
+                                        || previous.page() < current.page()
+                                        || previous.page() == current.page()
+                                                && previous.end() <= current.start(),
+                                422,
+                                "INVALID_EVIDENCE");
+                        evidence.add(current);
+                        texts.add(current.text());
+                        previous = current;
+                    }
+                    require(
+                            whitespace(raw).equals(whitespace(String.join(" ", texts))),
+                            422,
+                            "INVALID_EVIDENCE");
+                } else {
+                    require(!spans.isArray(), 422, "INVALID_EVIDENCE");
+                    require(!raw.isBlank(), 422, "INVALID_RESULT");
+                    evidence.add(
+                            evidence(
+                                    input,
+                                    spans,
+                                    Set.of("gender", "dateOfBirth").contains(field) ? null : raw));
+                }
                 if (field.equals("gender"))
                     require(Set.of("MALE", "FEMALE", "OTHER").contains(raw), 422, "INVALID_RESULT");
                 if (field.equals("dateOfBirth")) birthDate(raw);

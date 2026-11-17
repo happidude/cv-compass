@@ -101,7 +101,7 @@ Chạy trong `PUT /result`, theo thứ tự; lỗi ở bất kỳ bước nào �
 3. **Kích thước/schema:** mục 3–4.
 4. **validateEvidence:** mỗi giá trị khác null có evidence; `page` tồn tại; `0 ≤ start < end ≤ số code point của raw_text`;
    `text` == `raw_text[start:end]` (đổi offset bằng `offsetByCodePoints`, không dùng chỉ số UTF-16, khớp L1a). Với field chuỗi
-   (`fullName, email, phone, location, summary`, title, company, other) `value` phải bằng `text` sau chuẩn hóa khoảng trắng;
+   (`fullName, email, phone, location, summary`, title, company, other) `value` phải bằng `text` sau chuẩn hóa khoảng trắng; riêng `personal.summary.evidence` nhận object như cũ hoặc mảng 1–8 object theo thứ tự `(page, start)` tăng dần, không chồng nhau (cùng trang: `previous.end <= next.start`), `value` không blank và bằng các `text` nối bằng một khoảng trắng sau chuẩn hóa `(?U)\s+` → một khoảng trắng rồi `strip`; giữ đủ list evidence trong envelope/publication. Các field personal khác chỉ nhận một object (mảng → 422 `INVALID_EVIDENCE`).
    gender/ngày được phép khác dạng chữ (Nam → MALE, `05/1990` → `1990-05`) nhưng phải có evidence hợp lệ.
    Sai bất kỳ giá trị nào → **từ chối cả kết quả** 422 `INVALID_EVIDENCE` (M7): attempt `FAILED`, tính một lượt thử, job theo backoff hiện tại.
 5. **Quy tắc ngày:** `YYYY` hoặc `YYYY-MM`, tháng 1–12, năm 1950–2100 (dateOfBirth 1900–2100, nhận thêm `YYYY-MM-DD` hợp lệ lịch), `start ≤ end`, `ongoing=true` ⇒ `end=null`.
