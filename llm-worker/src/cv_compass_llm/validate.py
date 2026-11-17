@@ -3,7 +3,14 @@
 import re
 
 from .dates import find_birth_dates, find_dates, has_present, normalize_date, parse_birth_date
-from .evidence import locate, source_value
+from .evidence import (
+    find_personal,
+    locate,
+    locate_personal,
+    personal_text,
+    source_value,
+    summary_evidence,
+)
 from .json_strict import strict_json
 from .schema import (
     EXPERIENCE_SCHEMA,
@@ -51,8 +58,10 @@ def matches_schema(value: object, schema: dict) -> bool:
     if kind == 'boolean':
         return type(value) is bool
     if kind == 'array':
-        return isinstance(value, list) and all(
-            matches_schema(item, schema['items']) for item in value
+        return (
+            isinstance(value, list)
+            and schema.get('minItems', 0) <= len(value) <= schema.get('maxItems', len(value))
+            and all(matches_schema(item, schema['items']) for item in value)
         )
     if kind == 'object':
         return (
@@ -156,7 +165,66 @@ def validate_personal(text: str, block: Block) -> tuple[tuple[FieldValue, ...], 
     data = parse_response(text, PERSONAL_SCHEMA)
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
-    return _personal(data, block)
+    fields, issues = [], []
+    for key, item in data['personal'].items():
+        if item is None:
+            continue
+        if key == 'summary':
+            evidence = summary_evidence(item, block)
+            if evidence is None:
+                issues.append(Issue('QUOTE_NOT_FOUND', key))
+            else:
+                fields.append(
+                    FieldValue(
+                        key,
+                        '\n'.join(part.text for part in evidence),
+                        evidence[0],
+                        evidence[1:],
+                    )
+                )
+            continue
+        value, evidence = _personal_value(key, item, block, issues)
+        if value is not None and evidence is not None:
+            fields.append(FieldValue(key, value, evidence))
+    return tuple(fields), tuple(issues)
+
+
+def _personal_value(
+    key: str, item: dict, block: Block, issues: list[Issue]
+) -> tuple[str | None, Evidence | None]:
+    evidence = locate_personal(item['quote'], block, ignore_case=key != 'gender')
+    value = None
+    if key == 'gender':
+        line = _gender_source_line(evidence, block) if evidence is not None else None
+        quoted = _gender_value(personal_text(item['quote'])[0])
+        if (
+            quoted is not None
+            and quoted == item['value']
+            and line is not None
+            and _gender_value(personal_text(line)[0]) == quoted
+        ):
+            value = quoted
+    elif key == 'dateOfBirth':
+        parsed, ambiguous = parse_birth_date(item['value'])
+        if parsed is None:
+            issues.append(Issue('INVALID_DATE', key))
+            return None, None
+        tokens = find_birth_dates(evidence.text.replace('‐', '-')) if evidence is not None else []
+        matches = [assumed for token, assumed in tokens if token == parsed]
+        if matches:
+            value = parsed
+            if ambiguous or any(matches):
+                issues.append(Issue('DOB_DAY_FIRST_ASSUMED', key))
+    elif evidence is not None:
+        match = find_personal(item['value'], evidence.text)
+        if match is not None:
+            value = evidence.text[match[0] : match[1]]
+            if key == 'fullName' and personal_text(value, fold=True)[0] in GENERIC_NAME_HEADINGS:
+                value = None
+    if value is None:
+        issues.append(Issue('QUOTE_NOT_FOUND', key))
+        return None, None
+    return value, evidence
 
 
 def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[Issue, ...]]:

@@ -16,6 +16,7 @@ class FieldValue:
     key: str
     value: str
     evidence: Evidence
+    additional_evidence: tuple[Evidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ def object_schema(properties: dict) -> dict:
 
 NULL_STRING = {'type': ['string', 'null']}
 PERSONAL_KEYS = ('fullName', 'gender', 'location', 'dateOfBirth', 'summary')
-PERSONAL_SCHEMA = object_schema(
+WHOLE_PERSONAL_SCHEMA = object_schema(
     {
         'personal': object_schema(
             {
@@ -79,6 +80,31 @@ PERSONAL_SCHEMA = object_schema(
                     ]
                 }
                 for key in PERSONAL_KEYS
+            }
+        )
+    }
+)
+PERSONAL_SCHEMA = object_schema(
+    {
+        'personal': object_schema(
+            {
+                **WHOLE_PERSONAL_SCHEMA['properties']['personal']['properties'],
+                'summary': {
+                    'anyOf': [
+                        {
+                            'type': 'array',
+                            'minItems': 1,
+                            'maxItems': 8,
+                            'items': object_schema(
+                                {
+                                    'quoteStart': {'type': 'string'},
+                                    'quoteEnd': {'type': 'string'},
+                                }
+                            ),
+                        },
+                        {'type': 'null'},
+                    ]
+                },
             }
         )
     }
@@ -104,7 +130,7 @@ EXPERIENCE_SCHEMA = object_schema(
 )
 WHOLE_SCHEMA = object_schema(
     {
-        'personal': PERSONAL_SCHEMA['properties']['personal'],
+        'personal': WHOLE_PERSONAL_SCHEMA['properties']['personal'],
         'experiences': EXPERIENCE_SCHEMA['properties']['experiences'],
     }
 )

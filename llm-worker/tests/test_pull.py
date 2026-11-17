@@ -640,7 +640,7 @@ class PayloadTests(unittest.TestCase):
     def test_oversized_result_is_rejected_without_truncation(self):
         value = 'x' * (1024 * 1024)
         result = ExtractionResult(
-            (FieldValue('summary', value, Evidence(1, 0, len(value), value)),),
+            (FieldValue('fullName', value, Evidence(1, 0, len(value), value)),),
             (),
             (),
             'synthetic',

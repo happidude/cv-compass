@@ -113,7 +113,7 @@ class SegmentEvidenceTests(unittest.TestCase):
     def test_header_first_ok_and_limit(self) -> None:
         doc = Document((Page(1, 'failed', 'unused'), Page(2, 'ok', 'x' * 4000)))
         header, _, _ = segment(doc)
-        self.assertEqual(len(header.text), 3000)
+        self.assertEqual(len(header.text), 4000)
         self.assertEqual(header.spans[0].page, 2)
 
     def test_all_heading_variants_and_stops(self) -> None:
@@ -228,7 +228,7 @@ class ValidationTests(unittest.TestCase):
                 personal(
                     fullName={'value': 'Ứng viên mẫu Z', 'quote': 'Ứng viên mẫu Z'},
                     location={'value': 'Invented place', 'quote': 'Nơi ở mẫu'},
-                    summary={'value': 'Invented summary', 'quote': 'Missing quote'},
+                    summary=[{'quoteStart': 'Missing quote', 'quoteEnd': 'Missing quote'}],
                 )
             ),
             source,

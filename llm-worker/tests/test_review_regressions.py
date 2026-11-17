@@ -66,7 +66,7 @@ class GenderRegressionTests(unittest.TestCase):
                 self.assertEqual(ev.text, text[ev.start : ev.end])
 
     def test_header_truncation_does_not_hide_gender_line_suffix(self) -> None:
-        text = 'x' * 2995 + '\nMale synthetic suffix'
+        text = 'x' * 7995 + '\nMale synthetic suffix'
         header, _, _ = segment(document(text))
         self.assertTrue(header.text.endswith('Male'))
         fields, issues = validate_personal(

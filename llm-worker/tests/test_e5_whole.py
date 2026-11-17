@@ -25,7 +25,7 @@ from cv_compass_llm.prompts import (
 )
 from cv_compass_llm.providers import FakeProvider, ProviderError
 from cv_compass_llm.pull import run_pull
-from cv_compass_llm.schema import WHOLE_SCHEMA, Issue
+from cv_compass_llm.schema import PERSONAL_SCHEMA, WHOLE_SCHEMA, Issue
 from cv_compass_llm.segmenter import Block, split_lines
 from cv_compass_llm.validate import parse_response, validate_whole
 
@@ -58,7 +58,7 @@ def text_for_prompt_length(length):
 
 
 class WholeTests(unittest.TestCase):
-    def test_one_call_all_ok_pages_personal_on_second_page_and_dedupe(self):
+    def test_two_calls_all_ok_pages_personal_on_header_and_dedupe(self):
         pages = (
             Page(1, 'ok', 'Synthetic cover letter\nfirst@example.invalid'),
             Page(2, 'ok', '🧪 Synthetic Person\nGender: Other\n2000-12-31\n'),
@@ -73,7 +73,7 @@ class WholeTests(unittest.TestCase):
             dateOfBirth={'value': '2000-12-31', 'quote': '2000-12-31'},
         )
         response['experiences'] = [role(), role()]
-        provider, progress = FakeProvider(response), []
+        provider, progress = FakeProvider([response, {'personal': response['personal']}]), []
         with patch('cv_compass_llm.pipeline.segment', side_effect=AssertionError('segmented')):
             result = extract(
                 Document(pages),
@@ -83,8 +83,8 @@ class WholeTests(unittest.TestCase):
                 max_blocks=0,
                 on_block=lambda *args: progress.append(args),
             )
-        self.assertEqual(provider.calls, [(WHOLE_SCHEMA, 8192, 123)])
-        self.assertEqual(len(provider.prompts), 1)
+        self.assertEqual(provider.calls, [(WHOLE_SCHEMA, 8192, 123), (PERSONAL_SCHEMA, None, None)])
+        self.assertEqual(len(provider.prompts), 2)
         for page in (pages[0], pages[1], pages[3]):
             self.assertIn(page.raw_text, provider.prompts[0])
         self.assertNotIn('EXCLUDED_MARKER', provider.prompts[0])
@@ -104,7 +104,7 @@ class WholeTests(unittest.TestCase):
         for evidence in result.experiences[0].evidence.values():
             self.assertEqual(evidence.page, 4)
             self.assertEqual(pages[3].raw_text[evidence.start : evidence.end], evidence.text)
-        self.assertEqual([entry[:2] for entry in progress], [(1, 1)])
+        self.assertEqual([entry[:2] for entry in progress], [(1, 2), (2, 2)])
         self.assertGreaterEqual(progress[0][2], 0)
 
     def test_prompt_rules_and_delimiter_escaping(self):
@@ -134,14 +134,17 @@ class WholeTests(unittest.TestCase):
                     provider = FakeProvider(
                         [NULL_PERSONAL, {'experiences': []}]
                         if expected is None
-                        else empty_response()
+                        else [empty_response(), NULL_PERSONAL]
                     )
                     result = extract(document(text), provider, mode='whole')
                     if expected is None:
                         self.assertIn(Issue('WHOLE_TOO_LONG'), result.issues)
                         self.assertTrue(all(call[1:] == (None, None) for call in provider.calls))
                     else:
-                        self.assertEqual(provider.calls, [(WHOLE_SCHEMA, expected, 900)])
+                        self.assertEqual(
+                            provider.calls,
+                            [(WHOLE_SCHEMA, expected, 900), (PERSONAL_SCHEMA, None, None)],
+                        )
                         self.assertNotIn(Issue('WHOLE_TOO_LONG'), result.issues)
 
     def test_fallback_matches_blocks_and_preserves_requested_version(self):
@@ -182,7 +185,11 @@ class WholeTests(unittest.TestCase):
             fullName={'value': 'Synthetic Person', 'quote': 'Synthetic Person'},
         )
         response['experiences'] = [dict(role(), company=None)]
-        result = extract(Document(pages), FakeProvider(response), mode='whole')
+        result = extract(
+            Document(pages),
+            FakeProvider([response, {'personal': response['personal']}]),
+            mode='whole',
+        )
         self.assertEqual(result.fields, ())
         self.assertIn(Issue('QUOTE_NOT_FOUND', 'fullName'), result.issues)
         self.assertIn(Issue('QUOTE_NOT_FOUND', 'period'), result.issues)
@@ -192,13 +199,13 @@ class WholeTests(unittest.TestCase):
         progress = []
         result = extract(
             document('first@example.invalid'),
-            FakeProvider([ProviderError('PRIVATE_FAILURE')]),
+            FakeProvider([ProviderError('PRIVATE_FAILURE'), NULL_PERSONAL]),
             mode='whole',
             on_block=lambda *args: progress.append(args),
         )
         self.assertEqual(result.issues, (Issue('PROVIDER_ERROR'),))
         self.assertEqual(len(result.fields), 1)
-        self.assertEqual([row[:2] for row in progress], [(1, 1)])
+        self.assertEqual([row[:2] for row in progress], [(1, 2), (2, 2)])
 
 
 class WholeIntegrationTests(unittest.TestCase):
@@ -213,7 +220,7 @@ class WholeIntegrationTests(unittest.TestCase):
                 provider = FakeProvider(
                     [NULL_PERSONAL] + [{'experiences': []}] * 20
                     if mode == 'blocks' or fallback
-                    else empty_response()
+                    else [empty_response(), NULL_PERSONAL]
                 )
                 out, err = io.StringIO(), io.StringIO()
                 with backend_server(backend) as url, redirect_stdout(out), redirect_stderr(err):
@@ -240,8 +247,10 @@ class WholeIntegrationTests(unittest.TestCase):
                 self.assertTrue(all('mode=' + mode in line for line in events))
                 self.assertEqual('fallback=blocks' in err.getvalue(), fallback)
                 if mode == 'whole' and not fallback:
-                    self.assertEqual(provider.calls, [(WHOLE_SCHEMA, 8192, 987)])
-                    self.assertIn('block=1/1', err.getvalue())
+                    self.assertEqual(
+                        provider.calls, [(WHOLE_SCHEMA, 8192, 987), (PERSONAL_SCHEMA, None, None)]
+                    )
+                    self.assertIn('block=2/2', err.getvalue())
                 for private in ('Synthetic', 'example.invalid', settings.worker_token):
                     self.assertNotIn(private, out.getvalue() + err.getvalue())
 
@@ -324,7 +333,9 @@ class WholeIntegrationTests(unittest.TestCase):
                     json.dumps({'pages': [{'page_number': 1, 'status': 'ok', 'raw_text': text}]}),
                     encoding='utf-8',
                 )
-            provider = FakeProvider([empty_response(), NULL_PERSONAL] + [{'experiences': []}] * 20)
+            provider = FakeProvider(
+                [empty_response(), NULL_PERSONAL, NULL_PERSONAL] + [{'experiences': []}] * 20
+            )
             summary = run_batch(source, root / 'output', provider, mode='whole', repo_root=repo)
             self.assertEqual(summary['mode'], 'whole')
             self.assertEqual(summary['whole_fallbacks'], 1)

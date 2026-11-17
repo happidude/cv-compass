@@ -240,7 +240,7 @@ class CaseEvidenceTests(unittest.TestCase):
                 personal(
                     fullName={'value': 'Synthetic Person', 'quote': 'synthetic person'},
                     location={'value': 'Nơi Mẫu', 'quote': 'nơi mẫu'},
-                    summary={'value': 'Summary Sample', 'quote': 'summary sample'},
+                    summary=[{'quoteStart': 'summary sample', 'quoteEnd': 'summary sample'}],
                 )
             ),
             block(text),
@@ -391,7 +391,7 @@ class HeadingPromptTests(unittest.TestCase):
             )
 
     def test_prompt_version_and_bilingual_experience_rules(self) -> None:
-        self.assertEqual(PROMPT_VERSION, 'llm-extraction-prompt/2')
+        self.assertEqual(PROMPT_VERSION, 'llm-extraction-prompt/3')
         prompt = build_experience_prompt('synthetic source')
         for instruction in (
             'case',

@@ -17,8 +17,10 @@ class HeaderTests(unittest.TestCase):
             Page(2, 'ok', 'Personal information\nSynthetic Person\n' + 'x' * 3100),
         )
         header, _, _ = segment(Document(pages))
-        self.assertEqual(header.text, pages[1].raw_text[:3000])
-        self.assertEqual(header.spans, (Span(2, 0, 3000, header.text, pages[1].raw_text),))
+        self.assertEqual(header.text, pages[1].raw_text)
+        self.assertEqual(
+            header.spans, (Span(2, 0, len(header.text), header.text, pages[1].raw_text),)
+        )
 
     def test_all_personal_labels_and_contacts_select_second_page(self) -> None:
         for marker in (
@@ -52,7 +54,7 @@ class HeaderTests(unittest.TestCase):
             Page(3, 'ok', 'Full name: Synthetic Person'),
         )
         header, _, _ = segment(Document(pages))
-        self.assertEqual(header.text, pages[1].raw_text)
+        self.assertEqual(header.text, pages[1].raw_text + '\n' + pages[2].raw_text)
 
     def test_scan_counts_only_ok_pages_and_includes_third(self) -> None:
         pages = (
@@ -76,7 +78,7 @@ class HeaderTests(unittest.TestCase):
             )
         )
         header, _, _ = segment(Document(pages))
-        self.assertEqual(header.text, pages[0].raw_text)
+        self.assertEqual(header.text, pages[0].raw_text + '\n' + pages[1].raw_text)
 
     def test_no_markers_or_partial_words_fall_back_to_first_ok_page(self) -> None:
         pages = (
@@ -87,12 +89,12 @@ class HeaderTests(unittest.TestCase):
         )
         header, _, _ = segment(Document(pages))
         self.assertEqual(header.spans[0].page, 2)
-        self.assertEqual(header.text, pages[1].raw_text)
+        self.assertEqual(header.text, pages[1].raw_text + '\n' + pages[2].raw_text)
 
     def test_marker_after_limit_selects_page_but_header_starts_at_zero(self) -> None:
-        text = 'x' * 3100 + '\nNgày sinh: 2000-12-31'
+        text = 'x' * 8100 + '\nNgày sinh: 2000-12-31'
         header, _, _ = segment(Document((Page(1, 'ok', 'Cover'), Page(2, 'ok', text))))
-        self.assertEqual(header.spans, (Span(2, 0, 3000, text[:3000], text),))
+        self.assertEqual(header.spans, (Span(2, 0, 8000, text[:8000], text),))
 
 
 class PersonalNameTests(unittest.TestCase):
@@ -106,6 +108,9 @@ class PersonalNameTests(unittest.TestCase):
             fields, experiences, issues = validate_whole(json.dumps(data), header)
             self.assertFalse(experiences)
         else:
+            data['personal']['summary'] = [
+                {'quoteStart': 'Synthetic summary', 'quoteEnd': 'Synthetic summary'}
+            ]
             fields, issues = validate_personal(json.dumps(data), header)
         return fields, issues
 

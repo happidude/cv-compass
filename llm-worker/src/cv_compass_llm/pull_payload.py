@@ -117,6 +117,31 @@ def compact_result(result: ExtractionResult, claim: dict, provenance: dict) -> b
             if field.key in ('gender', 'dateOfBirth')
             else _string_evidence(field.value, field.evidence)
         )
+        if field.key == 'summary' and len(field.value) > 6000:
+            evidence = None
+        elif field.key == 'summary' and field.additional_evidence:
+            parts = (field.evidence, *field.additional_evidence)
+            normalized_value = re.sub(_SPACE + '+', ' ', field.value).strip(' \x1c\x1d\x1e\x1f')
+            normalized_text = re.sub(_SPACE + '+', ' ', '\n'.join(p.text for p in parts)).strip(
+                ' \x1c\x1d\x1e\x1f'
+            )
+            if (
+                1 <= len(parts) <= 8
+                and len(field.value) <= 6000
+                and normalized_value
+                and normalized_value == normalized_text
+                and all(
+                    p.page > 0 and p.start >= 0 and p.text and p.end - p.start == len(p.text)
+                    for p in parts
+                )
+                and all(
+                    (right.page, right.start) >= (left.page, left.end)
+                    for left, right in zip(parts, parts[1:])
+                )
+            ):
+                evidence = [asdict(part) for part in parts]
+            else:
+                evidence = None
         if evidence is None:
             issues.append({'code': 'QUOTE_NOT_FOUND', 'field': issue_field})
             continue
