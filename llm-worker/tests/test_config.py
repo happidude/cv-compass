@@ -38,6 +38,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.temperature, 0)
         self.assertIs(config.think, False)
         self.assertEqual(config.num_ctx, 8192)
+        self.assertEqual(config.mode, 'blocks')
+        self.assertEqual(config.whole_timeout, 900)
         with self.assertRaises(FrozenInstanceError):
             config.model = 'synthetic-other'
 
@@ -52,6 +54,8 @@ class ConfigTests(unittest.TestCase):
             ('temperature', '0.5', '1', '2', 'temperature', float),
             ('think', 'false', 'true', 'false', 'think', lambda x: x == 'true'),
             ('num_ctx', '1024', '2048', '4096', 'num_ctx', int),
+            ('mode', 'whole', 'blocks', 'whole', 'mode', str),
+            ('whole_timeout', '600', '800', '1000', 'whole_timeout', float),
         ):
             with self.subTest(key=key):
                 self.path.write_text(f'{ENV_KEYS[key]}={file_value}\n', encoding='utf-8')
@@ -100,6 +104,9 @@ class ConfigTests(unittest.TestCase):
             ('temperature', ('invalid', '-0.1', '2.1', 'nan', 'inf'), 'INVALID_TEMPERATURE'),
             ('think', ('invalid', '1', '0', 'yes'), 'INVALID_THINK'),
             ('num_ctx', ('invalid', '0', '-1', '1048577', '1.5', 'true'), 'INVALID_NUM_CTX'),
+            ('mode', ('invalid', 'WHOLE', 'block'), 'INVALID_MODE'),
+            ('whole_timeout', ('invalid', '0', '-1', 'nan', 'inf', '-inf'),
+             'INVALID_WHOLE_TIMEOUT'),
         ):
             for value in values:
                 for source in ('cli', 'environment', 'file'):
@@ -194,6 +201,8 @@ class ConfigTests(unittest.TestCase):
         for flag, code in (('--provider', 'INVALID_PROVIDER'), ('--timeout', 'INVALID_TIMEOUT'),
                            ('--max-blocks', 'INVALID_MAX_BLOCKS'),
                            ('--temperature', 'INVALID_TEMPERATURE'),
+                           ('--mode', 'INVALID_MODE'),
+                           ('--whole-timeout', 'INVALID_WHOLE_TIMEOUT'),
                            ('--num-ctx', 'INVALID_NUM_CTX'), ('--base-url', 'OLLAMA_HOST_NOT_LOCAL')):
             cases.append((b'CVC_LLM_PROVIDER=ollama\nCVC_LLM_MODEL=synthetic-model',
                           [flag, 'synthetic-private-value'], code))
@@ -240,4 +249,4 @@ class ConfigTests(unittest.TestCase):
         provider.assert_called_once_with('synthetic-model', base_url='http://localhost:11434',
                                          timeout_s=19.0, temperature=1.25, think=True, num_ctx=4096)
         batch.assert_called_once_with('synthetic-input', 'synthetic-output', provider.return_value,
-                                      max_blocks=0, limit=2)
+                                      max_blocks=0, limit=2, mode='blocks', whole_timeout=900)

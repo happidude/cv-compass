@@ -12,6 +12,8 @@ ENV_KEYS = {
     'model': 'CVC_LLM_MODEL',
     'base_url': 'CVC_LLM_BASE_URL',
     'timeout': 'CVC_LLM_TIMEOUT_S',
+    'mode': 'CVC_LLM_MODE',
+    'whole_timeout': 'CVC_LLM_WHOLE_TIMEOUT_S',
     'max_blocks': 'CVC_LLM_MAX_BLOCKS',
     'temperature': 'CVC_LLM_TEMPERATURE',
     'think': 'CVC_LLM_THINK',
@@ -37,6 +39,8 @@ class LlmConfig:
     temperature: float
     think: bool
     num_ctx: int | None
+    mode: str = 'blocks'
+    whole_timeout: float = 900
 
 
 def default_env_file() -> Path:
@@ -130,6 +134,13 @@ def load_config(
                       minimum=0, maximum=math.inf)
     if timeout <= 0:
         raise ValueError('INVALID_TIMEOUT')
+    mode = value('mode', 'blocks')
+    if mode not in ('blocks', 'whole'):
+        raise ValueError('INVALID_MODE')
+    whole_timeout = _number(value('whole_timeout', '900'), 'INVALID_WHOLE_TIMEOUT',
+                            minimum=0, maximum=math.inf)
+    if whole_timeout <= 0:
+        raise ValueError('INVALID_WHOLE_TIMEOUT')
     max_blocks = _integer(value('max_blocks', '20'), 'INVALID_MAX_BLOCKS', minimum=0)
     temperature = _number(value('temperature', '0'), 'INVALID_TEMPERATURE',
                           minimum=0, maximum=2)
@@ -142,6 +153,7 @@ def load_config(
         base_url=value('base_url', 'http://127.0.0.1:11434'), timeout_s=timeout,
         max_blocks=max_blocks, temperature=temperature, think=think == 'true',
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
+        mode=mode, whole_timeout=whole_timeout,
     )
 
 
@@ -231,6 +243,7 @@ def load_pull_config(
             'INVALID_PROVIDER': 'provider', 'INVALID_TIMEOUT': 'timeout',
             'INVALID_MAX_BLOCKS': 'max_blocks', 'INVALID_TEMPERATURE': 'temperature',
             'INVALID_THINK': 'think', 'INVALID_NUM_CTX': 'num_ctx',
+            'INVALID_MODE': 'mode', 'INVALID_WHOLE_TIMEOUT': 'whole_timeout',
         }
         name = names.get(code, 'provider' if not value('provider') else 'model')
         raise PullConfigError(ENV_KEYS[name], code) from None

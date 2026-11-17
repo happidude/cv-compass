@@ -2,9 +2,10 @@
 
 import json
 
-from .schema import EXPERIENCE_SCHEMA, PERSONAL_SCHEMA
+from .schema import EXPERIENCE_SCHEMA, PERSONAL_SCHEMA, WHOLE_SCHEMA
 
 PROMPT_VERSION = 'llm-extraction-prompt/2'
+WHOLE_PROMPT_VERSION = 'llm-extraction-prompt/whole-1'
 BEGIN = '<<<CV_DATA_BEGIN>>>'
 END = '<<<CV_DATA_END>>>'
 
@@ -42,3 +43,13 @@ def build_personal_prompt(block_text: str) -> str:
 def build_experience_prompt(block_text: str) -> str:
     """Build the prompt for experience records."""
     return build_prompt(block_text, EXPERIENCE_SCHEMA)
+
+
+def build_whole_prompt(text: str) -> str:
+    """Request all supported personal fields and positions across the entire CV."""
+    return (
+        'The CV may include a cover letter or cover page. '
+        'Personal information may appear on any page. '
+        'List EVERY job position in the entire CV.\n'
+        + build_prompt(text, WHOLE_SCHEMA)
+    )
