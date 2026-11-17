@@ -364,6 +364,54 @@ class MappingRemoteIntegrationTests {
     }
 
     @Test
+    void multiSpanSummaryIsStoredAndPublishedWithAllEvidence() {
+        long job = seed();
+        var claim = claim(UUID.randomUUID());
+        var body = MappingRemoteFixtures.result((String) claim.data().get("inputSha256"));
+        String value = "Synthetic Person Synthetic Reviewer";
+        var summary = ((ObjectNode) body.path("personal")).putObject("summary");
+        summary.put("value", value);
+        var spans = summary.putArray("evidence");
+        spans.add(MappingRemoteFixtures.evidence("Synthetic Person"));
+        spans.add(MappingRemoteFixtures.evidence("Synthetic Reviewer"));
+        remote.result("synthetic_worker", id(claim), HASH, body.toString());
+        long resultId =
+                jdbc.queryForObject(
+                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        Long.class,
+                        job);
+        var stored = completed.read(resultId).orElseThrow();
+        var persisted = json.readTree(stored.body()).path("personalInfo").path("summary");
+        var expectedSpans = spans.deepCopy();
+        for (var span : expectedSpans)
+            ((ObjectNode) span).put("extractionId", stored.extractionId());
+        var expected = json.readTree(expectedSpans.toString());
+        assertThat(persisted.path("raw").asString()).isEqualTo(value);
+        assertThat(persisted.path("evidence")).isEqualTo(expected);
+        assertThat(completed.publishable(stored)).isPresent();
+        assertThat(publication.publish(resultId)).isTrue();
+        var profile =
+                jdbc.queryForMap(
+                        """
+                        SELECT p."BASIC"::text, p."EXTENSIONS"::text, c."STATUS"
+                        FROM "CANDIDATE_PROFILES" p
+                        JOIN "CANDIDATE_PUBLICATIONS" c ON c."CANDIDATE_ID"=p."CANDIDATE_ID"
+                        WHERE c."RESULT_ID"=?
+                        """,
+                        resultId);
+        assertThat(profile.get("STATUS")).isEqualTo("PUBLISHED");
+        assertThat(json.readTree((String) profile.get("BASIC")).path("summary").asString())
+                .isEqualTo(value);
+        assertThat(
+                        json.readTree((String) profile.get("EXTENSIONS"))
+                                .path("personalInfo")
+                                .path("fields")
+                                .path("summary")
+                                .path("evidence"))
+                .isEqualTo(expected);
+    }
+
+    @Test
     void invalidEvidenceConsumesAttemptAndNeverWritesResult() {
         long job = seed();
         var claim = claim(UUID.randomUUID());

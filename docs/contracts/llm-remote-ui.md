@@ -19,6 +19,24 @@ Gender `OTHER` giữ raw, normalized null và issue `GENDER_UNSUPPORTED`.
 `other` có giá trị và issue cấp envelope có `field: null` nằm trong mapping ở
 extensions/lịch sử; chúng không trở thành issue cấp kinh nghiệm.
 
+## Evidence nhiều đoạn cho summary
+
+Phạm vi E9 đã duyệt ngày 17/11/2026: engine `llm-extraction/1.0`, protocol
+`cv-compass.llm-mapping/1.0` nhận riêng `personal.summary.evidence` là một object
+như cũ hoặc mảng từ 1 đến 8 object. Các field personal còn lại chỉ nhận một
+object; gửi mảng bị từ chối với HTTP 422 `INVALID_EVIDENCE`.
+
+Mỗi đoạn có `page`, `start`, `end`, `text`; offset là code point Unicode trong
+raw OCR của trang, khoảng `[start, end)`, và `text` phải khớp nguyên văn.
+Các đoạn trong mảng theo thứ tự `(page, start)` tăng dần, không chồng nhau;
+cùng trang phải có `previous.end <= next.start`, cho phép hai đoạn liền nhau.
+`value` không blank và phải bằng `String.join(" ", texts)` sau khi cả hai phía
+thay `(?U)\s+` bằng một khoảng trắng rồi `strip`. Sai số lượng, thứ tự,
+chồng lấn hoặc giá trị nối bị từ chối với HTTP 422 `INVALID_EVIDENCE`.
+Summary có thể nối qua trang hoặc nhiều mục, gồm Career Objective/Định hướng.
+Envelope v3 lưu đủ danh sách trong `personalInfo.summary.evidence`; publication
+giữ giá trị và toàn bộ evidence trong metadata personal của profile/proposal.
+
 ## Fixture và kiểm chứng
 
 Fixture tại [frontend/tests/fixtures/llm-remote](../../frontend/tests/fixtures/llm-remote/)
