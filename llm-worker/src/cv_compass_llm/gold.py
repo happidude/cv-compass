@@ -29,10 +29,16 @@ def group_experiences(items: list[dict]) -> list[dict]:
     for item in items:
         company = normalize(item['company'])
         if not companies or company is None or normalize(companies[-1]['company']) != company:
-            companies.append({
-                'company': item['company'], 'companyLocation': None,
-                'start': None, 'end': None, 'ongoing': False, 'positions': [],
-            })
+            companies.append(
+                {
+                    'company': item['company'],
+                    'companyLocation': None,
+                    'start': None,
+                    'end': None,
+                    'ongoing': False,
+                    'positions': [],
+                }
+            )
         companies[-1]['positions'].append({key: item[key] for key in POSITION_FIELDS})
     return companies
 
@@ -44,16 +50,15 @@ def company_period(company: dict) -> tuple[str | None, str | None, bool]:
     starts = [item['start'] for item in company['positions'] if item['start'] is not None]
     ends = [item['end'] for item in company['positions'] if item['end'] is not None]
     # Partial years span January through December; keep the selected source string.
-    start = min(starts, key=lambda value: value if len(value) == 7 else value + '-01',
-                default=None)
-    end = max(ends, key=lambda value: value if len(value) == 7 else value + '-12',
-              default=None)
+    start = min(starts, key=lambda value: value if len(value) == 7 else value + '-01', default=None)
+    end = max(ends, key=lambda value: value if len(value) == 7 else value + '-12', default=None)
     ongoing = any(item['ongoing'] for item in company['positions'])
     return start, None if ongoing else end, ongoing
 
 
 def effective_period(
-    position: dict, period: tuple[str | None, str | None, bool],
+    position: dict,
+    period: tuple[str | None, str | None, bool],
 ) -> tuple[str | None, str | None, bool]:
     """Use a complete position period, otherwise inherit the company period."""
     if position['start'] is not None and (position['end'] is not None or position['ongoing']):
@@ -74,28 +79,39 @@ def _valid_date(value: str | None, *, birth: bool = False) -> bool:
 
 
 def _valid_period(item: dict) -> bool:
-    return (type(item['ongoing']) is bool
-            and all(value is None or isinstance(value, str)
-                    for value in (item['start'], item['end']))
-            and _valid_date(item['start']) and _valid_date(item['end'])
-            and (not item['ongoing'] or item['end'] is None))
+    return (
+        type(item['ongoing']) is bool
+        and all(value is None or isinstance(value, str) for value in (item['start'], item['end']))
+        and _valid_date(item['start'])
+        and _valid_date(item['end'])
+        and (not item['ongoing'] or item['end'] is None)
+    )
 
 
 def _valid_companies(items: object) -> bool:
     if not isinstance(items, list):
         return False
     for company in items:
-        if (not isinstance(company, dict) or set(company) != set(COMPANY_FIELDS)
-                or not all(company[key] is None or isinstance(company[key], str)
-                           for key in ('company', 'companyLocation'))
-                or not _valid_period(company)
-                or not isinstance(company['positions'], list) or not company['positions']):
+        if (
+            not isinstance(company, dict)
+            or set(company) != set(COMPANY_FIELDS)
+            or not all(
+                company[key] is None or isinstance(company[key], str)
+                for key in ('company', 'companyLocation')
+            )
+            or not _valid_period(company)
+            or not isinstance(company['positions'], list)
+            or not company['positions']
+        ):
             return False
         for position in company['positions']:
-            if (not isinstance(position, dict) or set(position) != set(POSITION_FIELDS)
-                    or not (position['title'] is None or isinstance(position['title'], str))
-                    or (position['title'] is None and company['company'] is None)
-                    or not _valid_period(position)):
+            if (
+                not isinstance(position, dict)
+                or set(position) != set(POSITION_FIELDS)
+                or not (position['title'] is None or isinstance(position['title'], str))
+                or (position['title'] is None and company['company'] is None)
+                or not _valid_period(position)
+            ):
                 return False
     return True
 
@@ -103,13 +119,19 @@ def _valid_companies(items: object) -> bool:
 def valid_values(personal: object, experiences: object) -> bool:
     """Validate exact value-only personal and experience structures."""
     return (
-        isinstance(personal, dict) and set(personal) == set(PERSONAL_FIELDS)
+        isinstance(personal, dict)
+        and set(personal) == set(PERSONAL_FIELDS)
         and all(value is None or isinstance(value, str) for value in personal.values())
         and isinstance(experiences, list)
-        and all(isinstance(item, dict) and set(item) == set(EXPERIENCE_FIELDS)
-                and type(item['ongoing']) is bool
-                and all(item[key] is None or isinstance(item[key], str)
-                        for key in EXPERIENCE_FIELDS[:-1]) for item in experiences)
+        and all(
+            isinstance(item, dict)
+            and set(item) == set(EXPERIENCE_FIELDS)
+            and type(item['ongoing']) is bool
+            and all(
+                item[key] is None or isinstance(item[key], str) for key in EXPERIENCE_FIELDS[:-1]
+            )
+            for item in experiences
+        )
     )
 
 
@@ -120,17 +142,21 @@ def load_gold(path: str | Path) -> dict:
         raise ValueError('INVALID_GOLD')
     versioned = 'schemaVersion' in data
     keys = {'status', 'personal', 'experiences'} | ({'schemaVersion'} if versioned else set())
-    if (set(data) != keys or data['status'] not in ('DRAFT', 'CONFIRMED')
-            or (versioned and data['schemaVersion'] != SCHEMA_VERSION)
-            or not valid_values(data['personal'], [])):
+    if (
+        set(data) != keys
+        or data['status'] not in ('DRAFT', 'CONFIRMED')
+        or (versioned and data['schemaVersion'] != SCHEMA_VERSION)
+        or not valid_values(data['personal'], [])
+    ):
         raise ValueError('INVALID_GOLD')
     experiences = data['experiences']
     if not versioned:
         if not valid_values(data['personal'], experiences):
             raise ValueError('INVALID_GOLD')
         experiences = group_experiences(experiences)
-    elif (not _valid_date(data['personal']['dateOfBirth'], birth=True)
-          or not _valid_companies(experiences)):
+    elif not _valid_date(data['personal']['dateOfBirth'], birth=True) or not _valid_companies(
+        experiences
+    ):
         raise ValueError('INVALID_GOLD')
     return dict(data, schemaVersion=SCHEMA_VERSION, experiences=experiences)
 
@@ -139,8 +165,11 @@ def result_values(path: Path) -> tuple[dict, list[dict], float]:
     """Read extraction values while discarding evidence and issue contents."""
     data = load_json(path, 'INVALID_RESULT')
     try:
-        if (not isinstance(data, dict) or not isinstance(data['fields'], list)
-                or not isinstance(data['experiences'], list)):
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data['fields'], list)
+            or not isinstance(data['experiences'], list)
+        ):
             raise ValueError
         personal = dict.fromkeys(PERSONAL_FIELDS)
         for field in data['fields']:
@@ -151,19 +180,26 @@ def result_values(path: Path) -> tuple[dict, list[dict], float]:
                 if personal[key] is not None:
                     raise ValueError
                 personal[key] = value
-        experiences = [{key: item[key] for key in EXPERIENCE_FIELDS}
-                       for item in data['experiences']]
+        experiences = [
+            {key: item[key] for key in EXPERIENCE_FIELDS} for item in data['experiences']
+        ]
         seconds = data['seconds']
-        if (not valid_values(personal, experiences) or type(seconds) not in (int, float)
-                or not math.isfinite(seconds) or seconds < 0):
+        if (
+            not valid_values(personal, experiences)
+            or type(seconds) not in (int, float)
+            or not math.isfinite(seconds)
+            or seconds < 0
+        ):
             raise ValueError
-    except (KeyError, TypeError, ValueError, OverflowError):
+    except KeyError, TypeError, ValueError, OverflowError:
         raise ValueError('INVALID_RESULT') from None
     return personal, experiences, float(seconds)
 
 
 def draft_gold(
-    results: str | Path, output: str | Path, *,
+    results: str | Path,
+    output: str | Path,
+    *,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> dict:
     """Create DRAFT value records and skip every existing destination."""
@@ -181,10 +217,15 @@ def draft_gold(
             counts['errors'] += 1
             continue
         try:
-            write_json(destination, {
-                'schemaVersion': SCHEMA_VERSION, 'status': 'DRAFT', 'personal': personal,
-                'experiences': group_experiences(experiences),
-            })
+            write_json(
+                destination,
+                {
+                    'schemaVersion': SCHEMA_VERSION,
+                    'status': 'DRAFT',
+                    'personal': personal,
+                    'experiences': group_experiences(experiences),
+                },
+            )
         except FileExistsError:
             counts['skipped_existing'] += 1
         else:

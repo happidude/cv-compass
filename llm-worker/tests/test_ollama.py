@@ -14,9 +14,14 @@ from cv_compass_llm.providers import OllamaProvider, ProviderError
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         """Capture a synthetic request and serve the configured response."""
-        self.server.requests.append((self.path, json.loads(
-            self.rfile.read(int(self.headers['Content-Length'])),
-        )))
+        self.server.requests.append(
+            (
+                self.path,
+                json.loads(
+                    self.rfile.read(int(self.headers['Content-Length'])),
+                ),
+            )
+        )
         time.sleep(self.server.delay)
         self.send_response(self.server.status)
         if self.server.status == 302:
@@ -24,7 +29,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             self.wfile.write(self.server.body)
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+        except BrokenPipeError, ConnectionResetError, ConnectionAbortedError:
             pass
 
     def log_message(self, format: str, *args: object) -> None:
@@ -68,18 +73,35 @@ class OllamaTests(unittest.TestCase):
         provider = self.provider()
         self.assertEqual(provider.name, 'ollama:synthetic-model')
         self.assertEqual(provider.generate('synthetic prompt', schema), 'synthetic response')
-        self.assertEqual(self.server.requests, [('/api/chat', {
-            'model': 'synthetic-model',
-            'messages': [{'role': 'user', 'content': 'synthetic prompt'}],
-            'format': schema, 'stream': False, 'think': False, 'options': {'temperature': 0},
-        })])
+        self.assertEqual(
+            self.server.requests,
+            [
+                (
+                    '/api/chat',
+                    {
+                        'model': 'synthetic-model',
+                        'messages': [{'role': 'user', 'content': 'synthetic prompt'}],
+                        'format': schema,
+                        'stream': False,
+                        'think': False,
+                        'options': {'temperature': 0},
+                    },
+                )
+            ],
+        )
 
     def test_proxy_environment_is_ignored(self) -> None:
         """Reach loopback even with unusable proxies and no bypass list."""
-        with patch.dict('os.environ', {
-            'HTTP_PROXY': 'http://127.0.0.1:1', 'http_proxy': 'http://127.0.0.1:1',
-            'ALL_PROXY': 'http://127.0.0.1:1', 'NO_PROXY': '', 'no_proxy': '',
-        }):
+        with patch.dict(
+            'os.environ',
+            {
+                'HTTP_PROXY': 'http://127.0.0.1:1',
+                'http_proxy': 'http://127.0.0.1:1',
+                'ALL_PROXY': 'http://127.0.0.1:1',
+                'NO_PROXY': '',
+                'no_proxy': '',
+            },
+        ):
             self.assertEqual(self.provider().generate('synthetic', {}), 'synthetic response')
 
     def test_configured_generation_options(self) -> None:
@@ -92,8 +114,11 @@ class OllamaTests(unittest.TestCase):
     def test_generation_option_validation(self) -> None:
         """Reject wrongly typed and out-of-range options before transport."""
         for name, invalid, code in (
-            ('temperature', (-1, 2.1, 10 ** 400, float('nan'), float('inf'), True, '0', None),
-             'INVALID_TEMPERATURE'),
+            (
+                'temperature',
+                (-1, 2.1, 10**400, float('nan'), float('inf'), True, '0', None),
+                'INVALID_TEMPERATURE',
+            ),
             ('think', ('false', 0, 1, None), 'INVALID_THINK'),
             ('num_ctx', (0, -1, 1048577, True, 1.0, '1'), 'INVALID_NUM_CTX'),
         ):
@@ -113,8 +138,9 @@ class OllamaTests(unittest.TestCase):
             self.assertEqual(opened.call_args.kwargs['timeout'], 9)
             provider.generate('synthetic', {}, num_ctx=None, timeout_s=None)
             self.assertEqual(opened.call_args.kwargs['timeout'], 2)
-        self.assertEqual([call[1]['options']['num_ctx'] for call in self.server.requests],
-                         [24576, 4096])
+        self.assertEqual(
+            [call[1]['options']['num_ctx'] for call in self.server.requests], [24576, 4096]
+        )
         self.assertEqual((provider.num_ctx, provider.timeout_s), (4096, 2))
 
     def test_invalid_per_call_options_never_reach_transport(self) -> None:
@@ -146,9 +172,16 @@ class OllamaTests(unittest.TestCase):
 
     def test_bad_responses_have_fixed_code(self) -> None:
         """Reject non-JSON and incorrectly typed chat envelopes."""
-        for body in (b'PRIVATE_RESPONSE_MARKER', b'{}', b'[]', b'null',
-                     b'{"message": {}}', b'{"message": {"content": 3}}',
-                     b'{"message": {"content": "ok", "content": "duplicate"}}', b'\xff'):
+        for body in (
+            b'PRIVATE_RESPONSE_MARKER',
+            b'{}',
+            b'[]',
+            b'null',
+            b'{"message": {}}',
+            b'{"message": {"content": 3}}',
+            b'{"message": {"content": "ok", "content": "duplicate"}}',
+            b'\xff',
+        ):
             with self.subTest(body=body):
                 self.server.body = body
                 self.assert_failure('OLLAMA_BAD_RESPONSE')
@@ -167,20 +200,33 @@ class OllamaTests(unittest.TestCase):
     def test_unreachable_and_wrapped_timeout(self) -> None:
         """Translate urllib transport failures to fixed codes."""
         provider = self.provider()
-        for reason, expected in ((OSError('PRIVATE'), 'OLLAMA_UNREACHABLE'),
-                                 (TimeoutError('PRIVATE'), 'OLLAMA_TIMEOUT')):
+        for reason, expected in (
+            (OSError('PRIVATE'), 'OLLAMA_UNREACHABLE'),
+            (TimeoutError('PRIVATE'), 'OLLAMA_TIMEOUT'),
+        ):
             with patch.object(provider._opener, 'open', side_effect=URLError(reason)):
                 with self.assertRaisesRegex(ProviderError, '^' + expected + '$'):
                     provider.generate('PRIVATE_PROMPT', {})
 
     def test_only_local_http_endpoints_are_allowed(self) -> None:
         """Reject remote hosts, credentials and ambiguous endpoint components."""
-        for url in ('https://127.0.0.1', 'http://example.invalid', 'http://127.0.0.2',
-                    'http://localhost.evil.invalid', 'http://user@localhost',
-                    'http://localhost/path', 'http://localhost?x=1', 'http://localhost?',
-                    'http://localhost#', 'http://127.0.0.1@evil.invalid',
-                    'http://localhost#x', 'http://localhost:bad', 'http://[::1',
-                    'http://localhost\n', 'file:///tmp/fixture'):
+        for url in (
+            'https://127.0.0.1',
+            'http://example.invalid',
+            'http://127.0.0.2',
+            'http://localhost.evil.invalid',
+            'http://user@localhost',
+            'http://localhost/path',
+            'http://localhost?x=1',
+            'http://localhost?',
+            'http://localhost#',
+            'http://127.0.0.1@evil.invalid',
+            'http://localhost#x',
+            'http://localhost:bad',
+            'http://[::1',
+            'http://localhost\n',
+            'file:///tmp/fixture',
+        ):
             with self.subTest(url=url):
                 with self.assertRaisesRegex(ValueError, '^OLLAMA_HOST_NOT_LOCAL$'):
                     OllamaProvider('synthetic', base_url=url)

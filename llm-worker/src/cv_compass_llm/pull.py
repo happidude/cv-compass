@@ -54,20 +54,30 @@ class _ObservedProvider:
         self.failure = None
 
     def generate(
-        self, prompt: str, json_schema: dict, *,
-        num_ctx: int | None = None, timeout_s: float | None = None,
+        self,
+        prompt: str,
+        json_schema: dict,
+        *,
+        num_ctx: int | None = None,
+        timeout_s: float | None = None,
     ) -> str:
         if self.failure:
             raise ProviderError(self.failure)
         if self.supervisor.lost or self.supervisor.outcome_started:
             raise ProviderError('PROVIDER_TIMEOUT')
         try:
-            options = {key: value for key, value in
-                       (('num_ctx', num_ctx), ('timeout_s', timeout_s)) if value is not None}
+            options = {
+                key: value
+                for key, value in (('num_ctx', num_ctx), ('timeout_s', timeout_s))
+                if value is not None
+            }
             return self.provider.generate(prompt, json_schema, **options)
         except ProviderError as error:
-            self.failure = ('PROVIDER_TIMEOUT' if str(error) in
-                            ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT') else 'PROVIDER_ERROR')
+            self.failure = (
+                'PROVIDER_TIMEOUT'
+                if str(error) in ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT')
+                else 'PROVIDER_ERROR'
+            )
             raise
 
 
@@ -87,7 +97,9 @@ class _Attempt:
         self.lost = False
         self.outcome_started = False
         self.failure_code = 'INTERNAL_ERROR'
-        self.thread = threading.Thread(target=self._heartbeat, name='mapping-heartbeat', daemon=True)
+        self.thread = threading.Thread(
+            target=self._heartbeat, name='mapping-heartbeat', daemon=True
+        )
 
     def _error(self, error: BackendError) -> None:
         self.counts[error.code] += 1
@@ -109,7 +121,10 @@ class _Attempt:
         event('submitting', attempt=self.short_id)
         try:
             status, reply = self.client.request(
-                'PUT', self.path + '/' + kind, self.token, body,
+                'PUT',
+                self.path + '/' + kind,
+                self.token,
+                body,
                 deadline=min(self.lease, self.hard),
             )
             expected = 'ACCEPTED' if kind == 'result' else 'FAILED'
@@ -131,8 +146,9 @@ class _Attempt:
         try:
             while not self.stop.is_set():
                 now = time.monotonic()
-                delay = max(0, min(self.interval, self.hard - self.interval - now,
-                                   (self.lease - now) / 2))
+                delay = max(
+                    0, min(self.interval, self.hard - self.interval - now, (self.lease - now) / 2)
+                )
                 if self.stop.wait(delay):
                     return
                 with self.lock:
@@ -148,19 +164,26 @@ class _Attempt:
                         return
                     try:
                         status, reply = self.client.request(
-                            'PUT', self.path + '/lease', self.token, b'{}',
+                            'PUT',
+                            self.path + '/lease',
+                            self.token,
+                            b'{}',
                             deadline=min(self.lease, self.hard - self.interval),
                         )
                         if status != 200:
                             raise BackendError('BACKEND_BAD_RESPONSE')
-                        self.lease = min(self.hard, time.monotonic() +
-                                         _instant(reply['leaseExpiresAt']) - time.time())
+                        self.lease = min(
+                            self.hard,
+                            time.monotonic() + _instant(reply['leaseExpiresAt']) - time.time(),
+                        )
                         event('heartbeat', level=logging.DEBUG, attempt=self.short_id)
                     except BackendError as error:
                         self._error(error)
-                        if (error.status not in (401, 409)
-                                and time.monotonic() >= self.hard - self.interval
-                                and time.monotonic() < self.lease):
+                        if (
+                            error.status not in (401, 409)
+                            and time.monotonic() >= self.hard - self.interval
+                            and time.monotonic() < self.lease
+                        ):
                             self.failure('PROVIDER_TIMEOUT')
                             return
                         # Exhausted transport retries leave renewal uncertain. Abandon safely.
@@ -180,13 +203,16 @@ class _Attempt:
 def _definition(claim: dict) -> None:
     definition = claim['definition']
     fields = definition['fields']
-    if (definition['schemaVersion'] != 4 or definition['engineCompatibility'] != ENGINE
-            or set(fields) != {*PERSONAL, 'experiences'}
-            or any(type(row['enabled']) is not bool for row in fields.values())
-            or type(definition['other']['enabled']) is not bool
-            or type(definition['other']['maxItems']) is not int
-            or not 0 <= definition['other']['maxItems'] <= 50
-            or not re.fullmatch(r'[0-9a-f]{64}', claim['inputSha256'])):
+    if (
+        definition['schemaVersion'] != 4
+        or definition['engineCompatibility'] != ENGINE
+        or set(fields) != {*PERSONAL, 'experiences'}
+        or any(type(row['enabled']) is not bool for row in fields.values())
+        or type(definition['other']['enabled']) is not bool
+        or type(definition['other']['maxItems']) is not int
+        or not 0 <= definition['other']['maxItems'] <= 50
+        or not re.fullmatch(r'[0-9a-f]{64}', claim['inputSha256'])
+    ):
         raise ValueError('BACKEND_BAD_RESPONSE')
 
 
@@ -197,7 +223,10 @@ def _shutdown_unstarted(client, claim, token, counts) -> None:
         expiry = min(_instant(claim['leaseExpiresAt']), _instant(claim['hardDeadlineAt']))
         event('submitting', attempt=str(UUID(claim['attemptId']))[:8])
         status, reply = client.request(
-            'PUT', path, token, encode({'code': 'WORKER_SHUTDOWN'}),
+            'PUT',
+            path,
+            token,
+            encode({'code': 'WORKER_SHUTDOWN'}),
             deadline=time.monotonic() + expiry - time.time(),
         )
         if status == 200 and reply.get('status') == 'FAILED':
@@ -219,54 +248,83 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
         counts['claimed'] += 1
         try:
             attempt = _Attempt(client, claim, token, counts)
-        except (ValueError, TypeError, KeyError, OverflowError):
+        except ValueError, TypeError, KeyError, OverflowError:
             counts['BACKEND_BAD_RESPONSE'] += 1
             event('backend_error', level=logging.ERROR, code='BACKEND_BAD_RESPONSE')
             return
-        event('claimed', attempt=attempt.short_id,
-              engine=ENGINE if claim['engineVersion'] == ENGINE else 'UNSUPPORTED')
+        event(
+            'claimed',
+            attempt=attempt.short_id,
+            engine=ENGINE if claim['engineVersion'] == ENGINE else 'UNSUPPORTED',
+        )
         attempt.thread.start()
         if claim['engineVersion'] != ENGINE:
             failure = 'UNSUPPORTED_ENGINE'
         else:
             _definition(claim)
             try:
-                status, data = client.request('GET', attempt.path + '/input', token,
-                                              deadline=min(attempt.lease, attempt.hard))
+                status, data = client.request(
+                    'GET', attempt.path + '/input', token, deadline=min(attempt.lease, attempt.hard)
+                )
                 if status != 200:
                     raise ValueError('INVALID_INPUT')
                 document = input_document(data)
                 del data
-                event('input_fetched', attempt=attempt.short_id, pages=len(document.pages),
-                      chars=sum(len(page.raw_text) for page in document.pages))
-            except (ValueError, TypeError, KeyError):
+                event(
+                    'input_fetched',
+                    attempt=attempt.short_id,
+                    pages=len(document.pages),
+                    chars=sum(len(page.raw_text) for page in document.pages),
+                )
+            except ValueError, TypeError, KeyError:
                 failure = 'INVALID_INPUT'
             if failure is None:
                 observed = _ObservedProvider(provider, attempt)
                 started = time.monotonic()
 
                 def on_block(index, total, seconds):
-                    event('extraction_block', attempt=attempt.short_id,
-                          block=f'{index}/{total}', seconds=f'{seconds:.3f}')
+                    event(
+                        'extraction_block',
+                        attempt=attempt.short_id,
+                        block=f'{index}/{total}',
+                        seconds=f'{seconds:.3f}',
+                    )
 
-                result = extract(document, observed, max_blocks=config.llm.max_blocks,
-                                 on_block=on_block, mode=config.llm.mode,
-                                 whole_timeout=config.llm.whole_timeout)
-                issues = Counter((issue.code if issue.field is None
-                                  else f'{issue.code}.{issue.field}') for issue in result.issues
-                                 if issue.code in WORKER_ISSUES | {'LLM_INVALID_JSON',
-                                                                  'PROVIDER_ERROR'})
-                fallback = ({'fallback': 'blocks'} if any(
-                    issue.code == 'WHOLE_TOO_LONG' for issue in result.issues
-                ) else {})
-                event('extraction_done', attempt=attempt.short_id, mode=config.llm.mode,
-                      seconds=f'{time.monotonic() - started:.3f}',
-                      issues=','.join(f'{code}:{issues[code]}' for code in sorted(issues))
-                      or 'NONE:0', **fallback)
+                result = extract(
+                    document,
+                    observed,
+                    max_blocks=config.llm.max_blocks,
+                    on_block=on_block,
+                    mode=config.llm.mode,
+                    whole_timeout=config.llm.whole_timeout,
+                )
+                issues = Counter(
+                    (issue.code if issue.field is None else f'{issue.code}.{issue.field}')
+                    for issue in result.issues
+                    if issue.code in WORKER_ISSUES | {'LLM_INVALID_JSON', 'PROVIDER_ERROR'}
+                )
+                fallback = (
+                    {'fallback': 'blocks'}
+                    if any(issue.code == 'WHOLE_TOO_LONG' for issue in result.issues)
+                    else {}
+                )
+                event(
+                    'extraction_done',
+                    attempt=attempt.short_id,
+                    mode=config.llm.mode,
+                    seconds=f'{time.monotonic() - started:.3f}',
+                    issues=','.join(f'{code}:{issues[code]}' for code in sorted(issues))
+                    or 'NONE:0',
+                    **fallback,
+                )
                 if observed.failure:
                     failure = observed.failure
-                    event('provider_error', level=logging.ERROR, attempt=attempt.short_id,
-                          code=failure)
+                    event(
+                        'provider_error',
+                        level=logging.ERROR,
+                        attempt=attempt.short_id,
+                        code=failure,
+                    )
                 elif any(issue.code == 'LLM_INVALID_JSON' for issue in result.issues):
                     failure = 'INVALID_OUTPUT'
                 else:
@@ -282,11 +340,16 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
             if attempt is not None:
                 attempt.lost = True
     except ProviderError as error:
-        failure = ('PROVIDER_TIMEOUT' if str(error) in ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT')
-                   else 'PROVIDER_ERROR')
+        failure = (
+            'PROVIDER_TIMEOUT'
+            if str(error) in ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT')
+            else 'PROVIDER_ERROR'
+        )
         event('provider_error', level=logging.ERROR, code=failure)
     except ValueError as error:
-        failure = str(error) if str(error) in ('RESULT_TOO_LARGE', 'INVALID_OUTPUT') else 'INTERNAL_ERROR'
+        failure = (
+            str(error) if str(error) in ('RESULT_TOO_LARGE', 'INVALID_OUTPUT') else 'INTERNAL_ERROR'
+        )
     except KeyboardInterrupt:
         interrupted = True
         failure = 'WORKER_SHUTDOWN'
@@ -330,13 +393,15 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
 
 def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
     counts = Counter(claimed=0, accepted=0, failed=0)
-    provenance = {'model': config.llm.model,
-                  'promptVersion': (WHOLE_PROMPT_VERSION if config.llm.mode == 'whole'
-                                    else PROMPT_VERSION),
-                  'workerVersion': config.worker_version}
+    provenance = {
+        'model': config.llm.model,
+        'promptVersion': (WHOLE_PROMPT_VERSION if config.llm.mode == 'whole' else PROMPT_VERSION),
+        'workerVersion': config.worker_version,
+    }
     client = BackendClient(config)
-    claim_body = encode({'protocol': PROTOCOL, 'engineVersions': [ENGINE],
-                         'provenance': provenance})
+    claim_body = encode(
+        {'protocol': PROTOCOL, 'engineVersions': [ENGINE], 'provenance': provenance}
+    )
     exit_code = 0
     last_waiting = {}
 
@@ -348,9 +413,15 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
             last_waiting[code] = now
 
     model = model_name(config.llm.model) if config.llm.model != config.worker_token else 'REDACTED'
-    event('worker_start', model=model, ollama=endpoint(config.llm.base_url),
-          backend=endpoint(config.backend_url), poll_s=config.poll_s, log_level=config.log_level,
-          mode=config.llm.mode)
+    event(
+        'worker_start',
+        model=model,
+        ollama=endpoint(config.llm.base_url),
+        backend=endpoint(config.backend_url),
+        poll_s=config.poll_s,
+        log_level=config.log_level,
+        mode=config.llm.mode,
+    )
     try:
         token, key = secrets.token_urlsafe(32), str(uuid4())
         while True:
@@ -368,8 +439,9 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
                 time.sleep(config.poll_s)
                 continue
             # Successful contact ends outage throttling; consecutive idle polls stay quiet.
-            last_waiting = {code: stamp for code, stamp in last_waiting.items()
-                            if code == 'NO_WORK'}
+            last_waiting = {
+                code: stamp for code, stamp in last_waiting.items() if code == 'NO_WORK'
+            }
             if status == 204:
                 waiting('NO_WORK')
                 if once:
@@ -378,7 +450,10 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
                 token, key = secrets.token_urlsafe(32), str(uuid4())
                 continue
             if status not in (200, 201) or claim.get('status') not in (
-                'ACTIVE', 'ACCEPTED', 'FAILED', 'EXPIRED',
+                'ACTIVE',
+                'ACCEPTED',
+                'FAILED',
+                'EXPIRED',
             ):
                 counts['BACKEND_BAD_RESPONSE'] += 1
                 event('backend_error', level=logging.ERROR, code='BACKEND_BAD_RESPONSE')

@@ -21,17 +21,21 @@ def endpoint(value: str) -> str:
 
 def model_name(value: str) -> str:
     """Model provenance allows slashes; never render an absolute path or URL."""
-    if (not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', value)
-            or '://' in value or value.startswith(('/', '.'))
-            or re.match(r'^[A-Za-z]:/', value)):
+    if (
+        not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', value)
+        or '://' in value
+        or value.startswith(('/', '.'))
+        or re.match(r'^[A-Za-z]:/', value)
+    ):
         return 'REDACTED'
     return value
 
 
 def event(name: str, *, level: int = logging.INFO, **fields) -> None:
     # Build the record from metadata only: no exception object, body or source locals.
-    LOGGER.log(level, ' '.join([f'event={name}', *(f'{key}={value}'
-                                                for key, value in fields.items())]))
+    LOGGER.log(
+        level, ' '.join([f'event={name}', *(f'{key}={value}' for key, value in fields.items())])
+    )
 
 
 @contextmanager
@@ -39,8 +43,9 @@ def command_logging(level: str):
     """StreamHandler flushes each line; never modify root or urllib loggers."""
     previous = LOGGER.handlers[:], LOGGER.level, LOGGER.propagate, LOGGER.disabled
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s',
-                                           datefmt='%Y-%m-%d %H:%M:%S'))
+    handler.setFormatter(
+        logging.Formatter('%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    )
     LOGGER.handlers = [handler]
     LOGGER.setLevel(level)
     LOGGER.propagate = False

@@ -5,6 +5,7 @@ import json
 
 def strict_json(text: str) -> object:
     """Parse JSON while rejecting duplicate keys and nonfinite constants."""
+
     def pairs(items: list[tuple[str, object]]) -> dict:
         """Reject repeated object keys before building the mapping."""
         result = {}
@@ -20,5 +21,5 @@ def strict_json(text: str) -> object:
 
     try:
         return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
-    except (ValueError, RecursionError):
+    except ValueError, RecursionError:
         raise ValueError('INVALID_JSON') from None

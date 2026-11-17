@@ -14,8 +14,9 @@ from .providers.ollama import MAX_RESPONSE_BYTES, OllamaProvider
 BACKEND_PROBE = PREFIX + '/check'
 
 
-def _get(url: str, timeout: float, *, token: str | None = None,
-         limit: int = MAX_RESPONSE_BYTES) -> tuple[int, bytes]:
+def _get(
+    url: str, timeout: float, *, token: str | None = None, limit: int = MAX_RESPONSE_BYTES
+) -> tuple[int, bytes]:
     headers = {'Accept': 'application/json'}
     if token is not None:
         headers['Authorization'] = 'Bearer ' + token
@@ -35,29 +36,34 @@ def _backend_code(data: bytes) -> str | None:
     """Recognize the backend error envelope without exposing its source fields."""
     try:
         root = strict_json(data.decode('utf-8'))
-        if (not isinstance(root, dict)
-                or set(root) != {'code', 'message', 'correlationId', 'details'}
-                or not isinstance(root['code'], str)
-                or not isinstance(root['message'], str)
-                or (root['correlationId'] is not None
-                    and not isinstance(root['correlationId'], str))
-                or not isinstance(root['details'], list)):
+        if (
+            not isinstance(root, dict)
+            or set(root) != {'code', 'message', 'correlationId', 'details'}
+            or not isinstance(root['code'], str)
+            or not isinstance(root['message'], str)
+            or (root['correlationId'] is not None and not isinstance(root['correlationId'], str))
+            or not isinstance(root['details'], list)
+        ):
             return None
         code = root['code']
         return code if code in ERROR_CODES | {'NOT_FOUND'} else None
-    except (ValueError, UnicodeError, RecursionError):
+    except ValueError, UnicodeError, RecursionError:
         return None
 
 
-def run_check(environ, env_file: Path | None, *, env_file_explicit: bool,
-              cli=None) -> int:
+def run_check(environ, env_file: Path | None, *, env_file_explicit: bool, cli=None) -> int:
     """Never call claim/input/lease/result/failure or generate a model response."""
     try:
-        config = load_pull_config(environ, env_file, env_file_explicit=env_file_explicit,
-                                  cli=cli)
+        config = load_pull_config(environ, env_file, env_file_explicit=env_file_explicit, cli=cli)
         llm = config.llm
-        OllamaProvider(llm.model, base_url=llm.base_url, timeout_s=llm.timeout_s,
-                       temperature=llm.temperature, think=llm.think, num_ctx=llm.num_ctx)
+        OllamaProvider(
+            llm.model,
+            base_url=llm.base_url,
+            timeout_s=llm.timeout_s,
+            temperature=llm.temperature,
+            think=llm.think,
+            num_ctx=llm.num_ctx,
+        )
     except PullConfigError as error:
         print('FAIL config code=' + str(error).split()[-1])
         return 2
@@ -76,8 +82,12 @@ def run_check(environ, env_file: Path | None, *, env_file_explicit: bool,
 
     backend = 'backend ' + endpoint(config.backend_url)
     try:
-        status, data = _get(config.backend_url + BACKEND_PROBE, config.http_timeout_s,
-                            token=config.worker_token, limit=CONTROL_LIMIT)
+        status, data = _get(
+            config.backend_url + BACKEND_PROBE,
+            config.http_timeout_s,
+            token=config.worker_token,
+            limit=CONTROL_LIMIT,
+        )
         if 300 <= status < 400:
             fail(backend, 'BACKEND_REDIRECT')
             fail('backend_token', 'NOT_CHECKED')
@@ -86,14 +96,17 @@ def run_check(environ, env_file: Path | None, *, env_file_explicit: bool,
             code = _backend_code(data)
             if status == 404 and code == 'NOT_FOUND':
                 print('OK backend_token')
-            elif (status, code) in ((401, 'UNAUTHORIZED'), (503, 'MAPPING_REMOTE_UNAVAILABLE'),
-                                    (403, 'TLS_REQUIRED')):
+            elif (status, code) in (
+                (401, 'UNAUTHORIZED'),
+                (503, 'MAPPING_REMOTE_UNAVAILABLE'),
+                (403, 'TLS_REQUIRED'),
+            ):
                 fail('backend_token', code)
             else:
                 fail('backend_token', 'BACKEND_PROBE_REJECTED')
     except ValueError:
         fail(backend, 'BACKEND_RESPONSE_TOO_LARGE')
-    except (OSError, URLError, HTTPException):
+    except OSError, URLError, HTTPException:
         fail(backend, 'BACKEND_UNREACHABLE')
 
     ollama = 'ollama ' + endpoint(llm.base_url)
@@ -111,17 +124,18 @@ def run_check(environ, env_file: Path | None, *, env_file_explicit: bool,
                 ):
                     raise ValueError
                 names = {row['name'] for row in models}
-            except (ValueError, UnicodeError, KeyError, TypeError, RecursionError):
+            except ValueError, UnicodeError, KeyError, TypeError, RecursionError:
                 fail(ollama, 'OLLAMA_BAD_RESPONSE')
             else:
                 print('OK ' + ollama)
-                if llm.model in names or (':' not in llm.model.rsplit('/', 1)[-1]
-                                         and llm.model + ':latest' in names):
+                if llm.model in names or (
+                    ':' not in llm.model.rsplit('/', 1)[-1] and llm.model + ':latest' in names
+                ):
                     print('OK model')
                 else:
                     fail('model', 'MODEL_NOT_FOUND')
     except ValueError:
         fail(ollama, 'OLLAMA_RESPONSE_TOO_LARGE')
-    except (OSError, URLError, HTTPException):
+    except OSError, URLError, HTTPException:
         fail(ollama, 'OLLAMA_UNREACHABLE')
     return 2 if failed else 0

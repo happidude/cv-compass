@@ -11,9 +11,11 @@ from .schema import Evidence, ExtractionResult
 PROTOCOL = 'cv-compass.llm-mapping/1.0'
 ENGINE = 'llm-extraction/1.0'
 PERSONAL = ('fullName', 'gender', 'dateOfBirth', 'email', 'phone', 'location', 'summary')
-WORKER_ISSUES = frozenset('''QUOTE_NOT_FOUND INVALID_DATE PERIOD_ORDER
+WORKER_ISSUES = frozenset(
+    """QUOTE_NOT_FOUND INVALID_DATE PERIOD_ORDER
 EXPERIENCE_WITHOUT_ROLE BLOCK_LIMIT_REACHED BLOCK_LINE_TOO_LONG
-EXPERIENCE_HEADING_NOT_FOUND OTHER_TRUNCATED'''.split())
+EXPERIENCE_HEADING_NOT_FOUND OTHER_TRUNCATED""".split()
+)
 # Java Pattern (?U)\\s uses Unicode White_Space, unlike Python's extra U+001C..001F.
 _SPACE = r'[\t-\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]'
 
@@ -27,8 +29,14 @@ def _string_evidence(value: str, evidence: Evidence) -> dict | None:
     match = re.search(pattern, evidence.text)
     if match is None:
         return None
-    return asdict(Evidence(evidence.page, evidence.start + match.start(),
-                           evidence.start + match.end(), match.group()))
+    return asdict(
+        Evidence(
+            evidence.page,
+            evidence.start + match.start(),
+            evidence.start + match.end(),
+            match.group(),
+        )
+    )
 
 
 def _date_valid(value: str | None, minimum: int, *, allow_day: bool = False) -> bool:
@@ -48,13 +56,19 @@ def _date_valid(value: str | None, minimum: int, *, allow_day: bool = False) -> 
 
 def _period_valid(row: dict) -> bool:
     start, end = row['start'], row['end']
-    if (not _date_valid(start, 1950) or not _date_valid(end, 1950)
-            or row['ongoing'] and end is not None):
+    if (
+        not _date_valid(start, 1950)
+        or not _date_valid(end, 1950)
+        or row['ongoing']
+        and end is not None
+    ):
         return False
     # Partial years are intervals, matching verifier earliest()/latest().
-    return (start is None or end is None
-            or (start + '-01' if len(start) == 4 else start)
-            <= (end + '-12' if len(end) == 4 else end))
+    return (
+        start is None
+        or end is None
+        or (start + '-01' if len(start) == 4 else start) <= (end + '-12' if len(end) == 4 else end)
+    )
 
 
 def input_document(data: dict) -> Document:
@@ -64,8 +78,12 @@ def input_document(data: dict) -> Document:
         raise ValueError('INVALID_INPUT')
     pages = []
     for number, row in enumerate(rows, 1):
-        if (not isinstance(row, dict) or type(row.get('page')) is not int
-                or row['page'] != number or not isinstance(row.get('raw_text'), str)):
+        if (
+            not isinstance(row, dict)
+            or type(row.get('page')) is not int
+            or row['page'] != number
+            or not isinstance(row.get('raw_text'), str)
+        ):
             raise ValueError('INVALID_INPUT')
         raw = row['raw_text']
         pages.append(Page(number, 'ok' if raw.strip() else 'blank', raw))
@@ -94,8 +112,11 @@ def compact_result(result: ExtractionResult, claim: dict, provenance: dict) -> b
         if field.key == 'dateOfBirth' and not _date_valid(field.value, 1900, allow_day=True):
             issues.append({'code': 'INVALID_DATE', 'field': issue_field})
             continue
-        evidence = (asdict(field.evidence) if field.key in ('gender', 'dateOfBirth')
-                    else _string_evidence(field.value, field.evidence))
+        evidence = (
+            asdict(field.evidence)
+            if field.key in ('gender', 'dateOfBirth')
+            else _string_evidence(field.value, field.evidence)
+        )
         if evidence is None:
             issues.append({'code': 'QUOTE_NOT_FOUND', 'field': issue_field})
             continue
@@ -116,7 +137,7 @@ def compact_result(result: ExtractionResult, claim: dict, provenance: dict) -> b
     if not definition['other']['enabled']:
         other = []
     elif len(other) > definition['other']['maxItems']:
-        other = other[:definition['other']['maxItems']]
+        other = other[: definition['other']['maxItems']]
         issues.append({'code': 'OTHER_TRUNCATED', 'field': 'other'})
     experiences = []
     if switches['experiences']['enabled']:
@@ -139,12 +160,18 @@ def compact_result(result: ExtractionResult, claim: dict, provenance: dict) -> b
             row['evidence'] = {key: row['evidence'][key] for key in keys}
             experiences.append(row)
     payload = {
-        'protocol': PROTOCOL, 'inputSha256': claim['inputSha256'], 'personal': personal,
-        'experiences': experiences, 'other': other, 'issues': issues, 'provenance': provenance,
+        'protocol': PROTOCOL,
+        'inputSha256': claim['inputSha256'],
+        'personal': personal,
+        'experiences': experiences,
+        'other': other,
+        'issues': issues,
+        'provenance': provenance,
     }
     body = encode(payload)
     if len(body) > 1024 * 1024:
         raise ValueError('RESULT_TOO_LARGE')
+
     # Fail instead of silently cutting evidence, experiences, issues or long values.
     def bounded(value):
         if isinstance(value, str) and len(value) > 2000:
@@ -155,6 +182,7 @@ def compact_result(result: ExtractionResult, claim: dict, provenance: dict) -> b
         if isinstance(value, list):
             for child in value:
                 bounded(child)
+
     if len(experiences) > 50 or len(issues) > 200:
         raise ValueError('INVALID_OUTPUT')
     bounded(payload)

@@ -21,7 +21,16 @@ def extract_contacts(document: Document) -> tuple[FieldValue, ...]:
         for key, pattern in PATTERNS.items():
             for match in re.finditer(pattern, page.raw_text):
                 value = match.group().rstrip('.,;') if key == 'url' else match.group()
-                fields.append(FieldValue(key, value, Evidence(
-                    page.number, match.start(), match.start() + len(value), value,
-                )))
+                fields.append(
+                    FieldValue(
+                        key,
+                        value,
+                        Evidence(
+                            page.number,
+                            match.start(),
+                            match.start() + len(value),
+                            value,
+                        ),
+                    )
+                )
     return tuple(fields)

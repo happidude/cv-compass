@@ -43,8 +43,9 @@ def _find(quote: str, text: str, *, fold: bool = False) -> tuple[int, int] | Non
         return None
     left, right = offsets[start][0], offsets[start + len(target) - 1][1]
     original = text[left:right]
-    if fold and (not _safe_case(original)
-                 or len(unicodedata.normalize('NFC', original)) != len(original)):
+    if fold and (
+        not _safe_case(original) or len(unicodedata.normalize('NFC', original)) != len(original)
+    ):
         return None
     return left, right
 
@@ -55,11 +56,11 @@ def source_value(value: str, text: str) -> str | None:
         return None
     start = text.find(value)
     if start >= 0:
-        return text[start:start + len(value)]
+        return text[start : start + len(value)]
     for fold in (False, True):
         match = _find(value, text, fold=fold)
         if match is not None:
-            return text[match[0]:match[1]]
+            return text[match[0] : match[1]]
     return None
 
 
@@ -78,10 +79,12 @@ def locate(quote: str | None, block: Block, *, ignore_case: bool = True) -> Evid
         start = span.text.find(quote)
         if start >= 0:
             return Evidence(span.page, span.start + start, span.start + start + len(quote), quote)
-    for fold in ((False, True) if ignore_case else (False,)):
+    for fold in (False, True) if ignore_case else (False,):
         for span in groups:
             match = _find(quote, span.text, fold=fold)
             if match is not None:
                 left, right = match
-                return Evidence(span.page, span.start + left, span.start + right, span.text[left:right])
+                return Evidence(
+                    span.page, span.start + left, span.start + right, span.text[left:right]
+                )
     return None

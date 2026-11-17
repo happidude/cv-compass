@@ -56,7 +56,7 @@ def _read_env(path: Path, explicit: bool) -> dict[str, str]:
         if explicit:
             raise ValueError('ENV_FILE_NOT_FOUND') from None
         return {}
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise ValueError('INVALID_ENV_FILE') from None
     try:
         if len(data) > MAX_ENV_BYTES:
@@ -84,7 +84,7 @@ def _read_env(path: Path, explicit: bool) -> dict[str, str]:
         return values
     except PullConfigError:
         raise
-    except (ValueError, UnicodeError):
+    except ValueError, UnicodeError:
         raise ValueError('INVALID_ENV_FILE') from None
 
 
@@ -109,18 +109,29 @@ def _integer(value: str, code: str, *, minimum: int, maximum: int | None = None)
 
 
 def load_config(
-    cli: Mapping[str, str | None], environ: Mapping[str, str], env_file: Path | None,
-    *, env_file_explicit: bool,
+    cli: Mapping[str, str | None],
+    environ: Mapping[str, str],
+    env_file: Path | None,
+    *,
+    env_file_explicit: bool,
     _file_values: Mapping[str, str] | None = None,
 ) -> LlmConfig:
     """Resolve each CLI destination name over environment and dotenv values."""
-    file_values = _file_values if _file_values is not None else _read_env(
-        env_file if env_file is not None else default_env_file(), env_file_explicit,
+    file_values = (
+        _file_values
+        if _file_values is not None
+        else _read_env(
+            env_file if env_file is not None else default_env_file(),
+            env_file_explicit,
+        )
     )
 
     def value(name: str, default: str = '') -> str:
-        for candidate in (cli.get(name), environ.get(ENV_KEYS[name]),
-                          file_values.get(ENV_KEYS[name])):
+        for candidate in (
+            cli.get(name),
+            environ.get(ENV_KEYS[name]),
+            file_values.get(ENV_KEYS[name]),
+        ):
             if candidate is not None and candidate.strip():
                 return candidate.strip()
         return default
@@ -130,30 +141,34 @@ def load_config(
         raise ValueError('MISSING_CONFIG')
     if provider != 'ollama':
         raise ValueError('INVALID_PROVIDER')
-    timeout = _number(value('timeout', '120'), 'INVALID_TIMEOUT',
-                      minimum=0, maximum=math.inf)
+    timeout = _number(value('timeout', '120'), 'INVALID_TIMEOUT', minimum=0, maximum=math.inf)
     if timeout <= 0:
         raise ValueError('INVALID_TIMEOUT')
     mode = value('mode', 'blocks')
     if mode not in ('blocks', 'whole'):
         raise ValueError('INVALID_MODE')
-    whole_timeout = _number(value('whole_timeout', '900'), 'INVALID_WHOLE_TIMEOUT',
-                            minimum=0, maximum=math.inf)
+    whole_timeout = _number(
+        value('whole_timeout', '900'), 'INVALID_WHOLE_TIMEOUT', minimum=0, maximum=math.inf
+    )
     if whole_timeout <= 0:
         raise ValueError('INVALID_WHOLE_TIMEOUT')
     max_blocks = _integer(value('max_blocks', '20'), 'INVALID_MAX_BLOCKS', minimum=0)
-    temperature = _number(value('temperature', '0'), 'INVALID_TEMPERATURE',
-                          minimum=0, maximum=2)
+    temperature = _number(value('temperature', '0'), 'INVALID_TEMPERATURE', minimum=0, maximum=2)
     think = value('think', 'false').lower()
     if think not in ('true', 'false'):
         raise ValueError('INVALID_THINK')
     num_ctx = value('num_ctx', '8192')
     return LlmConfig(
-        provider=provider, model=model,
-        base_url=value('base_url', 'http://127.0.0.1:11434'), timeout_s=timeout,
-        max_blocks=max_blocks, temperature=temperature, think=think == 'true',
+        provider=provider,
+        model=model,
+        base_url=value('base_url', 'http://127.0.0.1:11434'),
+        timeout_s=timeout,
+        max_blocks=max_blocks,
+        temperature=temperature,
+        think=think == 'true',
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
-        mode=mode, whole_timeout=whole_timeout,
+        mode=mode,
+        whole_timeout=whole_timeout,
     )
 
 
@@ -181,15 +196,20 @@ def validate_backend_url(value: str) -> str:
     try:
         url = urlsplit(value)
         valid = (
-            url.scheme in ('http', 'https') and bool(url.hostname)
+            url.scheme in ('http', 'https')
+            and bool(url.hostname)
             and (url.scheme == 'https' or url.hostname in ('127.0.0.1', 'localhost', '::1'))
-            and url.username is None and url.password is None and url.path == ''
-            and '?' not in value and '#' not in value and '\\' not in value
+            and url.username is None
+            and url.password is None
+            and url.path == ''
+            and '?' not in value
+            and '#' not in value
+            and '\\' not in value
             and not url.netloc.endswith(':')
             and (url.port is None or 0 < url.port <= 65535)
             and not any(ord(char) <= 32 or ord(char) == 127 for char in value)
         )
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         valid = False
     if not valid:
         raise PullConfigError(ENV_KEYS['backend_url'], 'BACKEND_URL_NOT_ALLOWED')
@@ -197,7 +217,10 @@ def validate_backend_url(value: str) -> str:
 
 
 def load_pull_config(
-    environ: Mapping[str, str], env_file: Path | None, *, env_file_explicit: bool,
+    environ: Mapping[str, str],
+    env_file: Path | None,
+    *,
+    env_file_explicit: bool,
     cli: Mapping[str, str | None] | None = None,
 ) -> PullConfig:
     """Extend the shared dotenv parser; credentials come only from the process."""
@@ -206,8 +229,12 @@ def load_pull_config(
 
     def value(name: str, default: str = '') -> str:
         key = ENV_KEYS[name]
-        return (((cli or {}).get(name) or '').strip() or environ.get(key, '').strip()
-                or values.get(key, '').strip() or default)
+        return (
+            ((cli or {}).get(name) or '').strip()
+            or environ.get(key, '').strip()
+            or values.get(key, '').strip()
+            or default
+        )
 
     backend = value('backend_url')
     if not backend:
@@ -223,27 +250,34 @@ def load_pull_config(
         raise PullConfigError(ENV_KEYS['worker_version'], 'INVALID_PROVENANCE')
     numbers = {}
     for name, default, maximum in (
-        ('poll_s', '5', 300), ('http_timeout_s', '10', 120),
+        ('poll_s', '5', 300),
+        ('http_timeout_s', '10', 120),
         ('max_http_attempts', '3', 10),
     ):
         try:
-            numbers[name] = _integer(value(name, default), 'INVALID_CONFIG',
-                                     minimum=1, maximum=maximum)
+            numbers[name] = _integer(
+                value(name, default), 'INVALID_CONFIG', minimum=1, maximum=maximum
+            )
         except ValueError:
             raise PullConfigError(ENV_KEYS[name], 'INVALID_CONFIG') from None
     # Reuse the same parsed snapshot so dotenv cannot change between the two loads.
     merged = dict(values)
     merged.update(environ)
     try:
-        llm = load_config({}, merged, path, env_file_explicit=env_file_explicit,
-                          _file_values=values)
+        llm = load_config(
+            {}, merged, path, env_file_explicit=env_file_explicit, _file_values=values
+        )
     except ValueError as error:
         code = str(error)
         names = {
-            'INVALID_PROVIDER': 'provider', 'INVALID_TIMEOUT': 'timeout',
-            'INVALID_MAX_BLOCKS': 'max_blocks', 'INVALID_TEMPERATURE': 'temperature',
-            'INVALID_THINK': 'think', 'INVALID_NUM_CTX': 'num_ctx',
-            'INVALID_MODE': 'mode', 'INVALID_WHOLE_TIMEOUT': 'whole_timeout',
+            'INVALID_PROVIDER': 'provider',
+            'INVALID_TIMEOUT': 'timeout',
+            'INVALID_MAX_BLOCKS': 'max_blocks',
+            'INVALID_TEMPERATURE': 'temperature',
+            'INVALID_THINK': 'think',
+            'INVALID_NUM_CTX': 'num_ctx',
+            'INVALID_MODE': 'mode',
+            'INVALID_WHOLE_TIMEOUT': 'whole_timeout',
         }
         name = names.get(code, 'provider' if not value('provider') else 'model')
         raise PullConfigError(ENV_KEYS[name], code) from None

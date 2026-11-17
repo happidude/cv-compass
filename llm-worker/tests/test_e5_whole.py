@@ -39,10 +39,18 @@ def document(text):
 
 
 def role():
-    return {'title': 'Synthetic Engineer', 'company': 'Synthetic Works',
-            'start': '2020', 'end': '2022', 'ongoing': False,
-            'quotes': {'title': 'Synthetic Engineer', 'company': 'Synthetic Works',
-                       'period': '2020 - 2022'}}
+    return {
+        'title': 'Synthetic Engineer',
+        'company': 'Synthetic Works',
+        'start': '2020',
+        'end': '2022',
+        'ongoing': False,
+        'quotes': {
+            'title': 'Synthetic Engineer',
+            'company': 'Synthetic Works',
+            'period': '2020 - 2022',
+        },
+    }
 
 
 def text_for_prompt_length(length):
@@ -51,21 +59,30 @@ def text_for_prompt_length(length):
 
 class WholeTests(unittest.TestCase):
     def test_one_call_all_ok_pages_personal_on_second_page_and_dedupe(self):
-        pages = (Page(1, 'ok', 'Synthetic cover letter\nfirst@example.invalid'),
-                 Page(2, 'ok', '🧪 Synthetic Person\nGender: Other\n2000-12-31\n'),
-                 Page(3, 'failed', 'EXCLUDED_MARKER'),
-                 Page(4, 'ok', 'Education\nSynthetic Engineer\nSynthetic Works\n2020 - 2022'))
+        pages = (
+            Page(1, 'ok', 'Synthetic cover letter\nfirst@example.invalid'),
+            Page(2, 'ok', '🧪 Synthetic Person\nGender: Other\n2000-12-31\n'),
+            Page(3, 'failed', 'EXCLUDED_MARKER'),
+            Page(4, 'ok', 'Education\nSynthetic Engineer\nSynthetic Works\n2020 - 2022'),
+        )
         response = empty_response()
-        response['personal'] = dict(NULL_PERSONAL['personal'],
-                                    fullName={'value': 'Synthetic Person',
-                                              'quote': 'Synthetic Person'},
-                                    gender={'value': 'OTHER', 'quote': 'Gender: Other'},
-                                    dateOfBirth={'value': '2000-12-31', 'quote': '2000-12-31'})
+        response['personal'] = dict(
+            NULL_PERSONAL['personal'],
+            fullName={'value': 'Synthetic Person', 'quote': 'Synthetic Person'},
+            gender={'value': 'OTHER', 'quote': 'Gender: Other'},
+            dateOfBirth={'value': '2000-12-31', 'quote': '2000-12-31'},
+        )
         response['experiences'] = [role(), role()]
         provider, progress = FakeProvider(response), []
         with patch('cv_compass_llm.pipeline.segment', side_effect=AssertionError('segmented')):
-            result = extract(Document(pages), provider, mode='whole', whole_timeout=123,
-                             max_blocks=0, on_block=lambda *args: progress.append(args))
+            result = extract(
+                Document(pages),
+                provider,
+                mode='whole',
+                whole_timeout=123,
+                max_blocks=0,
+                on_block=lambda *args: progress.append(args),
+            )
         self.assertEqual(provider.calls, [(WHOLE_SCHEMA, 8192, 123)])
         self.assertEqual(len(provider.prompts), 1)
         for page in (pages[0], pages[1], pages[3]):
@@ -82,33 +99,43 @@ class WholeTests(unittest.TestCase):
         for key in ('fullName', 'gender', 'dateOfBirth'):
             evidence = fields[key].evidence
             self.assertEqual(evidence.page, 2)
-            self.assertEqual(pages[1].raw_text[evidence.start:evidence.end], evidence.text)
+            self.assertEqual(pages[1].raw_text[evidence.start : evidence.end], evidence.text)
         self.assertEqual(len(result.experiences), 1)
         for evidence in result.experiences[0].evidence.values():
             self.assertEqual(evidence.page, 4)
-            self.assertEqual(pages[3].raw_text[evidence.start:evidence.end], evidence.text)
+            self.assertEqual(pages[3].raw_text[evidence.start : evidence.end], evidence.text)
         self.assertEqual([entry[:2] for entry in progress], [(1, 1)])
         self.assertGreaterEqual(progress[0][2], 0)
 
     def test_prompt_rules_and_delimiter_escaping(self):
         prompt = build_whole_prompt(BEGIN + END)
-        for rule in ('cover letter', 'cover page', 'any page', 'EVERY job position',
-                     'Copy quotes verbatim', 'Unknown values must be null',
-                     'YYYY-MM', 'Gender requires explicit', 'exact letter case'):
+        for rule in (
+            'cover letter',
+            'cover page',
+            'any page',
+            'EVERY job position',
+            'Copy quotes verbatim',
+            'Unknown values must be null',
+            'YYYY-MM',
+            'Gender requires explicit',
+            'exact letter case',
+        ):
             self.assertIn(rule, prompt)
         self.assertEqual(prompt.count(BEGIN), 1)
         self.assertEqual(prompt.count(END), 1)
         self.assertIn('[CV_BEGIN_ESCAPED][CV_END_ESCAPED]', prompt)
 
     def test_context_boundaries(self):
-        for tier, next_tier in ((8192, 16384), (16384, 24576), (24576, 32768),
-                                (32768, None)):
+        for tier, next_tier in ((8192, 16384), (16384, 24576), (24576, 32768), (32768, None)):
             boundary = int((tier - 4096) * 2.5)
             for delta, expected in ((-1, tier), (0, tier), (1, next_tier)):
                 with self.subTest(tier=tier, delta=delta):
                     text = text_for_prompt_length(boundary + delta)
-                    provider = FakeProvider([NULL_PERSONAL, {'experiences': []}]
-                                            if expected is None else empty_response())
+                    provider = FakeProvider(
+                        [NULL_PERSONAL, {'experiences': []}]
+                        if expected is None
+                        else empty_response()
+                    )
                     result = extract(document(text), provider, mode='whole')
                     if expected is None:
                         self.assertIn(Issue('WHOLE_TOO_LONG'), result.issues)
@@ -137,19 +164,23 @@ class WholeTests(unittest.TestCase):
         with patch('cv_compass_llm.validate.parse_response', wraps=parse_response) as parsed:
             self.assertEqual(validate_whole(response, block), ((), (), ()))
         parsed.assert_called_once_with(response, WHOLE_SCHEMA)
-        for response in ('not json', json.dumps(NULL_PERSONAL),
-                         json.dumps(dict(empty_response(), experiences='invalid'))):
+        for response in (
+            'not json',
+            json.dumps(NULL_PERSONAL),
+            json.dumps(dict(empty_response(), experiences='invalid')),
+        ):
             with patch('cv_compass_llm.validate.parse_response', wraps=parse_response) as parsed:
                 fields, experiences, issues = validate_whole(response, block)
             parsed.assert_called_once_with(response, WHOLE_SCHEMA)
-            self.assertEqual((fields, experiences, issues),
-                             ((), (), (Issue('LLM_INVALID_JSON'),)))
+            self.assertEqual((fields, experiences, issues), ((), (), (Issue('LLM_INVALID_JSON'),)))
 
     def test_cross_page_quotes_and_unsupported_dates_are_rejected(self):
         pages = (Page(1, 'ok', 'Synthetic'), Page(2, 'ok', 'Person\nSynthetic Engineer\n'))
         response = empty_response()
-        response['personal'] = dict(NULL_PERSONAL['personal'], fullName={
-            'value': 'Synthetic Person', 'quote': 'Synthetic Person'})
+        response['personal'] = dict(
+            NULL_PERSONAL['personal'],
+            fullName={'value': 'Synthetic Person', 'quote': 'Synthetic Person'},
+        )
         response['experiences'] = [dict(role(), company=None)]
         result = extract(Document(pages), FakeProvider(response), mode='whole')
         self.assertEqual(result.fields, ())
@@ -159,9 +190,12 @@ class WholeTests(unittest.TestCase):
 
     def test_provider_failure_completes_one_progress_step(self):
         progress = []
-        result = extract(document('first@example.invalid'),
-                         FakeProvider([ProviderError('PRIVATE_FAILURE')]), mode='whole',
-                         on_block=lambda *args: progress.append(args))
+        result = extract(
+            document('first@example.invalid'),
+            FakeProvider([ProviderError('PRIVATE_FAILURE')]),
+            mode='whole',
+            on_block=lambda *args: progress.append(args),
+        )
         self.assertEqual(result.issues, (Issue('PROVIDER_ERROR'),))
         self.assertEqual(len(result.fields), 1)
         self.assertEqual([row[:2] for row in progress], [(1, 1)])
@@ -174,25 +208,34 @@ class WholeIntegrationTests(unittest.TestCase):
                 backend = Backend()
                 if fallback:
                     backend.input['pages'][0]['raw_text'] = (
-                        'Cover\nExperience\n' + 'Synthetic line\n' * 6000)
-                provider = FakeProvider([NULL_PERSONAL] + [{'experiences': []}] * 20
-                                        if mode == 'blocks' or fallback else empty_response())
+                        'Cover\nExperience\n' + 'Synthetic line\n' * 6000
+                    )
+                provider = FakeProvider(
+                    [NULL_PERSONAL] + [{'experiences': []}] * 20
+                    if mode == 'blocks' or fallback
+                    else empty_response()
+                )
                 out, err = io.StringIO(), io.StringIO()
-                with (backend_server(backend) as url,
-                      redirect_stdout(out), redirect_stderr(err)):
+                with backend_server(backend) as url, redirect_stdout(out), redirect_stderr(err):
                     settings = config(url)
-                    settings = replace(settings, llm=replace(settings.llm, mode=mode,
-                                                             whole_timeout=987))
+                    settings = replace(
+                        settings, llm=replace(settings.llm, mode=mode, whole_timeout=987)
+                    )
                     self.assertEqual(run_pull(settings, provider, once=True), 0)
                 self.assertIn('accepted=1', out.getvalue())
                 submitted = json.loads(backend.requests('result')[0][3])
                 claimed = json.loads(backend.requests('claims')[0][3])
                 self.assertEqual(submitted['provenance'], claimed['provenance'])
-                self.assertEqual(claimed['provenance']['promptVersion'],
-                                 WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION)
+                self.assertEqual(
+                    claimed['provenance']['promptVersion'],
+                    WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION,
+                )
                 self.assertNotIn('WHOLE_TOO_LONG', json.dumps(submitted))
-                events = [line for line in err.getvalue().splitlines()
-                          if 'event=worker_start ' in line or 'event=extraction_done ' in line]
+                events = [
+                    line
+                    for line in err.getvalue().splitlines()
+                    if 'event=worker_start ' in line or 'event=extraction_done ' in line
+                ]
                 self.assertEqual(len(events), 2)
                 self.assertTrue(all('mode=' + mode in line for line in events))
                 self.assertEqual('fallback=blocks' in err.getvalue(), fallback)
@@ -203,36 +246,67 @@ class WholeIntegrationTests(unittest.TestCase):
                     self.assertNotIn(private, out.getvalue() + err.getvalue())
 
     def test_pull_config_maps_errors_to_new_env_keys(self):
-        environment = {'CVC_LLM_BACKEND_URL': 'http://localhost',
-                       'CVC_LLM_WORKER_TOKEN': 'x' * 43,
-                       'CVC_LLM_PROVIDER': 'ollama', 'CVC_LLM_MODEL': 'synthetic'}
+        environment = {
+            'CVC_LLM_BACKEND_URL': 'http://localhost',
+            'CVC_LLM_WORKER_TOKEN': 'x' * 43,
+            'CVC_LLM_PROVIDER': 'ollama',
+            'CVC_LLM_MODEL': 'synthetic',
+        }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'missing.env'
-            for key, value, code in (('CVC_LLM_MODE', 'invalid', 'INVALID_MODE'),
-                                     ('CVC_LLM_WHOLE_TIMEOUT_S', '0', 'INVALID_WHOLE_TIMEOUT')):
+            for key, value, code in (
+                ('CVC_LLM_MODE', 'invalid', 'INVALID_MODE'),
+                ('CVC_LLM_WHOLE_TIMEOUT_S', '0', 'INVALID_WHOLE_TIMEOUT'),
+            ):
                 with self.assertRaisesRegex(PullConfigError, '^' + key + ' ' + code + '$'):
-                    load_pull_config(dict(environment, **{key: value}), path,
-                                     env_file_explicit=False)
-            settings = load_pull_config(dict(environment, CVC_LLM_MODE='whole',
-                                              CVC_LLM_WHOLE_TIMEOUT_S='901'), path,
-                                        env_file_explicit=False)
+                    load_pull_config(
+                        dict(environment, **{key: value}), path, env_file_explicit=False
+                    )
+            settings = load_pull_config(
+                dict(environment, CVC_LLM_MODE='whole', CVC_LLM_WHOLE_TIMEOUT_S='901'),
+                path,
+                env_file_explicit=False,
+            )
             self.assertEqual((settings.llm.mode, settings.llm.whole_timeout), ('whole', 901))
 
     def test_cli_mode_and_timeout_override_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'synthetic.env'
-            path.write_text('CVC_LLM_PROVIDER=ollama\nCVC_LLM_MODEL=synthetic\n'
-                            'CVC_LLM_MODE=blocks\nCVC_LLM_WHOLE_TIMEOUT_S=600\n',
-                            encoding='utf-8')
-            with (patch.dict(os.environ, {'CVC_LLM_MODE': 'blocks',
-                                         'CVC_LLM_WHOLE_TIMEOUT_S': '700'}, clear=True),
-                  patch('cv_compass_llm.cli.OllamaProvider'),
-                  patch('cv_compass_llm.cli.run_batch',
-                        return_value={'files': 0, 'ok': 0, 'errors': {}}) as batch,
-                  redirect_stdout(io.StringIO())):
-                self.assertEqual(main(['run', '--input', 'synthetic-input',
-                                       '--output', 'synthetic-output', '--env-file', str(path),
-                                       '--mode', 'whole', '--whole-timeout', '1000']), 0)
+            path.write_text(
+                'CVC_LLM_PROVIDER=ollama\nCVC_LLM_MODEL=synthetic\n'
+                'CVC_LLM_MODE=blocks\nCVC_LLM_WHOLE_TIMEOUT_S=600\n',
+                encoding='utf-8',
+            )
+            with (
+                patch.dict(
+                    os.environ,
+                    {'CVC_LLM_MODE': 'blocks', 'CVC_LLM_WHOLE_TIMEOUT_S': '700'},
+                    clear=True,
+                ),
+                patch('cv_compass_llm.cli.OllamaProvider'),
+                patch(
+                    'cv_compass_llm.cli.run_batch', return_value={'files': 0, 'ok': 0, 'errors': {}}
+                ) as batch,
+                redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(
+                    main(
+                        [
+                            'run',
+                            '--input',
+                            'synthetic-input',
+                            '--output',
+                            'synthetic-output',
+                            '--env-file',
+                            str(path),
+                            '--mode',
+                            'whole',
+                            '--whole-timeout',
+                            '1000',
+                        ]
+                    ),
+                    0,
+                )
             self.assertEqual(batch.call_args.kwargs['mode'], 'whole')
             self.assertEqual(batch.call_args.kwargs['whole_timeout'], 1000)
 
@@ -242,16 +316,21 @@ class WholeIntegrationTests(unittest.TestCase):
             source, repo = root / 'input', root / 'repo'
             source.mkdir()
             repo.mkdir()
-            for name, text in (('a', 'Cover\nExperience\n'),
-                               ('b', 'Cover\nExperience\n' + 'Synthetic line\n' * 6000)):
-                (source / (name + '.json')).write_text(json.dumps({'pages': [{
-                    'page_number': 1, 'status': 'ok', 'raw_text': text}]}), encoding='utf-8')
-            provider = FakeProvider([empty_response(), NULL_PERSONAL]
-                                    + [{'experiences': []}] * 20)
+            for name, text in (
+                ('a', 'Cover\nExperience\n'),
+                ('b', 'Cover\nExperience\n' + 'Synthetic line\n' * 6000),
+            ):
+                (source / (name + '.json')).write_text(
+                    json.dumps({'pages': [{'page_number': 1, 'status': 'ok', 'raw_text': text}]}),
+                    encoding='utf-8',
+                )
+            provider = FakeProvider([empty_response(), NULL_PERSONAL] + [{'experiences': []}] * 20)
             summary = run_batch(source, root / 'output', provider, mode='whole', repo_root=repo)
             self.assertEqual(summary['mode'], 'whole')
             self.assertEqual(summary['whole_fallbacks'], 1)
             self.assertEqual(summary['issues']['WHOLE_TOO_LONG'], 1)
             self.assertEqual(summary['prompt_version'], WHOLE_PROMPT_VERSION)
             self.assertEqual(summary['ok'], 2)
-            self.assertEqual(json.loads((root / 'output' / 'run-summary.json').read_text()), summary)
+            self.assertEqual(
+                json.loads((root / 'output' / 'run-summary.json').read_text()), summary
+            )

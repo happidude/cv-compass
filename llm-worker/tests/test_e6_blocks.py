@@ -12,51 +12,79 @@ from cv_compass_llm.validate import validate_personal, validate_whole
 
 class HeaderTests(unittest.TestCase):
     def test_cover_letter_then_personal_page(self) -> None:
-        pages = (Page(1, 'ok', 'Synthetic cover letter'),
-                 Page(2, 'ok', 'Personal information\nSynthetic Person\n' + 'x' * 3100))
+        pages = (
+            Page(1, 'ok', 'Synthetic cover letter'),
+            Page(2, 'ok', 'Personal information\nSynthetic Person\n' + 'x' * 3100),
+        )
         header, _, _ = segment(Document(pages))
         self.assertEqual(header.text, pages[1].raw_text[:3000])
         self.assertEqual(header.spans, (Span(2, 0, 3000, header.text, pages[1].raw_text),))
 
     def test_all_personal_labels_and_contacts_select_second_page(self) -> None:
         for marker in (
-            'name', 'full name', 'họ tên', 'họ và tên', 'date of birth', 'day of birth',
-            'ngày sinh', 'gender', 'giới tính', 'personal information', 'personal details',
-            'thông tin cá nhân', 'synthetic@example.invalid', '090.000.0000',
+            'name',
+            'full name',
+            'họ tên',
+            'họ và tên',
+            'date of birth',
+            'day of birth',
+            'ngày sinh',
+            'gender',
+            'giới tính',
+            'personal information',
+            'personal details',
+            'thông tin cá nhân',
+            'synthetic@example.invalid',
+            '090.000.0000',
         ):
             with self.subTest(marker=marker):
                 text = 'Prefix\n' + marker.upper() + ': Synthetic value'
-                header, _, _ = segment(Document((Page(1, 'ok', 'Cover letter'),
-                                                 Page(2, 'ok', text))))
+                header, _, _ = segment(
+                    Document((Page(1, 'ok', 'Cover letter'), Page(2, 'ok', text)))
+                )
                 self.assertEqual(header.text, text)
                 self.assertEqual(header.spans[0].page, 2)
 
     def test_first_matching_page_wins(self) -> None:
-        pages = (Page(1, 'ok', 'Cover letter'), Page(2, 'ok', 'Gender: Other'),
-                 Page(3, 'ok', 'Full name: Synthetic Person'))
+        pages = (
+            Page(1, 'ok', 'Cover letter'),
+            Page(2, 'ok', 'Gender: Other'),
+            Page(3, 'ok', 'Full name: Synthetic Person'),
+        )
         header, _, _ = segment(Document(pages))
         self.assertEqual(header.text, pages[1].raw_text)
 
     def test_scan_counts_only_ok_pages_and_includes_third(self) -> None:
-        pages = (Page(1, 'failed', 'Full name: Excluded'),
-                 Page(2, 'ok', 'Cover letter'), Page(3, 'blank', ''),
-                 Page(4, 'ok', 'Introduction'), Page(5, 'not_processed', ''),
-                 Page(6, 'ok', 'Họ và tên: Synthetic Person'))
+        pages = (
+            Page(1, 'failed', 'Full name: Excluded'),
+            Page(2, 'ok', 'Cover letter'),
+            Page(3, 'blank', ''),
+            Page(4, 'ok', 'Introduction'),
+            Page(5, 'not_processed', ''),
+            Page(6, 'ok', 'Họ và tên: Synthetic Person'),
+        )
         header, _, _ = segment(Document(pages))
         self.assertEqual(header.spans[0].page, 6)
         self.assertEqual(header.text, pages[-1].raw_text)
 
     def test_fourth_ok_page_is_not_scanned(self) -> None:
-        pages = tuple(Page(i, 'ok', text) for i, text in enumerate(
-            ('Cover letter', 'Introduction', 'Portfolio', 'Full name: Synthetic Person'), 1,
-        ))
+        pages = tuple(
+            Page(i, 'ok', text)
+            for i, text in enumerate(
+                ('Cover letter', 'Introduction', 'Portfolio', 'Full name: Synthetic Person'),
+                1,
+            )
+        )
         header, _, _ = segment(Document(pages))
         self.assertEqual(header.text, pages[0].raw_text)
 
     def test_no_markers_or_partial_words_fall_back_to_first_ok_page(self) -> None:
-        pages = (Page(1, 'failed', 'Name: Excluded'), Page(2, 'ok', 'Cover letter'),
-                 Page(3, 'ok', 'filename surname transgender names\n'
-                      'https://example.invalid/synthetic'), Page(4, 'ok', 'Introduction'))
+        pages = (
+            Page(1, 'failed', 'Name: Excluded'),
+            Page(2, 'ok', 'Cover letter'),
+            Page(3, 'ok', 'filename surname transgender names\nhttps://example.invalid/synthetic'),
+            Page(4, 'ok', 'Introduction'),
+        )
         header, _, _ = segment(Document(pages))
         self.assertEqual(header.spans[0].page, 2)
         self.assertEqual(header.text, pages[1].raw_text)
@@ -72,8 +100,7 @@ class PersonalNameTests(unittest.TestCase):
         header, _, _ = segment(Document((Page(1, 'ok', source),)))
         data = {'personal': dict.fromkeys(PERSONAL_KEYS)}
         data['personal']['fullName'] = {'value': value, 'quote': source}
-        data['personal']['summary'] = {'value': 'Synthetic summary',
-                                       'quote': 'Synthetic summary'}
+        data['personal']['summary'] = {'value': 'Synthetic summary', 'quote': 'Synthetic summary'}
         if whole:
             data['experiences'] = []
             fields, experiences, issues = validate_whole(json.dumps(data), header)
@@ -83,12 +110,21 @@ class PersonalNameTests(unittest.TestCase):
         return fields, issues
 
     def test_generic_titles_are_rejected_in_both_modes(self) -> None:
-        for title in ('CURRICULUM VITAE', 'CV', 'Resume', 'RÉSUMÉ', 'SƠ YẾU LÝ LỊCH',
-                      'LÝ LỊCH', '  Curriculum \t\n Vitae  '):
+        for title in (
+            'CURRICULUM VITAE',
+            'CV',
+            'Resume',
+            'RÉSUMÉ',
+            'SƠ YẾU LÝ LỊCH',
+            'LÝ LỊCH',
+            '  Curriculum \t\n Vitae  ',
+        ):
             for whole in (False, True):
                 with self.subTest(title=title, whole=whole):
                     fields, issues = self.validate_name(
-                        title, title + '\nSynthetic summary', whole,
+                        title,
+                        title + '\nSynthetic summary',
+                        whole,
                     )
                     self.assertEqual([field.key for field in fields], ['summary'])
                     self.assertEqual(issues, (Issue('QUOTE_NOT_FOUND', 'fullName'),))
@@ -103,7 +139,7 @@ class PersonalNameTests(unittest.TestCase):
                     self.assertEqual([field.key for field in fields], ['fullName', 'summary'])
                     self.assertEqual(fields[0].value, name)
                     evidence = fields[0].evidence
-                    self.assertEqual(source[evidence.start:evidence.end], evidence.text)
+                    self.assertEqual(source[evidence.start : evidence.end], evidence.text)
 
 
 class JobBoundaryTests(unittest.TestCase):
@@ -116,7 +152,7 @@ class JobBoundaryTests(unittest.TestCase):
                 self.assertLessEqual(previous.end, span.start)
         for span in actual:
             if span.raw_text is not None:
-                self.assertEqual(span.text, span.raw_text[span.start:span.end])
+                self.assertEqual(span.text, span.raw_text[span.start : span.end])
 
     def test_date_parser_preserves_month_precision_for_boundary_examples(self) -> None:
         self.assertEqual(find_dates('Sep-2011'), ['2011-09'])
@@ -132,18 +168,23 @@ class JobBoundaryTests(unittest.TestCase):
                     page = Page(1, 'ok', heading + first + second)
                     _, blocks, issues = segment(Document((page,)))
                     self.assertEqual([block.text for block in blocks], [first, second])
-                    self.assertEqual(issues, () if heading else (
-                        Issue('EXPERIENCE_HEADING_NOT_FOUND'),
-                    ))
+                    self.assertEqual(
+                        issues, () if heading else (Issue('EXPERIENCE_HEADING_NOT_FOUND'),)
+                    )
                     lines = split_lines((page,))
                     self.assert_source_partition(blocks, lines[1:] if heading else lines)
 
     def test_boundary_variants_and_whole_words(self) -> None:
         first = 'Role-A\n' + ('a' * 99 + '\n') * 35
         for boundary in (
-            '  fRoM: undated role', '  TỪ: undated role', 'Jan 2021 - Feb 2022',
-            'Jan 2021 — Feb 2022', 'Jan 2021 TO Feb 2022', '2021 ĐẾN 2022',
-            'Present | Role-B', 'Hiện tại | Role-B',
+            '  fRoM: undated role',
+            '  TỪ: undated role',
+            'Jan 2021 - Feb 2022',
+            'Jan 2021 — Feb 2022',
+            'Jan 2021 TO Feb 2022',
+            '2021 ĐẾN 2022',
+            'Present | Role-B',
+            'Hiện tại | Role-B',
         ):
             with self.subTest(boundary=boundary):
                 second = boundary + '\n' + ('b' * 99 + '\n') * 35
@@ -153,8 +194,15 @@ class JobBoundaryTests(unittest.TestCase):
                 self.assertEqual([block.text for block in blocks], [first, second])
                 self.assert_source_partition(blocks, lines)
 
-        for line in ('Fromage', 'Từng', 'representation', '2021 together',
-                     '2021 destination', 'No dates - Role-B', 'Jan 2021'):
+        for line in (
+            'Fromage',
+            'Từng',
+            'representation',
+            '2021 together',
+            '2021 destination',
+            'No dates - Role-B',
+            'Jan 2021',
+        ):
             with self.subTest(non_boundary=line):
                 text = first + line + '\n' + ('b' * 99 + '\n') * 35
                 lines = split_lines((Page(1, 'ok', text),))
@@ -163,8 +211,10 @@ class JobBoundaryTests(unittest.TestCase):
                 self.assert_source_partition(blocks, lines)
 
     def test_nearest_prior_boundary_wins(self) -> None:
-        jobs = [f'{year} - {year + 1}\n' + (char * 99 + '\n') * 25
-                for year, char in ((2010, 'a'), (2015, 'b'), (2020, 'c'))]
+        jobs = [
+            f'{year} - {year + 1}\n' + (char * 99 + '\n') * 25
+            for year, char in ((2010, 'a'), (2015, 'b'), (2020, 'c'))
+        ]
         lines = split_lines((Page(1, 'ok', ''.join(jobs)),))
         blocks = split_spans(lines)
         self.assertEqual([block.text for block in blocks], [jobs[0] + jobs[1], jobs[2]])
@@ -176,7 +226,7 @@ class JobBoundaryTests(unittest.TestCase):
         _, blocks, issues = segment(Document((page,)))
         self.assertFalse(issues)
         self.assertEqual(len(blocks), 3)
-        self.assertEqual(''.join(block.text for block in blocks), text[len('Experience\n'):])
+        self.assertEqual(''.join(block.text for block in blocks), text[len('Experience\n') :])
         self.assert_source_partition(blocks, split_lines((page,))[1:])
 
     def test_carrying_job_can_still_require_line_fallback(self) -> None:
@@ -189,8 +239,7 @@ class JobBoundaryTests(unittest.TestCase):
     def test_page_and_gap_separators_are_recomputed_after_carry(self) -> None:
         for last in (Span(2, 10, 14, 'cccc'), Span(3, 0, 4, 'cccc')):
             with self.subTest(last=last):
-                lines = [Span(1, 0, 4, 'aaaa'), Span(2, 0, 4, 'From'),
-                         Span(2, 4, 8, 'bbbb'), last]
+                lines = [Span(1, 0, 4, 'aaaa'), Span(2, 0, 4, 'From'), Span(2, 4, 8, 'bbbb'), last]
                 blocks = split_spans(lines, limit=13)
                 self.assertEqual([block.text for block in blocks], ['aaaa', 'Frombbbb\ncccc'])
                 self.assert_source_partition(blocks, lines, limit=13)

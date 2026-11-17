@@ -21,22 +21,46 @@ from .providers.ollama import OllamaProvider
 from .pull import run_pull
 
 INPUT_ERRORS = {
-    'INVALID_OCR', 'INVALID_JSON', 'INVALID_UTF8', 'OCR_TOO_LARGE', 'OCR_READ_ERROR',
-    'INVALID_PAGE', 'INVALID_PAGE_NUMBER', 'INVALID_PAGE_STATUS', 'INVALID_PAGE_TEXT',
+    'INVALID_OCR',
+    'INVALID_JSON',
+    'INVALID_UTF8',
+    'OCR_TOO_LARGE',
+    'OCR_READ_ERROR',
+    'INVALID_PAGE',
+    'INVALID_PAGE_NUMBER',
+    'INVALID_PAGE_STATUS',
+    'INVALID_PAGE_TEXT',
 }
 CLI_ERRORS = {
-    'UNSAFE_OUTPUT', 'OUTPUT_NOT_EMPTY', 'INVALID_INPUT_DIRECTORY', 'INVALID_MAX_BLOCKS',
-    'INVALID_LIMIT', 'OLLAMA_HOST_NOT_LOCAL', 'INVALID_MODEL', 'INVALID_TIMEOUT',
-    'MISSING_CONFIG', 'INVALID_PROVIDER', 'ENV_FILE_NOT_FOUND', 'INVALID_ENV_FILE',
-    'INVALID_TEMPERATURE', 'INVALID_THINK', 'INVALID_NUM_CTX',
-    'INVALID_MODE', 'INVALID_WHOLE_TIMEOUT',
+    'UNSAFE_OUTPUT',
+    'OUTPUT_NOT_EMPTY',
+    'INVALID_INPUT_DIRECTORY',
+    'INVALID_MAX_BLOCKS',
+    'INVALID_LIMIT',
+    'OLLAMA_HOST_NOT_LOCAL',
+    'INVALID_MODEL',
+    'INVALID_TIMEOUT',
+    'MISSING_CONFIG',
+    'INVALID_PROVIDER',
+    'ENV_FILE_NOT_FOUND',
+    'INVALID_ENV_FILE',
+    'INVALID_TEMPERATURE',
+    'INVALID_THINK',
+    'INVALID_NUM_CTX',
+    'INVALID_MODE',
+    'INVALID_WHOLE_TIMEOUT',
 }
 
 
 def run_batch(
-    input_dir: str | Path, output_dir: str | Path, provider: LlmProvider, *,
-    max_blocks: int = 20, limit: int | None = None,
-    mode: str = 'blocks', whole_timeout: float = 900,
+    input_dir: str | Path,
+    output_dir: str | Path,
+    provider: LlmProvider,
+    *,
+    max_blocks: int = 20,
+    limit: int | None = None,
+    mode: str = 'blocks',
+    whole_timeout: float = 900,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> dict:
     """Extract sorted OCR files without modifying any input artifact."""
@@ -63,8 +87,9 @@ def run_batch(
             errors[code] += 1
             write_json(target / (path.stem + '.error.json'), {'error': code})
         else:
-            result = extract(document, provider, max_blocks=max_blocks,
-                             mode=mode, whole_timeout=whole_timeout)
+            result = extract(
+                document, provider, max_blocks=max_blocks, mode=mode, whole_timeout=whole_timeout
+            )
             payload = result.to_dict()
             payload['seconds'] = perf_counter() - started
             write_json(target / (path.stem + '.result.json'), payload)
@@ -76,13 +101,17 @@ def run_batch(
             ok += 1
         total_seconds += perf_counter() - started
     summary = {
-        'files': len(paths), 'ok': ok, 'errors': dict(errors), 'issues': dict(issues),
+        'files': len(paths),
+        'ok': ok,
+        'errors': dict(errors),
+        'issues': dict(issues),
         'issues_by_field': dict(issues_by_field),
         'total_seconds': total_seconds,
         'average_seconds': total_seconds / len(paths) if paths else 0.0,
         'provider': provider.name,
         'prompt_version': WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION,
-        'mode': mode, 'whole_fallbacks': issues['WHOLE_TOO_LONG'],
+        'mode': mode,
+        'whole_fallbacks': issues['WHOLE_TOO_LONG'],
     }
     write_json(target / 'run-summary.json', summary)
     return summary
@@ -146,40 +175,59 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == 'check':
             return run_check(
-                os.environ, Path(args.env_file) if args.env_file is not None else None,
-                env_file_explicit=args.env_file is not None, cli=vars(args),
+                os.environ,
+                Path(args.env_file) if args.env_file is not None else None,
+                env_file_explicit=args.env_file is not None,
+                cli=vars(args),
             )
         if args.command == 'pull':
             config = load_pull_config(
-                os.environ, Path(args.env_file) if args.env_file is not None else None,
+                os.environ,
+                Path(args.env_file) if args.env_file is not None else None,
                 env_file_explicit=args.env_file is not None,
                 cli=vars(args),
             )
             llm = config.llm
             try:
                 provider = OllamaProvider(
-                    llm.model, base_url=llm.base_url, timeout_s=llm.timeout_s,
-                    temperature=llm.temperature, think=llm.think, num_ctx=llm.num_ctx,
+                    llm.model,
+                    base_url=llm.base_url,
+                    timeout_s=llm.timeout_s,
+                    temperature=llm.temperature,
+                    think=llm.think,
+                    num_ctx=llm.num_ctx,
                 )
             except ValueError:
                 raise PullConfigError(ENV_KEYS['base_url'], 'OLLAMA_HOST_NOT_LOCAL') from None
             return run_pull(config, provider, once=args.once)
         elif args.command == 'run':
             config = load_config(
-                vars(args), os.environ,
+                vars(args),
+                os.environ,
                 Path(args.env_file) if args.env_file is not None else None,
                 env_file_explicit=args.env_file is not None,
             )
             provider = OllamaProvider(
-                config.model, base_url=config.base_url, timeout_s=config.timeout_s,
-                temperature=config.temperature, think=config.think, num_ctx=config.num_ctx,
+                config.model,
+                base_url=config.base_url,
+                timeout_s=config.timeout_s,
+                temperature=config.temperature,
+                think=config.think,
+                num_ctx=config.num_ctx,
             )
             summary = run_batch(
-                args.input, args.output, provider, max_blocks=config.max_blocks, limit=args.limit,
-                mode=config.mode, whole_timeout=config.whole_timeout,
+                args.input,
+                args.output,
+                provider,
+                max_blocks=config.max_blocks,
+                limit=args.limit,
+                mode=config.mode,
+                whole_timeout=config.whole_timeout,
             )
-            print(f'processed={summary["files"]} ok={summary["ok"]} '
-                  f'errors={sum(summary["errors"].values())}')
+            print(
+                f'processed={summary["files"]} ok={summary["ok"]} '
+                f'errors={sum(summary["errors"].values())}'
+            )
         elif args.command == 'draft-gold':
             print_metrics(draft_gold(args.results, args.output))
         else:
@@ -194,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as error:
         print(str(error) if str(error) in CLI_ERRORS else 'INVALID_DATA')
         return 2
-    except (OSError, RuntimeError):
+    except OSError, RuntimeError:
         print('IO_ERROR')
         return 2
     except Exception:

@@ -4,9 +4,18 @@ import re
 from datetime import date
 
 MONTHS = (
-    ('january', 'jan'), ('february', 'feb'), ('march', 'mar'), ('april', 'apr'), ('may',),
-    ('june', 'jun'), ('july', 'jul'), ('august', 'aug'), ('september', 'sep', 'sept'),
-    ('october', 'oct'), ('november', 'nov'), ('december', 'dec'),
+    ('january', 'jan'),
+    ('february', 'feb'),
+    ('march', 'mar'),
+    ('april', 'apr'),
+    ('may',),
+    ('june', 'jun'),
+    ('july', 'jul'),
+    ('august', 'aug'),
+    ('september', 'sep', 'sept'),
+    ('october', 'oct'),
+    ('november', 'nov'),
+    ('december', 'dec'),
 )
 MONTH_NUMBERS = {name: number for number, names in enumerate(MONTHS, 1) for name in names}
 ENGLISH_MONTH = r'(?:' + '|'.join(MONTH_NUMBERS) + r')'
@@ -14,9 +23,7 @@ ENGLISH = '(' + ENGLISH_MONTH + r')\.?[,]?(?:\s*[-–—]\s*|\s+)([0-9]{4})'
 ENGLISH_MONTH_DAY = (
     '(' + ENGLISH_MONTH + r')\.?\s+([0-9]{1,2})(?:st|nd|rd|th)?(?:,\s*|\s+)([0-9]{4})'
 )
-ENGLISH_DAY_MONTH = (
-    r'([0-9]{1,2})(?:st|nd|rd|th)?\s+(' + ENGLISH_MONTH + r')\.?[,]?\s+([0-9]{4})'
-)
+ENGLISH_DAY_MONTH = r'([0-9]{1,2})(?:st|nd|rd|th)?\s+(' + ENGLISH_MONTH + r')\.?[,]?\s+([0-9]{4})'
 VIETNAMESE = r'(?:tháng\s+|t)[0-9]{1,2}(?:[/.-]|\s+năm\s+)[0-9]{4}'
 NUMERIC = (
     r'(?:[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}'
@@ -25,14 +32,33 @@ NUMERIC = (
 )
 # Delimiters next to digits belong to the numeric token, not a nested date.
 DATE_TOKEN = re.compile(
-    r'(?<![\w/])(?<![0-9][.,:])(?:' + VIETNAMESE + '|' + ENGLISH_MONTH_DAY
-    + '|' + ENGLISH_DAY_MONTH + '|' + ENGLISH + '|' + NUMERIC
-    + r')(?!\w|[/.][0-9]|,[0-9])', re.IGNORECASE,
+    r'(?<![\w/])(?<![0-9][.,:])(?:'
+    + VIETNAMESE
+    + '|'
+    + ENGLISH_MONTH_DAY
+    + '|'
+    + ENGLISH_DAY_MONTH
+    + '|'
+    + ENGLISH
+    + '|'
+    + NUMERIC
+    + r')(?!\w|[/.][0-9]|,[0-9])',
+    re.IGNORECASE,
 )
-PRESENT = ('present', 'now', 'current', 'today', 'to date',
-           'hiện tại', 'hiện nay', 'nay', 'đến nay')
+PRESENT = (
+    'present',
+    'now',
+    'current',
+    'today',
+    'to date',
+    'hiện tại',
+    'hiện nay',
+    'nay',
+    'đến nay',
+)
 PRESENT_TOKEN = re.compile(
-    r'\b(?:' + '|'.join(word.replace(' ', r'\s+') for word in PRESENT) + r')\b', re.IGNORECASE,
+    r'\b(?:' + '|'.join(word.replace(' ', r'\s+') for word in PRESENT) + r')\b',
+    re.IGNORECASE,
 )
 PHONE = re.compile(r'(?<![\w+])\+?\(?[0-9]+(?:[ \t().-]+[0-9]+)*\)?(?!\w)')
 NUMERIC_RANGE = re.compile(r'(' + NUMERIC + r')\s*[-–—]\s*(' + NUMERIC + r')')
@@ -99,8 +125,11 @@ def _tokens(quote: str) -> list[str]:
             date_range and parse_date(date_range[1]) and parse_date(date_range[2])
         ):
             excluded.append((match.start(), match.end()))
-    return [match.group() for match in DATE_TOKEN.finditer(quote)
-            if not any(left < match.end() and match.start() < right for left, right in excluded)]
+    return [
+        match.group()
+        for match in DATE_TOKEN.finditer(quote)
+        if not any(left < match.end() and match.start() < right for left, right in excluded)
+    ]
 
 
 def find_dates(quote: str) -> list[str]:
@@ -110,7 +139,9 @@ def find_dates(quote: str) -> list[str]:
 
 def find_birth_dates(quote: str) -> list[tuple[str, bool]]:
     """Collect DOB tokens at their exact precision, including source ambiguity."""
-    return [parsed for token in _tokens(quote) if (parsed := parse_birth_date(token))[0] is not None]
+    return [
+        parsed for token in _tokens(quote) if (parsed := parse_birth_date(token))[0] is not None
+    ]
 
 
 def has_present(quote: str) -> bool:

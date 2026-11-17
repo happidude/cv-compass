@@ -33,8 +33,9 @@ TOKEN = MARKER + '_' + 'x' * 43
 
 
 def backend_error(code):
-    return json.dumps({'code': code, 'message': MARKER, 'correlationId': None,
-                       'details': []}).encode()
+    return json.dumps(
+        {'code': code, 'message': MARKER, 'correlationId': None, 'details': []}
+    ).encode()
 
 
 @contextmanager
@@ -49,14 +50,27 @@ def probe_server(*, backend_status=404, backend_raw=None, names=None, tags_statu
             calls.append((self.command, self.path, dict(self.headers)))
             if self.path == BACKEND_PROBE:
                 status = backend_status
-                body = backend_raw if backend_raw is not None else backend_error(
-                    {404: 'NOT_FOUND', 401: 'UNAUTHORIZED'}.get(status, 'REQUEST_ERROR'))
+                body = (
+                    backend_raw
+                    if backend_raw is not None
+                    else backend_error(
+                        {404: 'NOT_FOUND', 401: 'UNAUTHORIZED'}.get(status, 'REQUEST_ERROR')
+                    )
+                )
             else:
                 status = tags_status
-                body = raw if raw is not None else json.dumps({
-                    'models': [{'name': name} for name in
-                               (['synthetic-model:latest'] if names is None else names)]
-                }).encode()
+                body = (
+                    raw
+                    if raw is not None
+                    else json.dumps(
+                        {
+                            'models': [
+                                {'name': name}
+                                for name in (['synthetic-model:latest'] if names is None else names)
+                            ]
+                        }
+                    ).encode()
+                )
             self.send_response(status)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Location', '/must-not-follow')
@@ -83,15 +97,29 @@ class ProgressTests(unittest.TestCase):
             records.append(record)
             original(record)
 
-        with (backend_server(backend) as url, redirect_stdout(out), redirect_stderr(err),
-              patch.object(LOGGER, 'handle', side_effect=capture)):
+        with (
+            backend_server(backend) as url,
+            redirect_stdout(out),
+            redirect_stderr(err),
+            patch.object(LOGGER, 'handle', side_effect=capture),
+        ):
             settings = replace(config(url), worker_token=TOKEN, log_level=level)
             result = run_pull(settings, provider or FakeProvider(NULL_PERSONAL), once=once)
-        for marker in (MARKER, TOKEN, url, settings.llm.base_url, ATTEMPT_ID,
-                       backend.claim.get('inputSha256', ''), '/attempts/', 'private-message'):
+        for marker in (
+            MARKER,
+            TOKEN,
+            url,
+            settings.llm.base_url,
+            ATTEMPT_ID,
+            backend.claim.get('inputSha256', ''),
+            '/attempts/',
+            'private-message',
+        ):
             if marker:
-                self.assertNotIn(marker, out.getvalue() + err.getvalue() + repr(
-                    [record.__dict__ for record in records]))
+                self.assertNotIn(
+                    marker,
+                    out.getvalue() + err.getvalue() + repr([record.__dict__ for record in records]),
+                )
         for record in records:
             self.assertIsNone(record.exc_info)
         return result, out.getvalue(), err.getvalue(), records
@@ -105,22 +133,41 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(out, 'claimed=1 accepted=1 failed=0\n')
         events = [record.getMessage().split()[0] for record in records]
-        self.assertEqual(events, ['event=' + name for name in (
-            'worker_start', 'claimed', 'input_fetched', 'extraction_block',
-            'extraction_done', 'submitting', 'accepted', 'stopped')])
+        self.assertEqual(
+            events,
+            [
+                'event=' + name
+                for name in (
+                    'worker_start',
+                    'claimed',
+                    'input_fetched',
+                    'extraction_block',
+                    'extraction_done',
+                    'submitting',
+                    'accepted',
+                    'stopped',
+                )
+            ],
+        )
         self.assertIn('attempt=a0000000 engine=llm-extraction/1.0', err)
         self.assertIn('block=1/1', err)
         self.assertIn('issues=NONE:0', err)
         for line in err.splitlines():
-            self.assertRegex(line, r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d INFO '
-                                   r'event=[a-z_]+(?: [^\s=]+=[^\s]+)*$')
+            self.assertRegex(
+                line,
+                r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d INFO '
+                r'event=[a-z_]+(?: [^\s=]+=[^\s]+)*$',
+            )
 
     def test_extraction_done_counts_fields_and_preserves_code_allowlist(self):
         issues = (
-            Issue('QUOTE_NOT_FOUND', 'title'), Issue('QUOTE_NOT_FOUND', 'title'),
-            Issue('QUOTE_NOT_FOUND', 'company'), Issue('INVALID_DATE', 'start'),
+            Issue('QUOTE_NOT_FOUND', 'title'),
+            Issue('QUOTE_NOT_FOUND', 'title'),
+            Issue('QUOTE_NOT_FOUND', 'company'),
+            Issue('INVALID_DATE', 'start'),
             Issue('BLOCK_LIMIT_REACHED'),
-            Issue('PROVIDER_ERROR', 'personal'), Issue(MARKER, 'title'),
+            Issue('PROVIDER_ERROR', 'personal'),
+            Issue(MARKER, 'title'),
             Issue('FIELD_DISABLED', 'fullName'),
         )
         extraction = ExtractionResult((), (), issues, 'synthetic', 'fake')
@@ -128,27 +175,39 @@ class ProgressTests(unittest.TestCase):
             result, out, err, records = self.run_worker(Backend())
         self.assertEqual(result, 0)
         self.assertEqual(out, 'claimed=1 accepted=1 failed=0\n')
-        done = [row.getMessage() for row in records
-                if row.getMessage().startswith('event=extraction_done ')]
+        done = [
+            row.getMessage()
+            for row in records
+            if row.getMessage().startswith('event=extraction_done ')
+        ]
         self.assertEqual(len(done), 1)
-        self.assertTrue(done[0].endswith(
-            'issues=BLOCK_LIMIT_REACHED:1,INVALID_DATE.start:1,'
-            'PROVIDER_ERROR.personal:1,'
-            'QUOTE_NOT_FOUND.company:1,QUOTE_NOT_FOUND.title:2'
-        ))
+        self.assertTrue(
+            done[0].endswith(
+                'issues=BLOCK_LIMIT_REACHED:1,INVALID_DATE.start:1,'
+                'PROVIDER_ERROR.personal:1,'
+                'QUOTE_NOT_FOUND.company:1,QUOTE_NOT_FOUND.title:2'
+            )
+        )
         self.assertNotIn('FIELD_DISABLED', err)
 
     def test_extraction_done_logs_invalid_json_field_before_failure(self):
         extraction = ExtractionResult(
-            (), (), (Issue('LLM_INVALID_JSON', 'experiences'),), 'synthetic', 'fake',
+            (),
+            (),
+            (Issue('LLM_INVALID_JSON', 'experiences'),),
+            'synthetic',
+            'fake',
         )
         backend = Backend()
         with patch('cv_compass_llm.pull.extract', return_value=extraction):
             result, out, err, records = self.run_worker(backend)
         self.assertEqual(result, 0)
         self.assertEqual(out, 'claimed=1 accepted=0 failed=1\n')
-        done = [row.getMessage() for row in records
-                if row.getMessage().startswith('event=extraction_done ')]
+        done = [
+            row.getMessage()
+            for row in records
+            if row.getMessage().startswith('event=extraction_done ')
+        ]
         self.assertEqual(len(done), 1)
         self.assertTrue(done[0].endswith('issues=LLM_INVALID_JSON.experiences:1'))
         self.assertIn('event=failed attempt=a0000000 code=INVALID_OUTPUT', err)
@@ -156,8 +215,11 @@ class ProgressTests(unittest.TestCase):
         self.assertFalse(backend.requests('result'))
 
     def test_waiting_throttled_for_empty_503_and_unreachable(self):
-        for status, code in ((204, 'NO_WORK'), (503, 'MAPPING_REMOTE_UNAVAILABLE'),
-                             (0, 'BACKEND_UNREACHABLE')):
+        for status, code in (
+            (204, 'NO_WORK'),
+            (503, 'MAPPING_REMOTE_UNAVAILABLE'),
+            (0, 'BACKEND_UNREACHABLE'),
+        ):
             backend = Backend()
             clock = [0]
 
@@ -167,9 +229,11 @@ class ProgressTests(unittest.TestCase):
                     raise KeyboardInterrupt
 
             # Isolate poll throttling from transport retry delays and socket clocks.
-            with (patch('cv_compass_llm.pull.time.monotonic', side_effect=lambda: clock[0]),
-                  patch('cv_compass_llm.pull.time.sleep', side_effect=sleep),
-                  patch('cv_compass_llm.pull.BackendClient') as client):
+            with (
+                patch('cv_compass_llm.pull.time.monotonic', side_effect=lambda: clock[0]),
+                patch('cv_compass_llm.pull.time.sleep', side_effect=sleep),
+                patch('cv_compass_llm.pull.BackendClient') as client,
+            ):
                 calls = [0]
 
                 def request(*_args, **_kwargs):
@@ -190,22 +254,31 @@ class ProgressTests(unittest.TestCase):
     def test_backend_waiting_resets_after_success_without_repeating_idle_polls(self):
         client = Mock()
         client.request.side_effect = [
-            BackendError('BACKEND_UNREACHABLE'), BackendError('BACKEND_UNREACHABLE'),
-            (204, {}), (204, {}),
-            BackendError('BACKEND_UNREACHABLE'), BackendError('BACKEND_UNREACHABLE'),
+            BackendError('BACKEND_UNREACHABLE'),
+            BackendError('BACKEND_UNREACHABLE'),
+            (204, {}),
+            (204, {}),
+            BackendError('BACKEND_UNREACHABLE'),
+            BackendError('BACKEND_UNREACHABLE'),
             KeyboardInterrupt,
         ]
-        with (patch('cv_compass_llm.pull.BackendClient', return_value=client),
-              patch('cv_compass_llm.pull.time.monotonic', return_value=0),
-              patch('cv_compass_llm.pull.time.sleep')):
+        with (
+            patch('cv_compass_llm.pull.BackendClient', return_value=client),
+            patch('cv_compass_llm.pull.time.monotonic', return_value=0),
+            patch('cv_compass_llm.pull.time.sleep'),
+        ):
             result, _, _, records = self.run_worker(Backend(), once=False)
         self.assertEqual(result, 130)
         self.assertTrue(records[0].getMessage().startswith('event=worker_start '))
-        self.assertEqual([record.getMessage() for record in records[1:]], [
-            'event=waiting code=BACKEND_UNREACHABLE',
-            'event=waiting code=NO_WORK', 'event=waiting code=BACKEND_UNREACHABLE',
-            'event=stopped',
-        ])
+        self.assertEqual(
+            [record.getMessage() for record in records[1:]],
+            [
+                'event=waiting code=BACKEND_UNREACHABLE',
+                'event=waiting code=NO_WORK',
+                'event=waiting code=BACKEND_UNREACHABLE',
+                'event=stopped',
+            ],
+        )
         self.assertEqual(client.request.call_count, 7)
 
     def test_direct_failure_outcome_has_default_failure_code(self):
@@ -225,7 +298,8 @@ class ProgressTests(unittest.TestCase):
                 backend.claim = claim(interval='PT0.05S')
                 if lost:
                     backend.hook = lambda method, path, body: (
-                        (409, {'code': 'STALE_ATTEMPT'}) if path.endswith('/lease') else None)
+                        (409, {'code': 'STALE_ATTEMPT'}) if path.endswith('/lease') else None
+                    )
                 lease_seen = threading.Event()
                 original = backend.reply
 
@@ -275,32 +349,57 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(root_state, (root.handlers, root.level))
         self.assertEqual(endpoint('https://user:password@[::1]:123/path?query'), '[::1]:123')
         self.assertEqual(endpoint('https://example.invalid'), 'example.invalid:443')
-        for value in ('https://example.invalid/model', '/private/model', 'C:/private/model',
-                      '../private/model', MARKER + '\nprivate-message'):
+        for value in (
+            'https://example.invalid/model',
+            '/private/model',
+            'C:/private/model',
+            '../private/model',
+            MARKER + '\nprivate-message',
+        ):
             self.assertEqual(model_name(value), 'REDACTED')
         self.assertEqual(model_name('synthetic/model:latest'), 'synthetic/model:latest')
 
     def test_pipeline_callback_counts_calls_and_preserves_result(self):
-        document = input_document({'pages': [{'page': 1, 'raw_text': (
-            'Synthetic Person\nExperience\nEngineer at Synthetic\n2020 - 2021\n')}]})
+        document = input_document(
+            {
+                'pages': [
+                    {
+                        'page': 1,
+                        'raw_text': (
+                            'Synthetic Person\nExperience\nEngineer at Synthetic\n2020 - 2021\n'
+                        ),
+                    }
+                ]
+            }
+        )
         responses = [NULL_PERSONAL, {'experiences': []}]
         baseline = extract(document, FakeProvider(responses))
         progress = []
-        observed = extract(document, FakeProvider(responses),
-                           on_block=lambda *args: progress.append(args))
+        observed = extract(
+            document, FakeProvider(responses), on_block=lambda *args: progress.append(args)
+        )
         self.assertEqual(observed, baseline)
         self.assertTrue(progress)
-        self.assertEqual([(i, n) for i, n, seconds in progress],
-                         [(i + 1, len(progress)) for i in range(len(progress))])
+        self.assertEqual(
+            [(i, n) for i, n, seconds in progress],
+            [(i + 1, len(progress)) for i in range(len(progress))],
+        )
         self.assertTrue(all(seconds >= 0 for i, n, seconds in progress))
         limited = []
-        result = extract(document, FakeProvider(NULL_PERSONAL), max_blocks=0,
-                         on_block=lambda *args: limited.append(args))
+        result = extract(
+            document,
+            FakeProvider(NULL_PERSONAL),
+            max_blocks=0,
+            on_block=lambda *args: limited.append(args),
+        )
         self.assertEqual([(i, n) for i, n, seconds in limited], [(1, 1)])
         self.assertIn('BLOCK_LIMIT_REACHED', [issue.code for issue in result.issues])
         failures = []
-        result = extract(document, FakeProvider([ProviderError(MARKER), {'experiences': []}]),
-                         on_block=lambda *args: failures.append(args))
+        result = extract(
+            document,
+            FakeProvider([ProviderError(MARKER), {'experiences': []}]),
+            on_block=lambda *args: failures.append(args),
+        )
         self.assertEqual([(i, n) for i, n, seconds in failures], [(1, 2), (2, 2)])
         self.assertIn('PROVIDER_ERROR', [issue.code for issue in result.issues])
 
@@ -308,16 +407,23 @@ class ProgressTests(unittest.TestCase):
 class CheckTests(unittest.TestCase):
     def run_check(self, backend, ollama, **overrides):
         environment = {
-            'CVC_LLM_PROVIDER': 'ollama', 'CVC_LLM_MODEL': 'synthetic-model',
-            'CVC_LLM_BACKEND_URL': backend, 'CVC_LLM_BASE_URL': ollama,
-            'CVC_LLM_WORKER_TOKEN': TOKEN, 'CVC_LLM_HTTP_TIMEOUT_S': '1',
-            'CVC_LLM_TIMEOUT_S': '1', **overrides,
+            'CVC_LLM_PROVIDER': 'ollama',
+            'CVC_LLM_MODEL': 'synthetic-model',
+            'CVC_LLM_BACKEND_URL': backend,
+            'CVC_LLM_BASE_URL': ollama,
+            'CVC_LLM_WORKER_TOKEN': TOKEN,
+            'CVC_LLM_HTTP_TIMEOUT_S': '1',
+            'CVC_LLM_TIMEOUT_S': '1',
+            **overrides,
         }
         out, err = io.StringIO(), io.StringIO()
         # Bypass only the private dotenv file; all actual config validation still runs.
-        with (patch('cv_compass_llm.config._read_env', return_value={}),
-              patch.dict(os.environ, environment, clear=True),
-              redirect_stdout(out), redirect_stderr(err)):
+        with (
+            patch('cv_compass_llm.config._read_env', return_value={}),
+            patch.dict(os.environ, environment, clear=True),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
             result = main(['check'])
         text = out.getvalue()
         self.assertEqual(err.getvalue(), '')
@@ -327,8 +433,12 @@ class CheckTests(unittest.TestCase):
 
     def assert_read_only(self, calls):
         self.assertTrue(calls)
-        self.assertTrue(all(method == 'GET' and path in (BACKEND_PROBE, '/api/tags')
-                            for method, path, headers in calls))
+        self.assertTrue(
+            all(
+                method == 'GET' and path in (BACKEND_PROBE, '/api/tags')
+                for method, path, headers in calls
+            )
+        )
 
     def test_all_ok_and_exact_model_and_latest(self):
         for configured, names in (
@@ -338,9 +448,16 @@ class CheckTests(unittest.TestCase):
             with probe_server(names=names) as (url, calls):
                 result, out = self.run_check(url, url, CVC_LLM_MODEL=configured)
             self.assertEqual(result, 0)
-            self.assertEqual(out.splitlines(), ['OK config', 'OK backend ' + endpoint(url),
-                                                'OK backend_token', 'OK ollama ' + endpoint(url),
-                                                'OK model'])
+            self.assertEqual(
+                out.splitlines(),
+                [
+                    'OK config',
+                    'OK backend ' + endpoint(url),
+                    'OK backend_token',
+                    'OK ollama ' + endpoint(url),
+                    'OK model',
+                ],
+            )
             self.assert_read_only(calls)
             self.assertEqual(calls[0][2]['Authorization'], 'Bearer ' + TOKEN)
             self.assertNotIn('Authorization', calls[1][2])
@@ -376,16 +493,28 @@ class CheckTests(unittest.TestCase):
 
     def test_redirects_disabled_and_proxies_ignored(self):
         with probe_server(backend_status=302, tags_status=302) as (url, calls):
-            result, out = self.run_check(url, url, HTTP_PROXY='http://127.0.0.1:1',
-                                        http_proxy='http://127.0.0.1:1', NO_PROXY='', no_proxy='')
+            result, out = self.run_check(
+                url,
+                url,
+                HTTP_PROXY='http://127.0.0.1:1',
+                http_proxy='http://127.0.0.1:1',
+                NO_PROXY='',
+                no_proxy='',
+            )
         self.assertNotEqual(result, 0)
         self.assertIn('code=BACKEND_REDIRECT', out)
         self.assertIn('code=OLLAMA_REDIRECT', out)
         self.assertEqual(len(calls), 2)
         self.assert_read_only(calls)
         with probe_server() as (url, calls):
-            result, _ = self.run_check(url, url, HTTP_PROXY='http://127.0.0.1:1',
-                                      http_proxy='http://127.0.0.1:1', NO_PROXY='', no_proxy='')
+            result, _ = self.run_check(
+                url,
+                url,
+                HTTP_PROXY='http://127.0.0.1:1',
+                http_proxy='http://127.0.0.1:1',
+                NO_PROXY='',
+                no_proxy='',
+            )
         self.assertEqual(result, 0)
         self.assertEqual(len(calls), 2)
 
@@ -399,18 +528,24 @@ class CheckTests(unittest.TestCase):
             (401, backend_error('UNAUTHORIZED'), 'FAIL backend_token code=UNAUTHORIZED'),
             (401, backend_error('AUTH_REQUIRED'), 'FAIL backend_token code=BACKEND_PROBE_REJECTED'),
             (401, b'<html>unauthorized</html>', 'FAIL backend_token code=BACKEND_PROBE_REJECTED'),
-            (503, backend_error('MAPPING_REMOTE_UNAVAILABLE'),
-             'FAIL backend_token code=MAPPING_REMOTE_UNAVAILABLE'),
+            (
+                503,
+                backend_error('MAPPING_REMOTE_UNAVAILABLE'),
+                'FAIL backend_token code=MAPPING_REMOTE_UNAVAILABLE',
+            ),
             (403, backend_error('TLS_REQUIRED'), 'FAIL backend_token code=TLS_REQUIRED'),
             (503, backend_error(MARKER), 'FAIL backend_token code=BACKEND_PROBE_REJECTED'),
             (403, backend_error('UNAUTHORIZED'), 'FAIL backend_token code=BACKEND_PROBE_REJECTED'),
         ):
-            with (self.subTest(status=status, expected=expected),
-                  probe_server(backend_status=status, backend_raw=body) as (url, calls)):
+            with (
+                self.subTest(status=status, expected=expected),
+                probe_server(backend_status=status, backend_raw=body) as (url, calls),
+            ):
                 result, out = self.run_check(url, url)
             self.assertEqual(result, 0 if expected == 'OK backend_token' else 2)
-            self.assertEqual([line for line in out.splitlines() if 'backend_token' in line],
-                             [expected])
+            self.assertEqual(
+                [line for line in out.splitlines() if 'backend_token' in line], [expected]
+            )
             self.assert_read_only(calls)
 
     def test_bounded_and_malformed_tags_and_backend_rejection(self):
@@ -429,14 +564,20 @@ class CheckTests(unittest.TestCase):
             self.assert_read_only(calls)
 
     def test_log_level_precedence_and_safe_error(self):
-        environment = {'CVC_LLM_PROVIDER': 'ollama', 'CVC_LLM_MODEL': 'synthetic-model',
-                       'CVC_LLM_BACKEND_URL': 'http://localhost',
-                       'CVC_LLM_WORKER_TOKEN': TOKEN}
-        with patch('cv_compass_llm.config._read_env',
-                   return_value={'CVC_LLM_LOG_LEVEL': 'WARNING'}):
+        environment = {
+            'CVC_LLM_PROVIDER': 'ollama',
+            'CVC_LLM_MODEL': 'synthetic-model',
+            'CVC_LLM_BACKEND_URL': 'http://localhost',
+            'CVC_LLM_WORKER_TOKEN': TOKEN,
+        }
+        with patch(
+            'cv_compass_llm.config._read_env', return_value={'CVC_LLM_LOG_LEVEL': 'WARNING'}
+        ):
+
             def load(cli=None):
-                return load_pull_config(environment, Path('synthetic.env'),
-                                        env_file_explicit=True, cli=cli)
+                return load_pull_config(
+                    environment, Path('synthetic.env'), env_file_explicit=True, cli=cli
+                )
 
             self.assertEqual(load().log_level, 'WARNING')
             environment['CVC_LLM_LOG_LEVEL'] = 'ERROR'

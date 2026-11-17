@@ -9,25 +9,80 @@ from .ocr_input import Document, Page
 from .schema import Issue
 
 EXPERIENCE_HEADINGS = (
-    'experience', 'work experience', 'professional experience', 'employment history',
-    'kinh nghiệm', 'kinh nghiệm làm việc', 'quá trình làm việc', 'quá trình công tác',
-    'work history', 'career history', 'employment', 'experiences',
-    'kinh nghiệm công tác', 'lịch sử làm việc', 'lịch sử công tác',
+    'experience',
+    'work experience',
+    'professional experience',
+    'employment history',
+    'kinh nghiệm',
+    'kinh nghiệm làm việc',
+    'quá trình làm việc',
+    'quá trình công tác',
+    'work history',
+    'career history',
+    'employment',
+    'experiences',
+    'kinh nghiệm công tác',
+    'lịch sử làm việc',
+    'lịch sử công tác',
 )
 OTHER_HEADINGS = (
-    'education', 'học vấn', 'skills', 'kỹ năng', 'projects', 'dự án', 'certifications',
-    'chứng chỉ', 'summary', 'profile', 'references', 'interests', 'languages',
-    'giới thiệu', 'mục tiêu nghề nghiệp', 'ngoại ngữ', 'sở thích', 'awards', 'giải thưởng',
-    'certificates', 'certificate', 'core skills', 'key skills', 'personal information',
-    'thông tin cá nhân', 'contact', 'liên hệ', 'objective', 'career objective', 'hobbies',
-    'activities', 'hoạt động', 'training', 'đào tạo', 'memberships', 'publications',
+    'education',
+    'học vấn',
+    'skills',
+    'kỹ năng',
+    'projects',
+    'dự án',
+    'certifications',
+    'chứng chỉ',
+    'summary',
+    'profile',
+    'references',
+    'interests',
+    'languages',
+    'giới thiệu',
+    'mục tiêu nghề nghiệp',
+    'ngoại ngữ',
+    'sở thích',
+    'awards',
+    'giải thưởng',
+    'certificates',
+    'certificate',
+    'core skills',
+    'key skills',
+    'personal information',
+    'thông tin cá nhân',
+    'contact',
+    'liên hệ',
+    'objective',
+    'career objective',
+    'hobbies',
+    'activities',
+    'hoạt động',
+    'training',
+    'đào tạo',
+    'memberships',
+    'publications',
 )
 PERSONAL_LABELS = re.compile(
-    r'\b(?:' + '|'.join(re.escape(label) for label in (
-        'name', 'full name', 'họ tên', 'họ và tên', 'date of birth', 'day of birth',
-        'ngày sinh', 'gender', 'giới tính', 'personal information', 'personal details',
-        'thông tin cá nhân',
-    )) + r')\b',
+    r'\b(?:'
+    + '|'.join(
+        re.escape(label)
+        for label in (
+            'name',
+            'full name',
+            'họ tên',
+            'họ và tên',
+            'date of birth',
+            'day of birth',
+            'ngày sinh',
+            'gender',
+            'giới tính',
+            'personal information',
+            'personal details',
+            'thông tin cá nhân',
+        )
+    )
+    + r')\b',
 )
 
 
@@ -48,8 +103,13 @@ class Block:
     def text(self) -> str:
         """Join source spans with separators across gaps and pages."""
         return ''.join(
-            ('\n' if i and (self.spans[i - 1].page != span.page
-                           or self.spans[i - 1].end != span.start) else '') + span.text
+            (
+                '\n'
+                if i
+                and (self.spans[i - 1].page != span.page or self.spans[i - 1].end != span.start)
+                else ''
+            )
+            + span.text
             for i, span in enumerate(self.spans)
         )
 
@@ -69,20 +129,28 @@ def split_spans(spans: list[Span], limit: int = 6000) -> tuple[Block, ...]:
     current: list[Span] = []
     size = 0
     for span in spans:
-        while current and size + len(span.text) + (
-            current[-1].page != span.page or current[-1].end != span.start
-        ) > limit:
-            cut = next((
-                index for index in range(len(current) - 1, 0, -1)
-                if _is_job_boundary(current[index].text)
-            ), len(current))
+        while (
+            current
+            and size
+            + len(span.text)
+            + (current[-1].page != span.page or current[-1].end != span.start)
+            > limit
+        ):
+            cut = next(
+                (
+                    index
+                    for index in range(len(current) - 1, 0, -1)
+                    if _is_job_boundary(current[index].text)
+                ),
+                len(current),
+            )
             blocks.append(Block(tuple(current[:cut])))
             current = current[cut:]
             # Carrying a job changes which page/gap separators belong to this block.
             size = len(Block(tuple(current)).text)
-        separator = bool(current and (
-            current[-1].page != span.page or current[-1].end != span.start
-        ))
+        separator = bool(
+            current and (current[-1].page != span.page or current[-1].end != span.start)
+        )
         size += len(span.text) + separator
         current.append(span)
     if current:
@@ -94,11 +162,15 @@ def build_header(pages: tuple[Page, ...]) -> Block:
     """Take a page prefix, preferring personal markers in the first three ok pages."""
     if not pages:
         return Block(())
-    page = next((
-        page for page in pages[:3]
-        if PERSONAL_LABELS.search(page.raw_text.casefold())
-        or any(re.search(contacts.PATTERNS[key], page.raw_text) for key in ('email', 'phone'))
-    ), pages[0])
+    page = next(
+        (
+            page
+            for page in pages[:3]
+            if PERSONAL_LABELS.search(page.raw_text.casefold())
+            or any(re.search(contacts.PATTERNS[key], page.raw_text) for key in ('email', 'phone'))
+        ),
+        pages[0],
+    )
     text = page.raw_text[:3000]
     return Block((Span(page.number, 0, len(text), text, page.raw_text),))
 
@@ -121,7 +193,9 @@ def _strip_heading_prefix(text: str) -> str:
         text = text[1:]
     text = re.sub(
         r'^(?=[IVX])(?:XX|X?(?:IX|IV|V?I{0,3}))(?:[.)]\s*|\s*[-–]\s+)',
-        '', text, flags=re.IGNORECASE,
+        '',
+        text,
+        flags=re.IGNORECASE,
     )
     while text and not text[0].isalpha():
         text = text[1:]
@@ -144,7 +218,9 @@ def normalize_heading(text: str) -> str:
 
 
 def scan_headings(
-    lines: list[Span], experience_headings: tuple[str, ...], other_headings: tuple[str, ...],
+    lines: list[Span],
+    experience_headings: tuple[str, ...],
+    other_headings: tuple[str, ...],
 ) -> tuple[tuple[Block, ...], bool]:
     """Collect experience sections delimited by complete heading lines."""
     starts = {normalize_heading(heading) for heading in experience_headings}
@@ -175,7 +251,8 @@ def scan_headings(
 
 
 def segment(
-    document: Document, *,
+    document: Document,
+    *,
     experience_headings: tuple[str, ...] = EXPERIENCE_HEADINGS,
     other_headings: tuple[str, ...] = OTHER_HEADINGS,
 ) -> tuple[Block, tuple[Block, ...], tuple[Issue, ...]]:
@@ -189,7 +266,12 @@ def segment(
         lines = [line for line in lines if len(line.text) <= 6000]
     blocks, found = scan_headings(lines, experience_headings, other_headings)
     if not found:
-        return header, split_spans(lines), (
-            Issue('EXPERIENCE_HEADING_NOT_FOUND'), *issues,
+        return (
+            header,
+            split_spans(lines),
+            (
+                Issue('EXPERIENCE_HEADING_NOT_FOUND'),
+                *issues,
+            ),
         )
     return header, blocks, tuple(issues)
