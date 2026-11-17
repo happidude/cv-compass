@@ -68,6 +68,20 @@ thị, không dùng lọc hay xếp hạng.
 - Gender chỉ được giữ khi quote có biên token và dòng OCR gốc là giá trị đứng riêng
   hoặc nhãn Giới tính/Gender với dấu hai chấm hoặc gạch nối; không suy từ tên/địa danh.
 
+## E6 — Header cá nhân và ranh giới công việc
+
+Trong mode `blocks`, header lấy từ trang đầu tiên trong ba trang `ok` đầu có
+email/điện thoại theo regex contacts hoặc nhãn thông tin cá nhân; nếu không có,
+dùng trang `ok` đầu tiên. Header luôn giữ tối đa 3000 ký tự từ đầu trang đã chọn.
+`fullName` là tiêu đề chung (`curriculum vitae`, `cv`, `resume`, `résumé`,
+`sơ yếu lý lịch`, `lý lịch`) sau casefold và gộp khoảng trắng bị loại với
+`QUOTE_NOT_FOUND` field `fullName`, áp dụng cả blocks và whole.
+
+Khi khối kinh nghiệm vượt 6000 ký tự, ưu tiên cắt trước ranh giới công việc gần
+nhất phía trước: dòng có date kèm dấu/từ chỉ khoảng, từ present hoặc mở đầu bằng
+`From`/`Từ`. Nếu không có ranh giới phù hợp, cắt theo dòng như cũ; không khối nào
+vượt 6000 ký tự và không lặp dòng giữa các khối. Offset và nội dung nguồn giữ nguyên.
+
 ## L1b — Ollama local và CLI batch
 
 Chạy từ `llm-worker/`, với Ollama local và model đã được chuẩn bị riêng. Ví dụ

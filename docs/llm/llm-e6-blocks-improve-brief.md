@@ -1,0 +1,13 @@
+# Brief E6 — Cải thiện mode blocks: header thông tin cá nhân linh hoạt + cắt block theo ranh giới công việc
+
+Mục tiêu/acceptance: (1) header thông tin cá nhân lấy từ trang **đầu tiên trong 3 trang đầu** có dấu hiệu thông tin cá nhân (email/phone theo `contacts.PATTERNS`, hoặc nhãn: `name`, `full name`, `họ tên`, `họ và tên`, `date of birth`, `day of birth`, `ngày sinh`, `gender`, `giới tính`, `personal information`, `personal details`, `thông tin cá nhân`), không có thì trang 1 như cũ; tối đa 3000 ký tự tính từ đầu trang đó;
+(2) `fullName` bằng tiêu đề chung (`curriculum vitae`, `cv`, `resume`, `résumé`, `sơ yếu lý lịch`, `lý lịch`, so sau casefold + gộp khoảng trắng) bị loại với issue `QUOTE_NOT_FOUND` field `fullName`;
+(3) khi khối kinh nghiệm vượt giới hạn 6000 ký tự, cắt ở **ranh giới công việc gần nhất phía trước** (dòng mở đầu công việc: có ≥ 1 date theo `dates.find_dates` kèm dấu khoảng `-–—`/`to`/`đến` hoặc từ present theo `dates.has_present`, hoặc dòng bắt đầu `From`/`Từ`), không có ranh giới thì cắt theo dòng như cũ; không block nào vượt 6000.
+Spec: file này + Project `claude/experience-extraction-plan-2026-11-15.md`. Chủ dự án duyệt E4/E5/E6 ngày 16/11/2026 23:22.
+Mức/lý do: 3 — logic trích xuất dữ liệu cá nhân.
+Path được sửa: `llm-worker/src/cv_compass_llm/{segmenter,validate}.py`, `llm-worker/tests/**`, `llm-worker/README.md`. Loại trừ: `pipeline.py`, `prompts.py`, `schema.py`, `config.py`, `cli.py`, `pull*.py`, `providers/**` (E5 sửa), dependency, `ruff.toml`.
+Base: xếp chồng trên branch `agent/llm-e5-whole` (HEAD cuối của E5); worktree `..\cv-compass-wt\llm-e6-blocks`, branch `agent/llm-e6-blocks`; Draft PR base = `agent/llm-e5-whole` (merge sau E5).
+Ngữ cảnh đã biết: `segmenter.build_header(pages)` (hiện chỉ trang 1, 3000 ký tự), `split_spans(spans, limit=6000)` (cắt theo dòng), `scan_headings`, `segment(document)` trả `(header, blocks, issues)`; `validate.validate_personal`/`supported`; `dates.find_dates`/`has_present` (E2); `contacts.PATTERNS`.
+Không đổi: chữ ký `segment()`, prompt, schema, quy tắc evidence/không bịa; không gộp/nhân bản dòng giữa các block (không overlap).
+Test tối thiểu (dữ liệu tổng hợp): trang 1 thư xin việc + trang 2 có nhãn thông tin cá nhân → header là trang 2; không trang nào có dấu hiệu → trang 1; `fullName` = `CURRICULUM VITAE` bị loại; khối 2 công việc dài cộng lại > 6000 → cắt đúng trước dòng `From: Sep-2011 To Mar- 2016 :` / `Jan 2021 – Present | …`; một công việc đơn > 6000 → cắt theo dòng, không vượt 6000; test cũ PASS.
+Check affected: như E4 (unittest llm-worker + `ruff check src tests`; thêm `ruff format` cho file mới/đã sửa nếu có ruff).

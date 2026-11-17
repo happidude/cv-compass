@@ -21,6 +21,9 @@ GENDERS = {
     'other': 'OTHER', 'khác': 'OTHER',
 }
 GENDER_LABEL = re.compile(r'^(?:gender|giới\s+tính)\s*[:-]\s*')
+GENERIC_NAME_HEADINGS = {
+    'curriculum vitae', 'cv', 'resume', 'résumé', 'sơ yếu lý lịch', 'lý lịch',
+}
 
 
 def matches_schema(value: object, schema: dict) -> bool:
@@ -146,6 +149,9 @@ def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[I
     validators = {'gender': validate_gender, 'dateOfBirth': validate_birth_date}
     for key, item in data['personal'].items():
         if item is None:
+            continue
+        if key == 'fullName' and ' '.join(item['value'].casefold().split()) in GENERIC_NAME_HEADINGS:
+            issues.append(Issue('QUOTE_NOT_FOUND', 'fullName'))
             continue
         if key in validators:
             value, evidence = validators[key](item, block, issues)
