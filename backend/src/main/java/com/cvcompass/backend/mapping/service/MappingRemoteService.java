@@ -110,7 +110,7 @@ public class MappingRemoteService {
                                 Level.WARN,
                                 OperationalLog.Event.MAPPING_REMOTE_FAILED,
                                 "INPUT_CHANGED",
-                                Map.of("jobId", job));
+                                Map.of("documentId", jobs.documentId(job), "jobId", job));
                         return new Reply(204, Map.of());
                     }
                     attempts.start(
@@ -375,12 +375,15 @@ public class MappingRemoteService {
         log(attempt, OperationalLog.Event.MAPPING_REMOTE_FAILED, code);
     }
 
-    private static void log(Attempt attempt, OperationalLog.Event event, String code) {
+    private void log(Attempt attempt, OperationalLog.Event event, String code) {
         OperationalLog.committed(
                 Level.INFO,
                 event,
                 code,
-                Map.of("jobId", attempt.jobId(), "attemptId", attempt.id()));
+                Map.of(
+                        "documentId", jobs.documentId(attempt.jobId()),
+                        "jobId", attempt.jobId(),
+                        "attemptId", attempt.id()));
     }
 
     private void enabled() {

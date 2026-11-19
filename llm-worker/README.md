@@ -455,3 +455,74 @@ Mỗi dòng stdout là `OK <tên>` hoặc `FAIL <tên> code=<MÃ>`; backend/Olla
 hiện host:port, model chỉ ghi tên check `model`. Thoát 0 khi mọi check OK, 2 khi
 có lỗi. Lỗi kết nối là `BACKEND_UNREACHABLE`/`OLLAMA_UNREACHABLE`, model thiếu là
 `MODEL_NOT_FOUND`, token thiếu là `FAIL config code=MISSING_CONFIG`.
+
+## Đo vòng đời CV (E11)
+
+`OllamaProvider.last_metrics` được reset trước mỗi lời gọi. Khi response có số
+nguyên không âm, provider giữ `prompt_tokens`, `output_tokens`, `prompt_ns`,
+`output_ns`, `load_ns`, `total_ns`; `done_reason` chỉ nhận mã cố định của Ollama.
+Số vượt `2**53`, boolean, chuỗi và số thực bị bỏ qua. Không đổi body request,
+prompt, schema hay kết quả trích xuất. Lỗi hoặc response thiếu metrics không
+dùng lại số của lời gọi trước.
+
+Log `extraction_block` thêm `prompt_tokens`, `output_tokens`, `prompt_s`,
+`output_s`, `load_s`, `tok_s` khi có; thời gian Ollama đổi từ nano
+giây sang giây. `tok_s = output_tokens / output_s`, bỏ khi mẫu số bằng 0 hoặc
+thiếu. `seconds` vẫn là thời gian đo bên ngoài lời gọi và validation hiện có.
+Không log `done_reason`, nội dung response hoặc field tùy ý từ provider.
+
+CLI `run` thêm `llm_calls` và `llm_metrics` vào `run-summary.json`, quan sát
+từng lời gọi qua wrapper riêng trong CLI, kể cả whole mode và fallback.
+Summary còn có `total_s` từ `total_duration` của Ollama.
+Mỗi metric có `count`, `total`, `average`, `p50`, `p90`. Thiếu số thì không tính
+vào mẫu số; không có mẫu thì trung bình/phân vị là `null`, tổng là 0.
+`tok_s.average` là TB tốc độ từng lời gọi; `tok_s.total` chỉ là tổng các mẫu
+tốc độ, không phải tốc độ chung của batch. Không thay đổi file input.
+
+Lệnh báo cáo chỉ đọc ba file log text hiện có, không gọi backend hoặc model:
+
+```powershell
+$env:PYTHONPATH='src'
+py -3.14 -m cv_compass_llm lifecycle-report --backend-log backend.log --ocr-log ocr.log --llm-log llm.log
+py -3.14 -m cv_compass_llm lifecycle-report --backend-log backend.log --ocr-log ocr.log --llm-log llm.log --json
+```
+
+Backend dùng timestamp ISO ở đầu dòng; OCR dùng `timestamp=… event=…`;
+llm-worker dùng `YYYY-MM-DD HH:MM:SS LEVEL event=…`. Timestamp llm-worker là
+giờ local: chạy báo cáo với cùng múi giờ của tiến trình đã ghi log. Các đồng hồ
+tiến trình cần đồng bộ để tính khoảng giữa các dịch vụ. Giữ đủ các file log
+xoay vòng của cùng cửa sổ đo trước khi ghép; lệnh nhận một file cho mỗi dịch vụ.
+OCR JSON không thuộc định dạng đầu vào của lệnh này.
+
+Báo cáo ghép backend/OCR theo `documentId` và OCR `jobId`; job OCR và job
+mapping được giữ riêng. `attempt=<8 ký tự>` ghép với prefix của UUID
+`attemptId` backend. Prefix trùng hoặc attempt không có mốc backend được đếm
+trong `unmatched_llm`, không đoán danh tính. ID document/job chỉ nhận số nguyên
+dương hoặc UUID chuẩn, không phát lại chuỗi tùy ý từ file log.
+
+- `ocr_wait_s`: `OCR_ENQUEUED` → `OCR_CLAIMED`; thiếu claim thì dùng
+  `PIPELINE_STARTED` đầu tiên. `ocr_s` cộng thời gian các lần OCR kết thúc,
+  ưu tiên `PIPELINE_FINISHED.durationMs`, sau đó hiệu timestamp start/finish.
+  `ocr_runs` và `pages` giữ số đo từng lần/từng trang.
+- `mappings`: mỗi job có `wait_s` từ `MAPPING_ENQUEUED` tới claim đầu tiên,
+  `publish_wait_s` từ completed/remote accepted tới publication đầu tiên
+  của chính job đó. `calls` giữ từng lời gọi LLM, UUID attempt, block và metrics.
+- `total_s`: `DOCUMENT_STORED` đầu tiên tới publication `PUBLISHED`/`PROPOSED`
+  đầu tiên. `SKIPPED` được đếm riêng, không tính CV hoàn tất; ledger
+  `SUPERSEDED` được log thành `status=SKIPPED errorCode=SUPERSEDED`.
+- Tổng hợp có TB, p50 (trung vị), p90 (nội suy tuyến tính tại `(n-1)*0.9`).
+  CV/giờ = số document hoàn tất × 3600 / cửa sổ từ stored sớm nhất tới
+  publication muộn nhất của các document hoàn tất; mỗi document chỉ tính một lần.
+
+Khoảng thiếu mốc hoặc âm là `null` trong JSON và `-` trong bảng. Dòng không
+parse được (kể cả dòng trống) chỉ tăng `ignored_lines` theo nguồn. Log hợp lệ
+không thuộc vòng đời không tạo số đo; mốc OCR không ghép được tăng
+`unmatched_ocr`. Không in lại dòng hỏng, nội dung nguồn hoặc đường dẫn đầu vào.
+Đầu ra chỉ có tên cột/metric cố định, ID và số; không có nội dung CV.
+
+Hai test khóa byte dùng fixture tổng hợp cố định: SHA-256 body `/api/chat`
+trong `tests/test_ollama.py` và SHA-256 `compact_result` trong
+`tests/test_e11_baseline.py`. Hằng hash được chốt trước khi sửa provider E11,
+đối chiếu serializer E10 tại base `ea16dc415d9947e34a437c557826d590e40d5c18`.
+Sandbox triển khai không có Python nên chưa chạy xác nhận hash trên code E10;
+cần verifier xác nhận mốc đó trước khi dùng làm bằng chứng hồi quy cho task sau.

@@ -7,6 +7,8 @@ class ProviderError(Exception):
 
 class LlmProvider(Protocol):
     name: str
+    # Optional telemetry: callers use getattr for providers without metrics.
+    last_metrics: dict[str, int | str] | None
 
     def generate(
         self,

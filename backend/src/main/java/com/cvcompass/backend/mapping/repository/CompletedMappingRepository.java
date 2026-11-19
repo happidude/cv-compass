@@ -20,6 +20,14 @@ public class CompletedMappingRepository {
                 "SELECT COALESCE(max(\"ID\"),0) FROM \"CV_MAPPING_RESULTS\"", Long.class);
     }
 
+    /** Read only the source job identity for publication logging. */
+    public Long jobId(long resultId) {
+        return jdbc.queryForObject(
+                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"ID\"=?",
+                Long.class,
+                resultId);
+    }
+
     public List<Long> scan(long after, long upper, int limit) {
         return jdbc.queryForList(
                 "SELECT r.\"ID\" FROM \"CV_MAPPING_RESULTS\" r JOIN \"CV_MAPPING_JOBS\" j ON j.\"ID\"=r.\"JOB_ID\" WHERE j.\"STATUS\"='COMPLETED' AND r.\"ID\">? AND r.\"ID\"<=? ORDER BY r.\"ID\" LIMIT ?",

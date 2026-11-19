@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 from .backend_client import BackendClient, BackendError, encode
 from .config import PullConfig
+from .lifecycle import call_metrics
 from .pipeline import extract
 from .progress import command_logging, endpoint, event, model_name
 from .prompts import PROMPT_VERSION, WHOLE_PROMPT_VERSION
@@ -52,6 +53,7 @@ class _ObservedProvider:
         self.name = provider.name
         self.supervisor = supervisor
         self.failure = None
+        self.last_metrics = {}
 
     def generate(
         self,
@@ -61,6 +63,7 @@ class _ObservedProvider:
         num_ctx: int | None = None,
         timeout_s: float | None = None,
     ) -> str:
+        self.last_metrics = {}
         if self.failure:
             raise ProviderError(self.failure)
         if self.supervisor.lost or self.supervisor.outcome_started:
@@ -71,7 +74,9 @@ class _ObservedProvider:
                 for key, value in (('num_ctx', num_ctx), ('timeout_s', timeout_s))
                 if value is not None
             }
-            return self.provider.generate(prompt, json_schema, **options)
+            response = self.provider.generate(prompt, json_schema, **options)
+            self.last_metrics = getattr(self.provider, 'last_metrics', None) or {}
+            return response
         except ProviderError as error:
             self.failure = (
                 'PROVIDER_TIMEOUT'
@@ -147,7 +152,12 @@ class _Attempt:
             while not self.stop.is_set():
                 now = time.monotonic()
                 delay = max(
-                    0, min(self.interval, self.hard - self.interval - now, (self.lease - now) / 2)
+                    0,
+                    min(
+                        self.interval,
+                        self.hard - self.interval - now,
+                        (self.lease - now) / 2,
+                    ),
                 )
                 if self.stop.wait(delay):
                     return
@@ -231,7 +241,11 @@ def _shutdown_unstarted(client, claim, token, counts) -> None:
         )
         if status == 200 and reply.get('status') == 'FAILED':
             counts['failed'] += 1
-            event('failed', attempt=str(UUID(claim['attemptId']))[:8], code='WORKER_SHUTDOWN')
+            event(
+                'failed',
+                attempt=str(UUID(claim['attemptId']))[:8],
+                code='WORKER_SHUTDOWN',
+            )
     except BackendError as error:
         counts[error.code] += 1
         event('backend_error', level=logging.ERROR, code=error.code)
@@ -264,7 +278,10 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
             _definition(claim)
             try:
                 status, data = client.request(
-                    'GET', attempt.path + '/input', token, deadline=min(attempt.lease, attempt.hard)
+                    'GET',
+                    attempt.path + '/input',
+                    token,
+                    deadline=min(attempt.lease, attempt.hard),
                 )
                 if status != 200:
                     raise ValueError('INVALID_INPUT')
@@ -283,11 +300,19 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                 started = time.monotonic()
 
                 def on_block(index, total, seconds):
+                    metrics = call_metrics(observed.last_metrics)
+                    metrics.pop('total_s', None)
+                    for key in ('prompt_s', 'output_s', 'load_s'):
+                        if key in metrics:
+                            metrics[key] = f'{metrics[key]:.3f}'
+                    if 'tok_s' in metrics:
+                        metrics['tok_s'] = f'{metrics["tok_s"]:.2f}'
                     event(
                         'extraction_block',
                         attempt=attempt.short_id,
                         block=f'{index}/{total}',
                         seconds=f'{seconds:.3f}',
+                        **metrics,
                     )
 
                 result = extract(

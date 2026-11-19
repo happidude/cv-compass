@@ -6,7 +6,10 @@ import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import com.cvcompass.backend.candidate.repository.PublicationRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
 import com.cvcompass.backend.mapping.api.CompletedMappings;
+import com.cvcompass.backend.web.OperationalLog;
+import java.util.HashMap;
 import java.util.UUID;
+import org.slf4j.event.Level;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -59,6 +62,12 @@ public class PublicationService {
                     mappings.supportsPublicationVersion(result)
                             ? "INVALID_MAPPING_ENVELOPE"
                             : "UNSUPPORTED_MAPPING_VERSION");
+            logPublication(
+                    result,
+                    "SKIPPED",
+                    mappings.supportsPublicationVersion(result)
+                            ? "INVALID_MAPPING_ENVELOPE"
+                            : "UNSUPPORTED_MAPPING_VERSION");
             return true;
         }
         var body = json.readTree(result.body());
@@ -74,11 +83,13 @@ public class PublicationService {
                         && (!body.path("experiences").isEmpty() || (v3 && !personal.isEmpty()));
         if (!usable) {
             publications.ledger(result, null, "SKIPPED", skipReason(result, body));
+            logPublication(result, "SKIPPED", skipReason(result, body));
             return true;
         }
         boolean stale = publications.stale(result);
         if (stale) {
             publications.ledger(result, null, "SUPERSEDED");
+            logPublication(result, "SKIPPED", "SUPERSEDED");
             return true;
         }
         long id = documents.lockAndResolve(result.documentId());
@@ -87,6 +98,7 @@ public class PublicationService {
         var before = queries.detail(id);
         boolean initial = repository.experienceCount(id) == 0 && version == 0;
         publications.ledger(result, id, initial ? "PUBLISHED" : "PROPOSED");
+        logPublication(result, initial ? "PUBLISHED" : "PROPOSED", null);
         boolean changed = false;
         for (var experience : body.path("experiences")) {
             changed = true;
@@ -134,6 +146,16 @@ public class PublicationService {
                 json.createObjectNode().put("schemaVersion", 1).set("mapping", body).toString());
         revisions.revision(id, version, "SYSTEM", "PUBLISH_MAPPING", before, queries.detail(id));
         return true;
+    }
+
+    private void logPublication(CompletedMappings.Result result, String status, String code) {
+        var context = new HashMap<String, Object>();
+        context.put("documentId", result.documentId());
+        Long jobId = mappings.jobId(result.id());
+        if (jobId != null) context.put("jobId", jobId);
+        context.put("status", status);
+        OperationalLog.committed(
+                Level.INFO, OperationalLog.Event.CANDIDATE_PUBLICATION_RECORDED, code, context);
     }
 
     private static String skipReason(
