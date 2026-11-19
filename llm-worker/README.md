@@ -38,6 +38,72 @@ Nếu Ruff đã được provision, dùng `ruff format --check src tests` và
 `ruff check src tests`. Không cài dependency hay công cụ để chạy package.
 `ruff.toml` sao chép nguyên bản từ worker, không thay đổi cấu hình dùng chung.
 
+## O8 — Model dự phòng sau cờ
+
+`CVC_LLM_FALLBACK_MODEL` mặc định trống: không gọi model dự phòng, giữ nguyên
+prompt, schema, validation và đường lỗi provider hiện có. Đặt thành tag model
+Ollama local để bật cascade cho `run`, `bench` và `pull`; model dự phòng dùng cùng
+cấu hình với model chính, chỉ thay model. Hai khóa này cũng thuộc allowlist của
+file cấu hình `bench`:
+
+```dotenv
+CVC_LLM_FALLBACK_MODEL=qwen3:4b
+CVC_LLM_FALLBACK_DROP_RATIO=0.3
+```
+
+Sau model chính, `fallback_reasons(result, document)` trả các mã theo thứ tự:
+`INVALID_JSON` (có `LLM_INVALID_JSON`), `NO_EXPERIENCE` (không có kinh nghiệm hợp
+lệ khi nhận diện chắc chắn heading kinh nghiệm), `NO_FULLNAME` (thiếu field
+`fullName`), `DROP_RATIO` (tỷ lệ mục kinh nghiệm bị loại ≥ ngưỡng > 0 và ≤ 1, mặc định
+0.3; chỉ xét khi tổng số mục hợp lệ và bị loại > 0). Mục bị loại được đếm một lần
+qua `EXPERIENCE_WITHOUT_ROLE`, kể cả khi có nhiều lỗi `QUOTE_NOT_FOUND` đi kèm;
+lỗi quote chỉ làm mất một field của mục còn hợp lệ không được tính là loại cả mục.
+Có `PROVIDER_ERROR` thì không kích hoạt dự phòng, giữ đường lỗi hạ tầng hiện tại.
+Ngưỡng 0 hoặc ngoài khoảng hợp lệ trả lỗi cấu hình `INVALID_FALLBACK_DROP_RATIO`.
+
+Nếu có lý do và cờ bật, worker chạy lại toàn bộ CV bằng model dự phòng, dùng toàn
+bộ kết quả đó kể cả khi vẫn kém; không lặp và không trộn hai kết quả. Provenance
+model cố định từ lúc khởi động là `<chính>+fallback:<dự phòng>` (ví dụ
+`qwen3:1.7b+fallback:qwen3:4b`), giống nhau lúc claim và submit. Chuỗi ghép phải
+khớp `[A-Za-z0-9._:/@+-]{1,128}`, nếu không sẽ lỗi `INVALID_FALLBACK_MODEL` khi
+nạp cấu hình. Cờ trống giữ provenance cũ.
+
+Khi cascade bật, log `pull` tại `extraction_done` có `cascade=yes|no` và
+`cascade_reason=<mã,…>` (`NONE` khi không chạy dự phòng), đồng thời giữ
+`fallback=blocks` khi có `WHOLE_TOO_LONG`. Cờ trống không thêm hai key cascade.
+Tổng hợp `pull` đếm
+`fallbacks` và `fallback_reason.<mã>`; `run-summary.json` có `fallbacks` và
+`fallback_reasons` đếm số CV theo từng lý do. Số lượt gọi và metrics của `run`/
+`bench` bao gồm cả hai model; `bench --parallel` giữ provider riêng cho mỗi luồng.
+
+File `<stem>.result.json` local có thêm `fallbackCandidate: [mã,…]` khi cascade
+bật hoặc kết quả chính có lý do kém; khi đã cascade, danh sách vẫn ghi lý do của
+model chính. Metadata này không gửi backend. `run --only-fallback-candidates
+<run-dir>` đọc các `*.result.json` của lượt trước, chọn danh sách không rỗng,
+đối chiếu tên `<stem>` với `<stem>.json` trong `--input`, rồi áp dụng `--limit`.
+Thiếu metadata được coi là không đánh dấu. Khi dùng tùy chọn này,
+`run-summary.json` thêm `selected_fallback_candidates` đếm số CV được chọn sau
+`--limit` (lượt cũ không có metadata thì bằng 0); bỏ qua file symlink ở cả kết
+quả lượt trước và OCR được chọn. Output phải là thư mục mới/rỗng như
+`run`, tách khỏi OCR, repo và thư mục lượt trước; không sửa nguồn hoặc kết quả cũ.
+
+Với VRAM 4 GB, nếu hai model không cùng vừa bộ nhớ, mỗi lần đổi model Ollama phải
+nạp lại model, có thể làm cascade chậm hơn. Khuyên chạy dự phòng theo lô: lượt đầu
+dùng model nhỏ và cờ trống để ghi các CV kém, sau đó chạy model lớn cho danh sách
+đã đánh dấu. Không dùng `CVC_LLM_KEEP_ALIVE=-1` cùng cascade vì giữ model vô hạn
+có thể làm tăng áp lực bộ nhớ và chi phí đổi model.
+
+```powershell
+$env:CVC_LLM_MODEL='qwen3:1.7b'
+$env:CVC_LLM_FALLBACK_MODEL=''
+py -3.14 -m cv_compass_llm run --input C:\cv-compass-synthetic\ocr --output C:\cv-compass-synthetic\run-small
+$env:CVC_LLM_MODEL='qwen3:4b'
+py -3.14 -m cv_compass_llm run --input C:\cv-compass-synthetic\ocr --only-fallback-candidates C:\cv-compass-synthetic\run-small --output C:\cv-compass-synthetic\run-large
+```
+
+Chỉ bật cascade sau khi `bench` trên bộ gold tổng hợp đã xác nhận giữ độ chính xác
+và nhanh hơn. Test kỹ thuật không thay thế phép đo này.
+
 ## Privacy
 
 Chỉ dùng fixture tổng hợp, không tên/người/công ty thật. Không print/log CV,

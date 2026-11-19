@@ -6,6 +6,7 @@ import os
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from statistics import mean, median
 from time import perf_counter
@@ -119,6 +120,14 @@ def _aggregate(runs: list[dict], comparisons: list[dict], seconds: list[float]) 
             )
     for summary in runs:
         counts.update({key: summary[key] for key in ('files', 'ok', 'llm_calls')})
+        if 'fallbacks' in summary:
+            counts['fallbacks'] += summary['fallbacks']
+            counts.update(
+                {
+                    f'fallback_reasons.{code}': count
+                    for code, count in summary['fallback_reasons'].items()
+                }
+            )
         for key in ('issues', 'errors'):
             counts.update({f'{key}.{code}': count for code, count in summary[key].items()})
     metrics = dict(counts) | _timing(seconds)
@@ -163,6 +172,12 @@ def run_bench(
     rows = []
     for name, config in configs:
         providers = [provider_factory(config) for _ in range(parallel)]
+        if config.fallback_model:
+            for local_provider in providers:
+                if getattr(local_provider, 'fallback_provider', None) is None:
+                    local_provider.fallback_provider = provider_factory(
+                        replace(config, model=config.fallback_model, fallback_model='')
+                    )
         provider = providers[0]
         options = {
             'max_blocks': config.max_blocks,
@@ -172,6 +187,8 @@ def run_bench(
         }
         if parallel > 1:
             options['_providers'] = providers
+        if config.fallback_model:
+            options['config'] = config
         if warmup:
             run_batch(source, target / name / 'warmup', provider, limit=warmup, **options)
         runs, comparisons, seconds = [], [], []

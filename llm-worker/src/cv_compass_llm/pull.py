@@ -297,10 +297,18 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                 failure = 'INVALID_INPUT'
             if failure is None:
                 observed = _ObservedProvider(provider, attempt)
+                cascade = bool(config.llm.fallback_model)
+                backup = _ObservedProvider(provider.fallback_provider, attempt) if cascade else None
+                reasons = ()
                 started = time.monotonic()
 
+                def on_fallback(codes):
+                    nonlocal reasons
+                    reasons = codes
+
                 def on_block(index, total, seconds):
-                    metrics = call_metrics(observed.last_metrics)
+                    current = backup if reasons else observed
+                    metrics = call_metrics(current.last_metrics)
                     metrics.pop('total_s', None)
                     for key in ('prompt_s', 'output_s', 'load_s'):
                         if key in metrics:
@@ -323,6 +331,9 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     mode=config.llm.mode,
                     whole_timeout=config.llm.whole_timeout,
                     config=config.llm,
+                    **(
+                        {'fallback_provider': backup, 'on_fallback': on_fallback} if cascade else {}
+                    ),
                 )
                 issues = Counter(
                     (issue.code if issue.field is None else f'{issue.code}.{issue.field}')
@@ -335,6 +346,14 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     if any(issue.code == 'WHOLE_TOO_LONG' for issue in result.issues)
                     else {}
                 )
+                if cascade:
+                    fallback.update(
+                        cascade='yes' if reasons else 'no',
+                        cascade_reason=','.join(reasons) or 'NONE',
+                    )
+                    if reasons:
+                        counts['fallbacks'] += 1
+                        counts.update('fallback_reason.' + code for code in reasons)
                 event(
                     'extraction_done',
                     attempt=attempt.short_id,
@@ -344,8 +363,9 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     or 'NONE:0',
                     **fallback,
                 )
-                if observed.failure:
-                    failure = observed.failure
+                provider_failure = observed.failure or (backup.failure if backup else None)
+                if provider_failure:
+                    failure = provider_failure
                     event(
                         'provider_error',
                         level=logging.ERROR,
@@ -421,7 +441,7 @@ def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
 def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
     counts = Counter(claimed=0, accepted=0, failed=0)
     provenance = {
-        'model': config.llm.model,
+        'model': config.llm.provenance_model,
         'promptVersion': prompt_version(config.llm.mode, config.llm),
         'workerVersion': config.worker_version,
     }

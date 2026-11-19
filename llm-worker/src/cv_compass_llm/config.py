@@ -12,6 +12,8 @@ from urllib.parse import urlsplit
 ENV_KEYS = {
     'provider': 'CVC_LLM_PROVIDER',
     'model': 'CVC_LLM_MODEL',
+    'fallback_model': 'CVC_LLM_FALLBACK_MODEL',
+    'fallback_drop_ratio': 'CVC_LLM_FALLBACK_DROP_RATIO',
     'base_url': 'CVC_LLM_BASE_URL',
     'timeout': 'CVC_LLM_TIMEOUT_S',
     'mode': 'CVC_LLM_MODE',
@@ -46,6 +48,8 @@ BENCH_ENV_KEYS = frozenset(
     for name in (
         'provider',
         'model',
+        'fallback_model',
+        'fallback_drop_ratio',
         'base_url',
         'timeout',
         'mode',
@@ -90,6 +94,18 @@ class LlmConfig:
     trim_input: bool = False
     trim_sections: bool = False
     trim_phrases: tuple[str, ...] = ()
+    fallback_model: str = ''
+    fallback_drop_ratio: float = 0.3
+
+    @property
+    def provenance_model(self) -> str:
+        """Keep claim and submit model identity independent of each CV's route."""
+        if not self.fallback_model:
+            return self.model
+        model = f'{self.model}+fallback:{self.fallback_model}'
+        if not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', model):
+            raise ValueError('INVALID_FALLBACK_MODEL')
+        return model
 
 
 def default_env_file() -> Path:
@@ -195,6 +211,8 @@ def load_config(
             environ.get(ENV_KEYS[name]),
             file_values.get(ENV_KEYS[name]),
         ):
+            if name == 'fallback_model' and candidate is not None:
+                return candidate.strip()
             if candidate is not None and candidate.strip():
                 return candidate.strip()
         return default
@@ -239,9 +257,19 @@ def load_config(
     max_output_tokens = value('max_output_tokens')
     keep_alive = value('keep_alive') or None
     validate_keep_alive(keep_alive)
-    return LlmConfig(
+    fallback_drop_ratio = _number(
+        value('fallback_drop_ratio', '0.3'),
+        'INVALID_FALLBACK_DROP_RATIO',
+        minimum=0,
+        maximum=1,
+    )
+    if fallback_drop_ratio == 0:
+        raise ValueError('INVALID_FALLBACK_DROP_RATIO')
+    config = LlmConfig(
         provider=provider,
         model=model,
+        fallback_model=value('fallback_model'),
+        fallback_drop_ratio=fallback_drop_ratio,
         base_url=value('base_url', 'http://127.0.0.1:11434'),
         timeout_s=timeout,
         max_blocks=max_blocks,
@@ -268,6 +296,8 @@ def load_config(
             maximum=10,
         ),
     )
+    _ = config.provenance_model
+    return config
 
 
 def load_bench_config(env_file: Path, environ: Mapping[str, str]) -> LlmConfig:
@@ -393,6 +423,8 @@ def load_pull_config(
     except ValueError as error:
         code = str(error)
         names = {
+            'INVALID_FALLBACK_MODEL': 'fallback_model',
+            'INVALID_FALLBACK_DROP_RATIO': 'fallback_drop_ratio',
             'INVALID_PROVIDER': 'provider',
             'INVALID_TIMEOUT': 'timeout',
             'INVALID_MAX_BLOCKS': 'max_blocks',
