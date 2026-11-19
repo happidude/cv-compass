@@ -13,6 +13,36 @@ final class PersonalInfoValidation {
                     java.util.regex.Pattern.CASE_INSENSITIVE
                             | java.util.regex.Pattern.UNICODE_CASE);
 
+    private static final java.util.regex.Pattern REMOTE_HONORIFIC =
+            java.util.regex.Pattern.compile(
+                    "^(?:(?:Mr|Ms|Mrs|Miss|Mx|Dr)\\.?|Ông|Bà|Anh|Chị)\\s+",
+                    java.util.regex.Pattern.CASE_INSENSITIVE
+                            | java.util.regex.Pattern.UNICODE_CASE
+                            | java.util.regex.Pattern.CANON_EQ);
+
+    private static final java.util.regex.Pattern REMOTE_FULL_NAME =
+            java.util.regex.Pattern.compile(
+                    "([\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*?)(?: *\\(([\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*)\\))?");
+
+    static Checked checkRemote(String field, String raw) {
+        if (!field.equals("fullName")) return check(field, raw);
+        String text =
+                Normalizer.normalize(raw, Normalizer.Form.NFC).strip().replaceAll("\\s+", " ");
+        if (text.isBlank() || text.codePointCount(0, text.length()) > 255)
+            return new Checked(null, "VALUE_LENGTH_INVALID");
+        var honorific = REMOTE_HONORIFIC.matcher(text);
+        boolean hasHonorific = honorific.find();
+        String cleaned = hasHonorific ? text.substring(honorific.end()) : text;
+        var parts = REMOTE_FULL_NAME.matcher(cleaned);
+        if (!parts.matches()) return new Checked(null, "INVALID_NAME");
+        String fullName = parts.group(1).strip();
+        String alias = parts.group(2);
+        if (fullName.split(" ").length < 2 && !hasHonorific && alias == null
+                || ROLE_OR_DOCUMENT_HEADING.matcher(cleaned).find())
+            return new Checked(null, "INVALID_NAME");
+        return new Checked(fullName + (alias == null ? "" : " (" + alias + ")"), null);
+    }
+
     static String name(String raw) {
         return java.util.regex.Pattern.compile(
                         "^(?:(?:Mr|Ms|Mrs)\\.?|Ông|Bà|Anh|Chị)\\s+",
