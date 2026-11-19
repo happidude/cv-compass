@@ -7,6 +7,19 @@ from urllib.parse import urlsplit
 
 LOGGER = logging.getLogger('cv_compass_llm.pull')
 LOGGER.addHandler(logging.NullHandler())
+_CONTEXT = {}
+
+
+@contextmanager
+def context(**fields):
+    """Scope process-wide defaults so heartbeat threads share pull metadata."""
+    global _CONTEXT
+    previous = _CONTEXT
+    _CONTEXT = previous | fields
+    try:
+        yield
+    finally:
+        _CONTEXT = previous
 
 
 def endpoint(value: str) -> str:
@@ -33,8 +46,10 @@ def model_name(value: str) -> str:
 
 def event(name: str, *, level: int = logging.INFO, **fields) -> None:
     # Build the record from metadata only: no exception object, body or source locals.
+    fields = fields | _CONTEXT
+    ordered = _CONTEXT | fields
     LOGGER.log(
-        level, ' '.join([f'event={name}', *(f'{key}={value}' for key, value in fields.items())])
+        level, ' '.join([f'event={name}', *(f'{key}={value}' for key, value in ordered.items())])
     )
 
 

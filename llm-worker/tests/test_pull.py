@@ -150,6 +150,35 @@ class PullConfigTests(unittest.TestCase):
     def load(self, env=None):
         return load_pull_config(self.env if env is None else env, self.path, env_file_explicit=True)
 
+    def test_worker_name_defaults_sanitize_shorten_and_keep_pid(self):
+        for hostname, expected in (
+            ('host_one.example.invalid', 'hostone-1234'),
+            ('---._', 'worker-1234'),
+            ('h' * 80, 'h' * 35 + '-1234'),
+        ):
+            with (
+                self.subTest(hostname=hostname),
+                patch('cv_compass_llm.config.socket.gethostname', return_value=hostname),
+                patch('cv_compass_llm.config.os.getpid', return_value=1234),
+            ):
+                self.assertEqual(self.load().worker_name, expected)
+
+    def test_worker_name_validation_and_environment_precedence(self):
+        with self.path.open('a', encoding='utf-8') as stream:
+            stream.write('CVC_LLM_WORKER_NAME=file-worker\n')
+        self.assertEqual(self.load().worker_name, 'file-worker')
+        for name in ('A', 'worker-2', 'a' * 40):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    self.load(dict(self.env, CVC_LLM_WORKER_NAME=name)).worker_name, name
+                )
+        for name in ('', '-worker', 'a' * 41, 'a_b', 'a.b', 'a b', 'a\nb', 'máy', ' a '):
+            with (
+                self.subTest(name=name),
+                self.assertRaisesRegex(ValueError, '^CVC_LLM_WORKER_NAME INVALID_WORKER_NAME$'),
+            ):
+                self.load(dict(self.env, CVC_LLM_WORKER_NAME=name))
+
     def test_required_keys_and_no_value_diagnostics(self):
         for key in ('CVC_LLM_BACKEND_URL', 'CVC_LLM_WORKER_TOKEN'):
             environment = dict(self.env)

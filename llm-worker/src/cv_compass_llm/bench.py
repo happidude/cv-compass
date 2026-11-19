@@ -1,4 +1,4 @@
-"""Sequential offline extraction benchmarks with aggregate-only reports."""
+"""Offline extraction benchmarks with aggregate-only reports."""
 
 import hashlib
 import json
@@ -8,6 +8,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from statistics import mean, median
+from time import perf_counter
 from typing import Literal
 
 from .batch_io import input_directory, load_json, prepare_output
@@ -21,6 +22,7 @@ BENCH_ERRORS = {
     'BENCH_INVALID_CONFIG_KEY',
     'BENCH_INVALID_REPEAT',
     'BENCH_INVALID_WARMUP',
+    'BENCH_INVALID_PARALLEL',
 }
 
 
@@ -138,6 +140,7 @@ def run_bench(
     provider_factory: Callable[[LlmConfig], LlmProvider],
     repeat: int = 1,
     warmup: int = 0,
+    parallel: int = 1,
     environ: Mapping[str, str] | None = None,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> dict:
@@ -148,6 +151,8 @@ def run_bench(
         raise ValueError('BENCH_INVALID_REPEAT')
     if type(warmup) is not int or warmup < 0:
         raise ValueError('BENCH_INVALID_WARMUP')
+    if type(parallel) is not int or not 1 <= parallel <= 16:
+        raise ValueError('BENCH_INVALID_PARALLEL')
     configs = _configs(configurations, os.environ if environ is None else environ)
     source, gold = input_directory(input_dir), input_directory(gold_dir)
     target = Path(output_dir).resolve()
@@ -157,20 +162,26 @@ def run_bench(
     target = prepare_output(source, target, repo_root=repo_root)
     rows = []
     for name, config in configs:
-        provider = provider_factory(config)
+        providers = [provider_factory(config) for _ in range(parallel)]
+        provider = providers[0]
         options = {
             'max_blocks': config.max_blocks,
             'mode': config.mode,
             'whole_timeout': config.whole_timeout,
             'repo_root': repo_root,
         }
+        if parallel > 1:
+            options['_providers'] = providers
         if warmup:
             run_batch(source, target / name / 'warmup', provider, limit=warmup, **options)
         runs, comparisons, seconds = [], [], []
         first, different = None, set()
+        wall_seconds = 0.0
         for iteration in range(1, repeat + 1):
             directory = target / name / f'r{iteration}'
+            started = perf_counter()
             runs.append(run_batch(source, directory, provider, **options))
+            wall_seconds += perf_counter() - started
             comparisons.append(compare(directory, gold))
             elapsed, fingerprints = _observations(directory)
             seconds.extend(elapsed)
@@ -184,6 +195,9 @@ def run_bench(
                 )
         metrics = _aggregate(runs, comparisons, seconds)
         metrics['different_cvs'] = len(different)
+        metrics['throughput_cv_per_min'] = (
+            metrics['ok'] * 60 / wall_seconds if wall_seconds > 0 else None
+        )
         rows.append({'name': name, 'metrics': metrics})
     keys = sorted(set().union(*(row['metrics'] for row in rows)))
     baseline = rows[0]['metrics']

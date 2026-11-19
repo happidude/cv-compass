@@ -3,12 +3,16 @@
 import io
 import json
 import os
+import re
 import tempfile
+import threading
 import unittest
+from collections import Counter
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from cv_compass_llm.batch_io import write_json
 from cv_compass_llm.bench import print_bench, run_bench
 from cv_compass_llm.cli import create_provider, main
 from cv_compass_llm.config import load_bench_config
@@ -206,7 +210,7 @@ class BenchTests(unittest.TestCase):
             metrics=[{'output_tokens': 1}, {'output_tokens': 2}, {}],
         )
         with patch('cv_compass_llm.cli.perf_counter', side_effect=[0, 1, 2, 3, 6, 7, 8, 13, 14]):
-            report = self.run_bench(lambda config: provider, repeat=3)
+            report = self.run_bench(lambda config: provider, repeat=3, parallel=1)
         metrics = report['configurations'][0]['metrics']
         self.assertEqual(metrics['different_cvs'], 0)
         self.assertEqual(metrics['seconds.average'], 3)
@@ -395,12 +399,135 @@ class BenchTests(unittest.TestCase):
             ),
             (self.configs, {'repeat': 0}, 'BENCH_INVALID_REPEAT'),
             (self.configs, {'warmup': -1}, 'BENCH_INVALID_WARMUP'),
+            (self.configs, {'parallel': 0}, 'BENCH_INVALID_PARALLEL'),
+            (self.configs, {'parallel': 17}, 'BENCH_INVALID_PARALLEL'),
+            (self.configs, {'parallel': True}, 'BENCH_INVALID_PARALLEL'),
+            (self.configs, {'parallel': 1.5}, 'BENCH_INVALID_PARALLEL'),
         ):
             self.configs, previous = names, self.configs
             with self.subTest(code=code), self.assertRaisesRegex(ValueError, '^' + code + '$'):
                 self.run_bench(lambda config: self.fail('unexpected factory'), **options)
             self.configs = previous
             self.assertFalse(self.output.exists())
+
+    def test_parallel_workers_use_separate_providers_and_process_each_cv_once_per_run(self):
+        self.configs = self.configs[:1]
+        original = self.source / (self.filename + '.json')
+        original_gold = self.gold / (self.filename + '.gold.json')
+        reference = original_gold.read_bytes()
+        original.rename(self.source / 'cv-0.json')
+        original_gold.rename(self.gold / 'cv-0.gold.json')
+        for index in range(4):
+            (self.source / f'cv-{index}.json').write_text(
+                json.dumps(
+                    {
+                        'pages': [
+                            {
+                                'page_number': 1,
+                                'status': 'ok',
+                                'raw_text': f'{self.secret}\nCV-MARKER-{index}\nExperience\n',
+                            }
+                        ]
+                    }
+                ),
+                encoding='utf-8',
+            )
+            (self.gold / f'cv-{index}.gold.json').write_bytes(reference)
+        (self.source / 'invalid.json').write_bytes(b'{')
+        providers, seen = [], Counter()
+        paired = threading.Barrier(2, timeout=5)
+        lock = threading.Lock()
+        response = self.response()
+        completed, second_written = [], {}
+
+        def write_out_of_order(path, payload):
+            with lock:
+                ready = second_written.setdefault(path.parent, threading.Event())
+            if path.name == 'cv-0.result.json' and not ready.wait(5):
+                raise AssertionError('Second CV did not finish first')
+            write_json(path, payload)
+            if path.name.endswith('.result.json'):
+                with lock:
+                    completed.append(path)
+            if path.name == 'cv-1.result.json':
+                ready.set()
+
+        class PairedProvider(FakeProvider):
+            def __init__(self, tokens):
+                super().__init__([response] * 5, metrics={'prompt_tokens': tokens})
+                self.exclusive = threading.Lock()
+
+            def generate(self, prompt, schema, **options):
+                if not self.exclusive.acquire(blocking=False):
+                    raise AssertionError('Provider shared concurrently')
+                try:
+                    value = super().generate(prompt, schema, **options)
+                    with lock:
+                        seen[re.search(r'CV-MARKER-\d', prompt).group()] += 1
+                    paired.wait()
+                    return value
+                finally:
+                    self.exclusive.release()
+
+        def factory(config):
+            provider = PairedProvider(10 if not providers else 30)
+            providers.append(provider)
+            return provider
+
+        with (
+            patch('cv_compass_llm.bench.perf_counter', side_effect=[0, 10, 20, 30]),
+            patch('cv_compass_llm.cli.write_json', side_effect=write_out_of_order),
+        ):
+            report = self.run_bench(factory, parallel=2, warmup=2, repeat=2)
+        self.assertEqual(len(providers), 2)
+        self.assertEqual([len(provider.calls) for provider in providers], [5, 5])
+        self.assertEqual(
+            seen, {'CV-MARKER-0': 3, 'CV-MARKER-1': 3, 'CV-MARKER-2': 2, 'CV-MARKER-3': 2}
+        )
+        metrics = report['configurations'][0]['metrics']
+        self.assertEqual(metrics['files'], 10)
+        self.assertEqual(metrics['ok'], 8)
+        self.assertEqual(metrics['errors.INVALID_JSON'], 2)
+        self.assertEqual(metrics['llm_calls'], 8)
+        self.assertEqual(metrics['prompt_tokens.count'], 8)
+        self.assertEqual(metrics['prompt_tokens.average'], 20)
+        self.assertEqual(metrics['throughput_cv_per_min'], 24)
+        self.assertEqual(metrics['different_cvs'], 0)
+        for stage in ('warmup', 'r1', 'r2'):
+            names = [path.name for path in completed if path.parent.name == stage]
+            self.assertLess(names.index('cv-1.result.json'), names.index('cv-0.result.json'))
+        for iteration in (1, 2):
+            directory = self.output / 'base' / f'r{iteration}'
+            self.assertEqual(len(list(directory.glob('*.result.json'))), 4)
+            self.assertTrue((directory / 'invalid.error.json').is_file())
+            summary = json.loads((directory / 'run-summary.json').read_text(encoding='utf-8'))
+            self.assertEqual(summary['llm_calls'], 4)
+
+    def test_cli_parallel_reaches_benchmark(self):
+        with (
+            patch('cv_compass_llm.cli.run_bench', return_value={'configurations': []}) as bench,
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(
+                main(
+                    [
+                        'bench',
+                        '--input',
+                        'unused',
+                        '--gold',
+                        'unused',
+                        '--output',
+                        'unused',
+                        '--config',
+                        'base=unused',
+                        '--parallel',
+                        '2',
+                        '--json',
+                    ]
+                ),
+                0,
+            )
+        self.assertEqual(bench.call_args.kwargs['parallel'], 2)
 
     def test_output_boundaries_and_nonempty_preserve_existing_data(self):
         def factory(config):

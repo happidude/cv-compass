@@ -1,9 +1,11 @@
 """Read local configuration without mutating the process environment."""
 
 import math
+import os
 import re
+import socket
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -31,6 +33,7 @@ ENV_KEYS = {
     'backend_url': 'CVC_LLM_BACKEND_URL',
     'worker_token': 'CVC_LLM_WORKER_TOKEN',
     'worker_version': 'CVC_LLM_WORKER_VERSION',
+    'worker_name': 'CVC_LLM_WORKER_NAME',
     'poll_s': 'CVC_LLM_POLL_S',
     'http_timeout_s': 'CVC_LLM_HTTP_TIMEOUT_S',
     'max_http_attempts': 'CVC_LLM_MAX_HTTP_ATTEMPTS',
@@ -286,6 +289,13 @@ class PullConfigError(ValueError):
         super().__init__(f'{key} {code}')
 
 
+def default_worker_name() -> str:
+    """Keep the PID suffix when shortening a sanitized hostname."""
+    suffix = f'-{os.getpid()}'
+    host = re.sub(r'[^A-Za-z0-9-]', '', socket.gethostname().split('.')[0]).strip('-')
+    return (host or 'worker')[: 40 - len(suffix)] + suffix
+
+
 @dataclass(frozen=True, repr=False)
 class PullConfig:
     llm: LlmConfig
@@ -296,6 +306,7 @@ class PullConfig:
     http_timeout_s: int
     max_http_attempts: int
     log_level: str = 'INFO'
+    worker_name: str = field(default_factory=default_worker_name)
 
 
 def validate_backend_url(value: str) -> str:
@@ -355,6 +366,11 @@ def load_pull_config(
     version = value('worker_version', 'dev')
     if not re.fullmatch(r'[A-Za-z0-9._:/@+-]{1,128}', version):
         raise PullConfigError(ENV_KEYS['worker_version'], 'INVALID_PROVENANCE')
+    worker_name = environ.get(ENV_KEYS['worker_name'], values.get(ENV_KEYS['worker_name']))
+    if worker_name is None:
+        worker_name = default_worker_name()
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,39}', worker_name):
+        raise PullConfigError(ENV_KEYS['worker_name'], 'INVALID_WORKER_NAME')
     numbers = {}
     for name, default, maximum in (
         ('poll_s', '5', 300),
@@ -402,4 +418,6 @@ def load_pull_config(
     log_level = value('log_level', 'INFO')
     if log_level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR'):
         raise PullConfigError(ENV_KEYS['log_level'], 'INVALID_LOG_LEVEL')
-    return PullConfig(llm, backend, token, version, **numbers, log_level=log_level)
+    return PullConfig(
+        llm, backend, token, version, **numbers, log_level=log_level, worker_name=worker_name
+    )

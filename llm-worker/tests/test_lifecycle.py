@@ -101,6 +101,17 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(report['summary']['completed'], 1)
         self.assertAlmostEqual(report['summary']['cv_per_hour'], 3600 / 35)
 
+    def test_worker_context_after_event_preserves_lifecycle_report(self):
+        backend, ocr, llm = self.fixture()
+        self.save(backend, ocr, llm)
+        expected = self.report()
+        llm = [
+            line.replace('event=extraction_block ', 'event=extraction_block worker=host-42 ')
+            for line in llm
+        ]
+        self.save(backend, ocr, llm)
+        self.assertEqual(self.report(), expected)
+
     def test_percentiles_mean_and_throughput_count_each_document_once(self):
         backend = []
         for document, seconds in (('1', 10), ('2', 20), ('3', 30), ('4', 40)):

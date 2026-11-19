@@ -4,7 +4,9 @@ import argparse
 import json
 import os
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from queue import Empty, Queue
 from time import perf_counter
 from typing import Literal
 
@@ -93,6 +95,7 @@ def run_batch(
     whole_timeout: float = 900,
     config: LlmConfig | None = None,
     repo_root: Path | None | Literal['auto'] = 'auto',
+    _providers: list[LlmProvider] | None = None,
 ) -> dict:
     """Extract sorted OCR files without modifying any input artifact."""
     if type(max_blocks) is not int or max_blocks < 0:
@@ -109,18 +112,21 @@ def run_batch(
     errors, issues = Counter(), Counter()
     issues_by_field = Counter()
     ok, total_seconds = 0, 0.0
-    observed = _MetricsProvider(provider)
+    calls = []
     # Bench reuses its configured provider for warmup and every measured batch.
     config = config if config is not None else getattr(provider, 'extraction_config', None)
     if not isinstance(config, LlmConfig):
         config = None
-    for path in paths:
+
+    def process(path, local_provider):
+        observed = _MetricsProvider(local_provider)
+        error_code, result = None, None
         started = perf_counter()
         try:
             document = load_document(path)
         except ValueError as error:
             code = str(error) if str(error) in INPUT_ERRORS else 'INVALID_OCR'
-            errors[code] += 1
+            error_code = code
             write_json(target / (path.stem + '.error.json'), {'error': code})
         else:
             result = extract(
@@ -134,13 +140,39 @@ def run_batch(
             payload = result.to_dict()
             payload['seconds'] = perf_counter() - started
             write_json(target / (path.stem + '.result.json'), payload)
+        return error_code, result, perf_counter() - started, observed.calls
+
+    if _providers is not None and len(_providers) > 1:
+        pending = Queue()
+        for index, path in enumerate(paths):
+            pending.put((index, path))
+
+        def consume(local_provider):
+            completed = []
+            while True:
+                try:
+                    index, path = pending.get_nowait()
+                except Empty:
+                    return completed
+                completed.append((index, process(path, local_provider)))
+
+        with ThreadPoolExecutor(max_workers=len(_providers)) as pool:
+            batches = pool.map(consume, _providers)
+            results = [result for _, result in sorted(item for batch in batches for item in batch)]
+    else:
+        results = [process(path, provider) for path in paths]
+    for error_code, result, elapsed, observations in results:
+        calls.extend(observations)
+        total_seconds += elapsed
+        if error_code is not None:
+            errors[error_code] += 1
+        else:
             issues.update(issue.code for issue in result.issues)
             issues_by_field.update(
                 issue.code if issue.field is None else f'{issue.code}.{issue.field}'
                 for issue in result.issues
             )
             ok += 1
-        total_seconds += perf_counter() - started
     summary = {
         'files': len(paths),
         'ok': ok,
@@ -153,8 +185,8 @@ def run_batch(
         'prompt_version': prompt_version(mode, config),
         'mode': mode,
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
-        'llm_calls': len(observed.calls),
-        'llm_metrics': metric_summary(observed.calls),
+        'llm_calls': len(calls),
+        'llm_metrics': metric_summary(calls),
     }
     write_json(target / 'run-summary.json', summary)
     return summary
@@ -201,6 +233,7 @@ def parser() -> argparse.ArgumentParser:
     bench.add_argument('--config', action='append', required=True)
     bench.add_argument('--repeat', type=int, default=1)
     bench.add_argument('--warmup', type=int, default=0)
+    bench.add_argument('--parallel', type=int, default=1)
     bench.add_argument('--json', action='store_true')
     pull = commands.add_parser('pull')
     pull.add_argument('--env-file')
@@ -275,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.config,
                 repeat=args.repeat,
                 warmup=args.warmup,
+                parallel=args.parallel,
                 provider_factory=create_provider,
             )
             if args.json:
