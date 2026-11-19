@@ -151,7 +151,7 @@ $env:CV_BACKEND_PRIVATE_CONFIG = '<absolute-existing-.env.properties>'
 $jar = (Get-ChildItem build/libs/*.jar | Where-Object Name -NotLike '*-plain.jar').FullName
 New-Item -ItemType Directory -Force build/tmp/jvm | Out-Null
 $socketTmp = (Resolve-Path build/tmp/jvm).Path
-java -Duser.timezone=UTC "-Djdk.net.unixdomain.tmpdir=$socketTmp" -jar $jar `
+java "-Duser.timezone=UTC" "-Djdk.net.unixdomain.tmpdir=$socketTmp" -jar $jar `
   "--spring.config.import=file:$env:CV_BACKEND_PRIVATE_CONFIG" `
   "--spring.config.additional-location=file:$env:CV_OCR_DEPLOYMENT_CONFIG" --cv.import.enabled=false
 ```

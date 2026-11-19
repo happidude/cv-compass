@@ -1,3 +1,5 @@
+*.sh text eol=lf
+
 # These are byte-for-byte copies of worker/design canonical contract artifacts.
 # The canonical files use CRLF; materialize the same bytes on every checkout OS.
 backend/src/main/resources/ocr/ocr-v1.schema.json text eol=crlf

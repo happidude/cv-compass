@@ -31,12 +31,64 @@ export function shouldRetry(failures: number, error: unknown) {
       (error.kind === "http" && (error.status ?? 0) >= 500))
   );
 }
-export function decode<T>(text: string, schema: z.ZodType<T>): T {
+function contractEndpoint(path?: string) {
+  if (!path) return undefined;
   try {
-    return schema.parse(JSON.parse(text));
+    return new URL(path, "http://local.invalid").pathname
+      .split("/")
+      .map((segment) =>
+        /^\d+$/.test(segment)
+          ? ":id"
+          : /^[A-Za-z_]{1,64}$/.test(segment)
+            ? segment
+            : segment
+              ? "?"
+              : "",
+      )
+      .join("/");
   } catch {
+    return undefined;
+  }
+}
+export function decode<T>(
+  text: string,
+  schema: z.ZodType<T>,
+  path?: string,
+): T {
+  const endpoint = contractEndpoint(path);
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    console.error("[contract] INVALID_JSON");
     throw new RequestError("contract");
   }
+  let parsed: ReturnType<typeof schema.safeParse>;
+  try {
+    parsed = schema.safeParse(value);
+  } catch {
+    // A throwing transform/refine is still a contract failure, never a retried network error.
+    console.error("[contract] PARSE_ERROR");
+    throw new RequestError("contract");
+  }
+  if (!parsed.success) {
+    const issues = parsed.error.issues.slice(0, 20).map((issue) => ({
+      path: issue.path
+        .map((segment) =>
+          typeof segment === "number"
+            ? segment
+            : typeof segment === "string" &&
+                /^[A-Za-z0-9_]{1,64}$/.test(segment)
+              ? segment
+              : "?",
+        )
+        .join("."),
+      code: issue.code,
+    }));
+    console.error(`[contract] ${JSON.stringify({ endpoint, issues })}`);
+    throw new RequestError("contract");
+  }
+  return parsed.data;
 }
 export function httpError(status: number, text: string) {
   let parsed;
@@ -88,7 +140,7 @@ export function errorMessage(error: unknown) {
   if (error.uncertain && (error.kind === "network" || error.kind === "timeout"))
     return "Không rõ thao tác đã được lưu hay chưa. Tải lại dữ liệu trước khi thử lại.";
   if (error.kind === "contract")
-    return "Lỗi contract: phản hồi máy chủ không đúng cấu trúc hoặc ID không an toàn.";
+    return "Lỗi contract: phản hồi máy chủ không đúng cấu trúc hoặc ID không an toàn. (xem console trình duyệt để biết trường sai)";
   if (error.kind === "timeout")
     return "Yêu cầu quá thời gian. Vui lòng thử cập nhật lại.";
   if (error.kind === "network")
@@ -130,7 +182,7 @@ export async function get<T>(
         window.dispatchEvent(new Event("cv-auth-expired"));
       throw httpError(response.status, text);
     }
-    return decode(text, schema);
+    return decode(text, schema, path);
   } catch (error) {
     if (error instanceof RequestError) throw error;
     throw new RequestError(
@@ -183,7 +235,7 @@ export async function upload<T>(
         return;
       }
       try {
-        resolve(decode(xhr.responseText, schema));
+        resolve(decode(xhr.responseText, schema, path));
       } catch {
         reject(
           new RequestError("contract", undefined, undefined, undefined, true),

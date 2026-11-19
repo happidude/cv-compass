@@ -81,7 +81,9 @@ test("loading then empty, safe HTTP error and contract failure", async ({
     route.fulfill({ json: { id: 9007199254740992 } }),
   );
   await page.reload();
-  await expect(page.getByRole("alert")).toContainText("Lỗi contract");
+  await expect(page.getByRole("alert")).toContainText(
+    "Lỗi contract: phản hồi máy chủ không đúng cấu trúc hoặc ID không an toàn. (xem console trình duyệt để biết trường sai)",
+  );
 });
 test("cursor load-more keeps rows on failure, retries in place, refetch dedupes", async ({
   page,

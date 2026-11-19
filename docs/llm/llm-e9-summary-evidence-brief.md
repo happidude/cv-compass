@@ -1,0 +1,10 @@
+# Brief E9 — Backend nhận summary nhiều đoạn evidence (nối qua trang / nhiều mục)
+
+Mục tiêu/acceptance: trong result remote `llm-extraction/1.0`, riêng `personal.summary.evidence` được là **object (như cũ) hoặc mảng 1–8 object** evidence; mỗi phần tử kiểm như hiện tại (`page/start/end/text`, text đúng bằng raw OCR theo code point); `value` phải bằng các `text` nối theo thứ tự sau khi chuẩn hóa khoảng trắng (`(?U)\s+` → 1 khoảng, strip); các đoạn không chồng nhau và theo thứ tự (page, start) tăng dần. Field khác giữ đúng 1 object. Summary lưu đủ danh sách evidence vào `PersonalField.evidence` và đi qua publication như cũ.
+Spec: file này + `docs/llm/llm-e8-personal-flex-brief.md` mục (3). Chủ dự án duyệt 17/11/2026: summary nối qua trang + Career Objective/Định hướng tính là summary.
+Mức/lý do: 3 — contract API remote mapping + dữ liệu cá nhân.
+Path được sửa: `backend/src/main/java/com/cvcompass/backend/mapping/service/MappingRemoteVerifier.java`, test backend liên quan, `docs/contracts/**` + `docs/llm/l4-remote-mapping-plan.md` (dòng mô tả evidence personal). Loại trừ: llm-worker, frontend, migration, dependency. Cần sửa Java khác → dừng, Open Questions.
+Base: xếp chồng trên HEAD cuối của `agent/llm-f1-format`; worktree `..\cv-compass-wt\llm-e9-summary-evidence`, branch `agent/llm-e9-summary-evidence`; Draft PR base = `agent/llm-f1-format`.
+Ngữ cảnh đã biết: `MappingRemoteVerifier` vòng personal (:108-150) gọi `evidence(input, node.path("evidence"), raw)` một lần; `evidence()` (:296-331) kiểm 1 object, so `whitespace(value)` với `whitespace(text)`; `PersonalField.evidence` là `List<Evidence>`; `PersonalInfoValidation.check("summary")` giới hạn 10000.
+Test tối thiểu: summary object cũ PASS; mảng 2 đoạn cùng trang + 2 đoạn khác trang PASS, value = nối; value lệch → 422 INVALID_EVIDENCE; mảng rỗng/9 phần tử/chồng nhau/ngược thứ tự → 422; field khác gửi mảng → 422; 1 test luồng lưu + publish summary nhiều đoạn (MappingRemoteIntegrationTests).
+Check affected: `cd backend; .\gradlew.bat test --tests "*MappingRemoteVerifier*" --tests "*MappingRemoteIntegration*" --tests "*LlmRemote*"` + spotlessCheck.

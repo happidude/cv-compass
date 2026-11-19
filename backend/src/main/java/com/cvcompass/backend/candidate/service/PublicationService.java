@@ -47,38 +47,33 @@ public class PublicationService {
         if (result == null) return false;
         // Same-document row lock serializes identity resolution, order checks and publication.
         if (!documents.valid(result.documentId())) return false;
-        var body = json.readTree(result.body());
-        boolean v3 =
-                result.schemaVersion() == 3
-                        && body.path("schemaVersion").asInt() == 3
-                        && ("personal-info-mapping/3.0"
-                                        .equals(body.path("engineVersion").asString())
-                                || "personal-info-mapping/3.1"
-                                        .equals(body.path("engineVersion").asString())
-                                || "personal-info-mapping/3.2"
-                                        .equals(body.path("engineVersion").asString())
-                                || "personal-info-mapping/3.3"
-                                        .equals(body.path("engineVersion").asString())
-                                || "personal-info-mapping/3.4"
-                                        .equals(body.path("engineVersion").asString())
-                                || "personal-info-mapping/3.5"
-                                        .equals(body.path("engineVersion").asString()));
-        var personal = PersonalInfoMapper.patch(body, json.createObjectNode());
-        boolean usable =
-                (result.schemaVersion() == 2 || v3)
-                        && "NEEDS_REVIEW".equals(result.quality())
-                        && (body.path("schemaVersion").asInt() == 2 || v3)
-                        && body.path("documentId").asLong() == result.documentId()
-                        && body.path("extractionId").asLong() == result.extractionId()
-                        && ("experience-mapping/2.0".equals(body.path("engineVersion").asString())
-                                || v3)
-                        && body.path("experiences").isArray()
-                        && (!body.path("experiences").isEmpty() || (v3 && !personal.isEmpty()));
-        // Serialize skipped rows too, without manufacturing a candidate identity.
+        // Serialize skipped rows too, and replay ledger entries without reassessing their body.
         documents.lock(result.documentId());
         if (publications.exists(resultId)) return false;
+        var mapping = mappings.publishable(result).orElse(null);
+        if (mapping == null) {
+            publications.ledger(
+                    result,
+                    null,
+                    "SKIPPED",
+                    mappings.supportsPublicationVersion(result)
+                            ? "INVALID_MAPPING_ENVELOPE"
+                            : "UNSUPPORTED_MAPPING_VERSION");
+            return true;
+        }
+        var body = json.readTree(result.body());
+        boolean v3 = mapping.personalInfo();
+        var personal =
+                PersonalInfoMapper.patch(
+                        body, json.createObjectNode(), mapping.canonicalPersonalValues());
+        boolean usable =
+                "NEEDS_REVIEW".equals(result.quality())
+                        && body.path("documentId").asLong() == result.documentId()
+                        && body.path("extractionId").asLong() == result.extractionId()
+                        && body.path("experiences").isArray()
+                        && (!body.path("experiences").isEmpty() || (v3 && !personal.isEmpty()));
         if (!usable) {
-            publications.ledger(result, null, "SKIPPED", skipReason(result, body, v3));
+            publications.ledger(result, null, "SKIPPED", skipReason(result, body));
             return true;
         }
         boolean stale = publications.stale(result);
@@ -101,7 +96,9 @@ public class PublicationService {
             else publications.propose(UUID.randomUUID(), id, result, experience);
         }
         if (v3) {
-            var patch = PersonalInfoMapper.patch(body, before.basic());
+            var patch =
+                    PersonalInfoMapper.patch(
+                            body, before.basic(), mapping.canonicalPersonalValues());
             if (!patch.isEmpty()) {
                 var metadata = PersonalInfoMapper.metadata(body, result.documentId(), result.id());
                 if (initial
@@ -140,11 +137,7 @@ public class PublicationService {
     }
 
     private static String skipReason(
-            CompletedMappings.Result result, tools.jackson.databind.JsonNode body, boolean v3) {
-        if (!(result.schemaVersion() == 2 || v3)
-                || body.path("schemaVersion").asInt() != result.schemaVersion()
-                || !(v3 || "experience-mapping/2.0".equals(body.path("engineVersion").asString())))
-            return "UNSUPPORTED_MAPPING_VERSION";
+            CompletedMappings.Result result, tools.jackson.databind.JsonNode body) {
         if (!"NEEDS_REVIEW".equals(result.quality())) return "UNSUPPORTED_MAPPING_QUALITY";
         if (body.path("documentId").asLong() != result.documentId()
                 || body.path("extractionId").asLong() != result.extractionId())

@@ -17,15 +17,8 @@ public final class PersonalInfoMapper {
 
     private PersonalInfoMapper() {}
 
-    public static ObjectNode patch(JsonNode result, JsonNode basic) {
+    public static ObjectNode patch(JsonNode result, JsonNode basic, boolean canonicalValues) {
         var patch = JSON.createObjectNode();
-        String version = result.path("engineVersion").asString();
-        boolean v33 =
-                Set.of(
-                                "personal-info-mapping/3.3",
-                                "personal-info-mapping/3.4",
-                                "personal-info-mapping/3.5")
-                        .contains(version);
         for (String name : FIELDS) {
             var field = result.path("personalInfo").path(name);
             if (field.path("enabled").asBoolean()
@@ -34,7 +27,7 @@ public final class PersonalInfoMapper {
                     && field.path("normalized").isString()
                     && !field.path("evidence").isEmpty()) {
                 String value =
-                        name.equals("gender") || v33 && V33_NORMALIZED.contains(name)
+                        name.equals("gender") || canonicalValues && V33_NORMALIZED.contains(name)
                                 ? field.path("normalized").asString()
                                 : field.path("raw").asString();
                 if (!same(name, basic.path(name), value)) patch.put(name, value);

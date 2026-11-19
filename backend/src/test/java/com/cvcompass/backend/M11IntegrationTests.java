@@ -1006,7 +1006,7 @@ class M11IntegrationTests {
         var sweep =
                 new PublicationSweep(
                         new PublicationRepository(jdbc),
-                        new CompletedMappings(new CompletedMappingRepository(jdbc)));
+                        new CompletedMappings(new CompletedMappingRepository(jdbc), json));
         var tx = new TransactionTemplate(transactions);
         var observed = new ArrayList<Long>(tx.execute(status -> sweep.reserve(1)));
         Long upper =
@@ -1019,7 +1019,7 @@ class M11IntegrationTests {
         var restarted =
                 new PublicationSweep(
                         new PublicationRepository(jdbc),
-                        new CompletedMappings(new CompletedMappingRepository(jdbc)));
+                        new CompletedMappings(new CompletedMappingRepository(jdbc), json));
         while (jdbc.queryForObject(
                         "SELECT \"UPPER_ID\" FROM \"CANDIDATE_PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
                         Long.class)

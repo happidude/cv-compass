@@ -10,6 +10,7 @@ import com.cvcompass.backend.mapping.dto.PersonalInfoDefinition;
 import com.cvcompass.backend.mapping.repository.MappingRepository;
 import com.cvcompass.backend.web.OperationalLog;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.event.Level;
@@ -23,17 +24,10 @@ import tools.jackson.databind.ObjectMapper;
 public class MappingService {
     private final MappingRepository repository;
     private final OcrExtractionReader inputs;
-    private final MappingEngine engine;
+    private final MappingProviderRegistry registry;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
     private final MappingProperties properties;
-    private final ExperienceEngine experienceEngine;
-    private final PersonalInfoEngine personalInfoEngine;
-    private final PersonalInfoEngineV31 grammarEngine;
-    private final PersonalInfoEngineV32 grammarV32Engine;
-    private final PersonalInfoEngineV33 grammarV33Engine;
-    private final PersonalInfoEngineV34 grammarV34Engine;
-    private final PersonalInfoEngineV35 grammarV35Engine;
 
     public MappingService(
             MappingRepository repository,
@@ -196,17 +190,28 @@ public class MappingService {
             PersonalInfoEngineV35 grammarV35Engine) {
         this.repository = repository;
         this.inputs = inputs;
-        this.engine = engine;
         this.json = json;
         this.tx = new TransactionTemplate(transactions);
         this.properties = properties;
-        this.experienceEngine = experienceEngine;
-        this.personalInfoEngine = personalInfoEngine;
-        this.grammarEngine = grammarEngine;
-        this.grammarV32Engine = grammarV32Engine;
-        this.grammarV33Engine = grammarV33Engine;
-        this.grammarV34Engine = grammarV34Engine;
-        this.grammarV35Engine = grammarV35Engine;
+        this.registry =
+                new MappingProviderRegistry(
+                        List.of(
+                                new InProcessMappingProvider(MappingEngine.VERSION, engine::map),
+                                new InProcessMappingProvider(
+                                        ExperienceEngine.VERSION, experienceEngine::map),
+                                new InProcessMappingProvider(
+                                        PersonalInfoEngine.VERSION, personalInfoEngine::map),
+                                new InProcessMappingProvider(
+                                        PersonalInfoEngineV31.VERSION, grammarEngine::map),
+                                new InProcessMappingProvider(
+                                        PersonalInfoEngineV32.VERSION, grammarV32Engine::map),
+                                new InProcessMappingProvider(
+                                        PersonalInfoEngineV33.VERSION, grammarV33Engine::map),
+                                new InProcessMappingProvider(
+                                        PersonalInfoEngineV34.VERSION, grammarV34Engine::map),
+                                new InProcessMappingProvider(
+                                        PersonalInfoEngineV35.VERSION, grammarV35Engine::map),
+                                new RemoteMappingProvider()));
     }
 
     public long register(String revision, MappingConfig definition) {
@@ -214,6 +219,9 @@ public class MappingService {
             throw new IllegalArgumentException("Invalid mapping revision");
         }
         definition.validate();
+        if (definition instanceof com.cvcompass.backend.mapping.dto.LlmExtractionDefinition llm
+                && !revision.equals(llm.revision()))
+            throw new IllegalArgumentException("MAPPING_REVISION_MISMATCH");
         if (definition instanceof PersonalInfoDefinition personal
                 && !revision.equals(personal.revision()))
             throw new IllegalArgumentException("MAPPING_REVISION_MISMATCH");
@@ -317,17 +325,7 @@ public class MappingService {
                         throw new IllegalArgumentException("MAPPING_INPUT_CHANGED");
                     }
                 });
-        return switch (current.engineVersion()) {
-            case MappingEngine.VERSION -> engine.map(current, input);
-            case ExperienceEngine.VERSION -> experienceEngine.map(current, input);
-            case PersonalInfoEngine.VERSION -> personalInfoEngine.map(current, input);
-            case PersonalInfoEngineV31.VERSION -> grammarEngine.map(current, input);
-            case PersonalInfoEngineV32.VERSION -> grammarV32Engine.map(current, input);
-            case PersonalInfoEngineV33.VERSION -> grammarV33Engine.map(current, input);
-            case PersonalInfoEngineV34.VERSION -> grammarV34Engine.map(current, input);
-            case PersonalInfoEngineV35.VERSION -> grammarV35Engine.map(current, input);
-            default -> throw new IllegalArgumentException("Unsupported mapping engine");
-        };
+        return registry.require(current.engineVersion()).map(current, input);
     }
 
     public void complete(MappingClaim claim, MappingOutcome result) {

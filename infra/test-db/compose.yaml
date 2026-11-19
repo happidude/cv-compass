@@ -1,0 +1,33 @@
+# Dedicated PostgreSQL 17 for backend integration tests only.
+# Separate container/volume/port from infra/docker-compose.yml so tests can never reach the
+# development database. Start it via scripts/test-db.ps1, which supplies TEST_DB_PASSWORD.
+name: cv-compass-test
+
+services:
+  postgres-test:
+    image: postgres:17
+    container_name: cv-compass-postgres-test
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: cv_compass_test
+      POSTGRES_USER: cvcompass_test
+      # No default: refuse to start without an explicit secret from the environment.
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:?TEST_DB_PASSWORD must be set}
+
+    ports:
+      - "127.0.0.1:5433:5432"
+
+    volumes:
+      - test_data:/var/lib/postgresql/data
+
+    healthcheck:
+      # TCP check: the init-time temporary server listens on the socket only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U cvcompass_test -d cv_compass_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  test_data:
+    name: cv-compass-postgres-test-data
