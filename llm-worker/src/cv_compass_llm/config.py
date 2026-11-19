@@ -14,6 +14,9 @@ ENV_KEYS = {
     'timeout': 'CVC_LLM_TIMEOUT_S',
     'mode': 'CVC_LLM_MODE',
     'evidence': 'CVC_LLM_EVIDENCE',
+    'trim_input': 'CVC_LLM_TRIM_INPUT',
+    'trim_sections': 'CVC_LLM_TRIM_SECTIONS',
+    'trim_phrases': 'CVC_LLM_TRIM_PHRASES',
     'whole_timeout': 'CVC_LLM_WHOLE_TIMEOUT_S',
     'max_blocks': 'CVC_LLM_MAX_BLOCKS',
     'temperature': 'CVC_LLM_TEMPERATURE',
@@ -44,6 +47,9 @@ BENCH_ENV_KEYS = frozenset(
         'timeout',
         'mode',
         'evidence',
+        'trim_input',
+        'trim_sections',
+        'trim_phrases',
         'whole_timeout',
         'max_blocks',
         'temperature',
@@ -78,6 +84,9 @@ class LlmConfig:
     ctx_chars_per_token: float = 2.5
     ctx_fine_tiers: bool = False
     evidence: str = 'quote'
+    trim_input: bool = False
+    trim_sections: bool = False
+    trim_phrases: tuple[str, ...] = ()
 
 
 def default_env_file() -> Path:
@@ -217,6 +226,8 @@ def load_config(
         ('prompt_schema_text', 'true'),
         ('whole_personal', 'true'),
         ('ctx_fine_tiers', 'false'),
+        ('trim_input', 'false'),
+        ('trim_sections', 'false'),
     ):
         flag = value(name, default).lower()
         if flag not in ('true', 'false'):
@@ -236,6 +247,9 @@ def load_config(
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
         mode=mode,
         evidence=evidence,
+        trim_phrases=tuple(
+            part.strip() for part in value('trim_phrases').split('|') if part.strip()
+        ),
         whole_timeout=whole_timeout,
         **flags,
         max_output_tokens=(
@@ -371,6 +385,8 @@ def load_pull_config(
             'INVALID_NUM_CTX': 'num_ctx',
             'INVALID_MODE': 'mode',
             'INVALID_EVIDENCE': 'evidence',
+            'INVALID_TRIM_INPUT': 'trim_input',
+            'INVALID_TRIM_SECTIONS': 'trim_sections',
             'INVALID_WHOLE_TIMEOUT': 'whole_timeout',
             'INVALID_PROMPT_SCHEMA_TEXT': 'prompt_schema_text',
             'INVALID_WHOLE_PERSONAL': 'whole_personal',

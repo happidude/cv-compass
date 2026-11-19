@@ -27,6 +27,7 @@ from .schema import (
     Issue,
 )
 from .segmenter import Block, build_header, segment, split_lines
+from .trim import compact_text, trim_spans
 from .validate import (
     validate_experiences,
     validate_line_experiences,
@@ -45,6 +46,7 @@ def extract(
     mode: str = 'blocks',
     whole_timeout: float = 900,
     config: LlmConfig | None = None,
+    on_trim: Callable[[int, int], None] | None = None,
 ) -> ExtractionResult:
     """Extract supported CV values while isolating provider block failures."""
     if type(max_blocks) is not int or max_blocks < 0:
@@ -54,6 +56,16 @@ def extract(
     schema_text = config.prompt_schema_text if config is not None else True
     whole_personal = config.whole_personal if config is not None else True
     use_lines = config is not None and config.evidence == 'lines'
+    trim_input = config is not None and config.trim_input
+    retained = set()
+    if trim_input:
+        kept, _, _, _ = trim_spans(
+            split_lines(tuple(p for p in document.pages if p.status == 'ok')),
+            phrases=config.trim_phrases,
+            sections=config.trim_sections,
+            page_count=sum(p.status == 'ok' for p in document.pages),
+        )
+        retained = {(span.page, span.start, span.end) for span in kept}
     line_table = (
         number_lines(split_lines(tuple(p for p in document.pages if p.status == 'ok')))[1]
         if use_lines
@@ -63,6 +75,21 @@ def extract(
     issues = []
     experiences = []
 
+    def experience_input(block: Block) -> tuple[Block, str, dict, int]:
+        original = block_lines(block, line_table)[0] if use_lines else block.text
+        if trim_input:
+            block = Block(tuple(s for s in block.spans if (s.page, s.start, s.end) in retained))
+        if use_lines:
+            text, table = block_lines(block, line_table, trim=trim_input)
+        else:
+            text = compact_text(block.spans) if trim_input else block.text
+            table = {}
+        return block, text, table, len(original)
+
+    def report_chars(before: int, after: int) -> None:
+        if trim_input and on_trim is not None:
+            on_trim(before, after)
+
     def check_truncated(field: str) -> None:
         metrics = getattr(provider, 'last_metrics', None)
         if isinstance(metrics, dict) and metrics.get('done_reason') == 'length':
@@ -71,13 +98,12 @@ def extract(
     if mode == 'whole':
         header = build_header(tuple(p for p in document.pages if p.status == 'ok'))
         block = Block(tuple(split_lines(tuple(p for p in document.pages if p.status == 'ok'))))
+        block, block_text, block_table, chars_before = experience_input(block)
         prompt = (
-            build_lines_prompt(
-                block_lines(block, line_table)[0], whole=True, schema_text=schema_text
-            )
+            build_lines_prompt(block_text, whole=True, schema_text=schema_text)
             if use_lines
             else build_whole_prompt(
-                block.text, schema_text=schema_text, whole_personal=whole_personal
+                block_text, schema_text=schema_text, whole_personal=whole_personal
             )
         )
         ratio = config.ctx_chars_per_token if config is not None else 2.5
@@ -88,10 +114,14 @@ def extract(
         )
         estimate = ceil(len(prompt) / ratio) + 4096
         num_ctx = next((size for size in tiers if size >= estimate), None)
-        if num_ctx is None:
+        if trim_input and not block_text.strip():
+            if on_block is not None:
+                on_block(1, 1 + bool(header.spans), 0.0)
+        elif num_ctx is None:
             issues.append(Issue('WHOLE_TOO_LONG'))
         else:
             started = perf_counter() if on_block is not None else 0
+            report_chars(chars_before, len(block_text))
             try:
                 response = provider.generate(
                     prompt,
@@ -108,7 +138,7 @@ def extract(
             else:
                 check_truncated('experiences')
                 if use_lines:
-                    experiences, errors = validate_line_experiences(response, line_table)
+                    experiences, errors = validate_line_experiences(response, block_table)
                 else:
                     _, experiences, errors = validate_whole(
                         response, block, whole_personal=whole_personal
@@ -158,13 +188,16 @@ def extract(
         issues.append(Issue('BLOCK_LIMIT_REACHED'))
     for block in blocks[:max_blocks]:
         started = perf_counter() if on_block is not None else 0
-        if use_lines:
-            block_text, block_table = block_lines(block, line_table)
+        block, block_text, block_table, chars_before = experience_input(block)
+        if trim_input and not block_text.strip():
+            completed(started)
+            continue
+        report_chars(chars_before, len(block_text))
         try:
             response = provider.generate(
                 build_lines_prompt(block_text, schema_text=schema_text)
                 if use_lines
-                else build_experience_prompt(block.text, schema_text=schema_text),
+                else build_experience_prompt(block_text, schema_text=schema_text),
                 LINES_EXPERIENCE_SCHEMA if use_lines else EXPERIENCE_SCHEMA,
             )
         except ProviderError:
