@@ -473,7 +473,7 @@ Mỗi `--config NAME=ENV_FILE` nhận tên `[A-Za-z0-9_-]{1,32}`. Tên trùng, k
 khác hoa/thường để tránh chung thư mục trên Windows, trả `BENCH_DUPLICATE_CONFIG`;
 tên hoặc cú pháp sai trả `BENCH_INVALID_CONFIG`. File cấu hình chỉ cho phép:
 `CVC_LLM_PROVIDER`, `CVC_LLM_MODEL`, `CVC_LLM_BASE_URL`, `CVC_LLM_TIMEOUT_S`,
-`CVC_LLM_MODE`, `CVC_LLM_WHOLE_TIMEOUT_S`, `CVC_LLM_MAX_BLOCKS`,
+`CVC_LLM_MODE`, `CVC_LLM_EVIDENCE`, `CVC_LLM_WHOLE_TIMEOUT_S`, `CVC_LLM_MAX_BLOCKS`,
 `CVC_LLM_TEMPERATURE`, `CVC_LLM_THINK`, `CVC_LLM_NUM_CTX` và sáu key O4 bên dưới. Allowlist dễ mở rộng
 nằm ở `config.BENCH_ENV_KEYS`. Key khác, kể cả key ngoài tiền tố `CVC_LLM_`,
 trả `BENCH_INVALID_CONFIG_KEY`; không in key hoặc giá trị. File vẫn dùng quy tắc
@@ -563,6 +563,41 @@ payload backend. JSON bị cắt vẫn có `LLM_INVALID_JSON` và xử lý lỗi
 cùng cấu hình được giữ cho warmup và mọi lượt đo. Chỉ đổi mặc định sau khi đo
 bằng bench trên bộ dữ liệu đã duyệt. Các test khóa hash hiện có giữ nguyên;
 O4 bổ sung hash prompt personal và request whole mặc định bằng fixture tổng hợp.
+
+## Evidence theo số dòng (O5)
+
+`CVC_LLM_EVIDENCE=quote|lines` có mặc định `quote`: giữ nguyên prompt, schema,
+request Ollama và định dạng payload backend hiện có, kể cả các tùy chọn O4.
+Giá trị sai trả mã cố định `INVALID_EVIDENCE`; `pull` thêm tên key
+`CVC_LLM_EVIDENCE`, không in giá trị. Cấu hình dùng thứ tự ưu tiên CLI mapping
+> môi trường tiến trình > `.env`; `bench --config` nhận key này trong allowlist.
+Hiện parser CLI chưa có `--evidence`; dùng môi trường hoặc `.env` cho `run`/`pull`.
+
+Ở `lines`, mỗi dòng không rỗng của trang OCR `ok` được đánh số toàn tài liệu
+`[L<n>]`, có mốc `=== page <p> ===`. Block và header dùng lại số toàn cục,
+chỉ gửi các dòng thuộc phạm vi của lời gọi; dòng bị cắt ở giới hạn header bị
+bỏ qua. Raw text và offset gốc được giữ nguyên. Model trả title/company và
+fullName/location bằng `{line,text}`, gender bằng `{line,value}`, kỳ bằng
+`periodLine` và `ongoing`, ngày sinh bằng `dateOfBirthLine`, summary bằng các
+khoảng `{startLine,endLine}`. Giá trị không biết dùng null, summary vắng dùng `[]`.
+
+Code đối chiếu text với dòng chỉ định, thử thêm dòng liền trước/sau cho
+title/company/fullName/location, rồi lấy nguyên văn nguồn. ID ngoài bảng hoặc
+text không khớp sinh `QUOTE_NOT_FOUND.<field>`. Kỳ và ngày sinh do code đọc;
+kỳ có thể vắt hai dòng cùng trang, nhưng evidence kỳ chỉ được nối khi offset
+liền nhau. Giữ kiểm tra ngày không hợp lệ và thứ tự kỳ. Gender giữ quy tắc E8:
+giá trị phải đứng riêng hoặc có nhãn rõ ràng trên dòng chỉ định. Summary nối
+nguyên văn các dòng theo thứ tự, qua trang liền kề, tối đa 8 evidence/6000 ký tự.
+
+Áp dụng cho `blocks` và `whole`; lời gọi whole chỉ lấy experiences, personal
+luôn từ header riêng. Version là `llm-extraction-prompt/lines-1` hoặc
+`llm-extraction-prompt/whole-lines-1`, giữ hậu tố O4 `-lean` và `-xp` theo cờ.
+Fallback whole sang blocks vẫn giữ version whole của tiến trình. `pull` dùng
+version đã chốt khi khởi động cho claim/submit. Kết quả vẫn là evidence
+`page/start/end/text`, không cần đổi backend. Chỉ chủ dự án quyết định đổi
+mặc định sau khi bench chứng minh độ chính xác ít nhất bằng `quote`.
+
+Test tổng hợp O5 nằm ở `tests/test_o5_lines.py`; các test hash hiện có giữ nguyên.
 
 ## Đo vòng đời CV (E11)
 

@@ -134,3 +134,50 @@ WHOLE_SCHEMA = object_schema(
         'experiences': EXPERIENCE_SCHEMA['properties']['experiences'],
     }
 )
+
+NULL_LINE = {'type': ['integer', 'null']}
+LINE_TEXT_SCHEMA = object_schema({'line': NULL_LINE, 'text': NULL_STRING})
+LINES_EXPERIENCE_SCHEMA = object_schema(
+    {
+        'experiences': {
+            'type': 'array',
+            'items': object_schema(
+                {
+                    'title': LINE_TEXT_SCHEMA,
+                    'company': LINE_TEXT_SCHEMA,
+                    'periodLine': NULL_LINE,
+                    'ongoing': {'type': 'boolean'},
+                }
+            ),
+        }
+    }
+)
+LINES_PERSONAL_SCHEMA = object_schema(
+    {
+        'personal': object_schema(
+            {
+                'fullName': LINE_TEXT_SCHEMA,
+                'location': LINE_TEXT_SCHEMA,
+                'gender': object_schema(
+                    {
+                        'line': NULL_LINE,
+                        'value': {
+                            'anyOf': [
+                                {'type': 'string', 'enum': ['MALE', 'FEMALE', 'OTHER']},
+                                {'type': 'null'},
+                            ]
+                        },
+                    }
+                ),
+                'dateOfBirthLine': NULL_LINE,
+                'summary': {
+                    'type': 'array',
+                    'maxItems': 8,
+                    'items': object_schema(
+                        {'startLine': {'type': 'integer'}, 'endLine': {'type': 'integer'}}
+                    ),
+                },
+            }
+        )
+    }
+)
