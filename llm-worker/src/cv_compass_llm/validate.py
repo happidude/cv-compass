@@ -343,11 +343,13 @@ def _experiences(data: dict, block: Block) -> tuple[tuple[Experience, ...], tupl
 def validate_whole(
     text: str,
     block: Block,
+    *,
+    whole_personal: bool = True,
 ) -> tuple[tuple[FieldValue, ...], tuple[Experience, ...], tuple[Issue, ...]]:
     """Parse once and apply the same evidence rules as block extraction."""
-    data = parse_response(text, WHOLE_SCHEMA)
+    data = parse_response(text, WHOLE_SCHEMA if whole_personal else EXPERIENCE_SCHEMA)
     if data is None:
         return (), (), (Issue('LLM_INVALID_JSON'),)
-    fields, personal_issues = _personal(data, block)
+    fields, personal_issues = _personal(data, block) if whole_personal else ((), ())
     experiences, experience_issues = _experiences(data, block)
     return fields, experiences, (*personal_issues, *experience_issues)

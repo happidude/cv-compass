@@ -42,6 +42,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.num_ctx, 8192)
         self.assertEqual(config.mode, 'blocks')
         self.assertEqual(config.whole_timeout, 900)
+        self.assertTrue(config.prompt_schema_text)
+        self.assertTrue(config.whole_personal)
+        self.assertIsNone(config.max_output_tokens)
+        self.assertIsNone(config.keep_alive)
+        self.assertEqual(config.ctx_chars_per_token, 2.5)
+        self.assertFalse(config.ctx_fine_tiers)
         with self.assertRaises(FrozenInstanceError):
             config.model = 'synthetic-other'
 
@@ -57,6 +63,19 @@ class ConfigTests(unittest.TestCase):
             ('num_ctx', '1024', '2048', '4096', 'num_ctx', int),
             ('mode', 'whole', 'blocks', 'whole', 'mode', str),
             ('whole_timeout', '600', '800', '1000', 'whole_timeout', float),
+            (
+                'prompt_schema_text',
+                'false',
+                'true',
+                'false',
+                'prompt_schema_text',
+                lambda x: x == 'true',
+            ),
+            ('whole_personal', 'false', 'true', 'false', 'whole_personal', lambda x: x == 'true'),
+            ('max_output_tokens', '128', '256', '512', 'max_output_tokens', int),
+            ('keep_alive', '1m', '2h', '-1', 'keep_alive', str),
+            ('ctx_chars_per_token', '0.5', '2.5', '10', 'ctx_chars_per_token', float),
+            ('ctx_fine_tiers', 'true', 'false', 'true', 'ctx_fine_tiers', lambda x: x == 'true'),
         ):
             with self.subTest(key=key):
                 self.path.write_text(f'{ENV_KEYS[key]}={file_value}\n', encoding='utf-8')
@@ -115,6 +134,24 @@ class ConfigTests(unittest.TestCase):
             ('think', ('invalid', '1', '0', 'yes'), 'INVALID_THINK'),
             ('num_ctx', ('invalid', '0', '-1', '1048577', '1.5', 'true'), 'INVALID_NUM_CTX'),
             ('mode', ('invalid', 'WHOLE', 'block'), 'INVALID_MODE'),
+            ('prompt_schema_text', ('private-value', '0', '1'), 'INVALID_PROMPT_SCHEMA_TEXT'),
+            ('whole_personal', ('private-value', '0', '1'), 'INVALID_WHOLE_PERSONAL'),
+            (
+                'max_output_tokens',
+                ('private-value', '0', '-1', '1.5', 'true'),
+                'INVALID_MAX_OUTPUT_TOKENS',
+            ),
+            (
+                'keep_alive',
+                ('private-value', '-2', '1d', '1.5s', '1 m', '1000000ms'),
+                'INVALID_KEEP_ALIVE',
+            ),
+            (
+                'ctx_chars_per_token',
+                ('private-value', '0.49', '10.01', 'nan', 'inf'),
+                'INVALID_CTX_CHARS_PER_TOKEN',
+            ),
+            ('ctx_fine_tiers', ('private-value', '0', '1'), 'INVALID_CTX_FINE_TIERS'),
             (
                 'whole_timeout',
                 ('invalid', '0', '-1', 'nan', 'inf', '-inf'),
@@ -156,6 +193,19 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(config.timeout_s, 0.01)
                 self.assertIs(config.think, True)
         self.assertIs(self.load(dict(self.required, think='FaLsE')).think, False)
+
+    def test_keep_alive_digit_boundaries(self) -> None:
+        for suffix in ('', 'ms', 's', 'm', 'h'):
+            for digits in ('0', '1', '999999', '000000'):
+                value = digits + suffix
+                with self.subTest(value=value):
+                    self.assertEqual(
+                        self.load(dict(self.required, keep_alive=value)).keep_alive, value
+                    )
+            for digits in ('1000000', '0000000'):
+                with self.subTest(value=digits + suffix):
+                    with self.assertRaisesRegex(ValueError, '^INVALID_KEEP_ALIVE$'):
+                        self.load(dict(self.required, keep_alive=digits + suffix))
 
     def test_default_path_is_package_relative(self) -> None:
         package = self.root / 'llm-worker' / 'src' / 'cv_compass_llm' / 'config.py'

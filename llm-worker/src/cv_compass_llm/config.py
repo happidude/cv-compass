@@ -18,6 +18,12 @@ ENV_KEYS = {
     'temperature': 'CVC_LLM_TEMPERATURE',
     'think': 'CVC_LLM_THINK',
     'num_ctx': 'CVC_LLM_NUM_CTX',
+    'prompt_schema_text': 'CVC_LLM_PROMPT_SCHEMA_TEXT',
+    'whole_personal': 'CVC_LLM_WHOLE_PERSONAL',
+    'max_output_tokens': 'CVC_LLM_MAX_OUTPUT_TOKENS',
+    'keep_alive': 'CVC_LLM_KEEP_ALIVE',
+    'ctx_chars_per_token': 'CVC_LLM_CTX_CHARS_PER_TOKEN',
+    'ctx_fine_tiers': 'CVC_LLM_CTX_FINE_TIERS',
     'backend_url': 'CVC_LLM_BACKEND_URL',
     'worker_token': 'CVC_LLM_WORKER_TOKEN',
     'worker_version': 'CVC_LLM_WORKER_VERSION',
@@ -41,6 +47,12 @@ BENCH_ENV_KEYS = frozenset(
         'temperature',
         'think',
         'num_ctx',
+        'prompt_schema_text',
+        'whole_personal',
+        'max_output_tokens',
+        'keep_alive',
+        'ctx_chars_per_token',
+        'ctx_fine_tiers',
     )
 )
 
@@ -57,6 +69,12 @@ class LlmConfig:
     num_ctx: int | None
     mode: str = 'blocks'
     whole_timeout: float = 900
+    prompt_schema_text: bool = True
+    whole_personal: bool = True
+    max_output_tokens: int | None = None
+    keep_alive: str | None = None
+    ctx_chars_per_token: float = 2.5
+    ctx_fine_tiers: bool = False
 
 
 def default_env_file() -> Path:
@@ -130,6 +148,14 @@ def _integer(value: str, code: str, *, minimum: int, maximum: int | None = None)
         raise ValueError(code) from None
 
 
+def validate_keep_alive(value: str | None) -> None:
+    """Accept only the approved Ollama duration syntax without echoing values."""
+    if value is not None and (
+        not isinstance(value, str) or not re.fullmatch(r'(?:[0-9]{1,6}(?:ms|s|m|h)?|-1)', value)
+    ):
+        raise ValueError('INVALID_KEEP_ALIVE')
+
+
 def load_config(
     cli: Mapping[str, str | None],
     environ: Mapping[str, str],
@@ -180,6 +206,19 @@ def load_config(
     if think not in ('true', 'false'):
         raise ValueError('INVALID_THINK')
     num_ctx = value('num_ctx', '8192')
+    flags = {}
+    for name, default in (
+        ('prompt_schema_text', 'true'),
+        ('whole_personal', 'true'),
+        ('ctx_fine_tiers', 'false'),
+    ):
+        flag = value(name, default).lower()
+        if flag not in ('true', 'false'):
+            raise ValueError('INVALID_' + name.upper())
+        flags[name] = flag == 'true'
+    max_output_tokens = value('max_output_tokens')
+    keep_alive = value('keep_alive') or None
+    validate_keep_alive(keep_alive)
     return LlmConfig(
         provider=provider,
         model=model,
@@ -191,6 +230,19 @@ def load_config(
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
         mode=mode,
         whole_timeout=whole_timeout,
+        **flags,
+        max_output_tokens=(
+            _integer(max_output_tokens, 'INVALID_MAX_OUTPUT_TOKENS', minimum=1)
+            if max_output_tokens
+            else None
+        ),
+        keep_alive=keep_alive,
+        ctx_chars_per_token=_number(
+            value('ctx_chars_per_token', '2.5'),
+            'INVALID_CTX_CHARS_PER_TOKEN',
+            minimum=0.5,
+            maximum=10,
+        ),
     )
 
 
@@ -299,7 +351,7 @@ def load_pull_config(
     merged.update(environ)
     try:
         llm = load_config(
-            {}, merged, path, env_file_explicit=env_file_explicit, _file_values=values
+            cli or {}, merged, path, env_file_explicit=env_file_explicit, _file_values=values
         )
     except ValueError as error:
         code = str(error)
@@ -312,6 +364,12 @@ def load_pull_config(
             'INVALID_NUM_CTX': 'num_ctx',
             'INVALID_MODE': 'mode',
             'INVALID_WHOLE_TIMEOUT': 'whole_timeout',
+            'INVALID_PROMPT_SCHEMA_TEXT': 'prompt_schema_text',
+            'INVALID_WHOLE_PERSONAL': 'whole_personal',
+            'INVALID_MAX_OUTPUT_TOKENS': 'max_output_tokens',
+            'INVALID_KEEP_ALIVE': 'keep_alive',
+            'INVALID_CTX_CHARS_PER_TOKEN': 'ctx_chars_per_token',
+            'INVALID_CTX_FINE_TIERS': 'ctx_fine_tiers',
         }
         name = names.get(code, 'provider' if not value('provider') else 'model')
         raise PullConfigError(ENV_KEYS[name], code) from None

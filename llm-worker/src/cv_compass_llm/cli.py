@@ -17,7 +17,7 @@ from .gold import draft_gold
 from .lifecycle import call_metrics, lifecycle_report, metric_summary, print_report
 from .ocr_input import load_document
 from .pipeline import extract
-from .prompts import PROMPT_VERSION, WHOLE_PROMPT_VERSION
+from .prompts import prompt_version
 from .providers.base import LlmProvider
 from .providers.ollama import OllamaProvider
 from .pull import run_pull
@@ -51,6 +51,12 @@ CLI_ERRORS = {
     'INVALID_NUM_CTX',
     'INVALID_MODE',
     'INVALID_WHOLE_TIMEOUT',
+    'INVALID_PROMPT_SCHEMA_TEXT',
+    'INVALID_WHOLE_PERSONAL',
+    'INVALID_MAX_OUTPUT_TOKENS',
+    'INVALID_KEEP_ALIVE',
+    'INVALID_CTX_CHARS_PER_TOKEN',
+    'INVALID_CTX_FINE_TIERS',
 } | BENCH_ERRORS
 
 
@@ -61,6 +67,10 @@ class _MetricsProvider:
         self.provider = provider
         self.name = provider.name
         self.calls = []
+
+    @property
+    def last_metrics(self):
+        return getattr(self.provider, 'last_metrics', None)
 
     def generate(self, prompt, json_schema, **options):
         try:
@@ -81,6 +91,7 @@ def run_batch(
     limit: int | None = None,
     mode: str = 'blocks',
     whole_timeout: float = 900,
+    config: LlmConfig | None = None,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> dict:
     """Extract sorted OCR files without modifying any input artifact."""
@@ -99,6 +110,10 @@ def run_batch(
     issues_by_field = Counter()
     ok, total_seconds = 0, 0.0
     observed = _MetricsProvider(provider)
+    # Bench reuses its configured provider for warmup and every measured batch.
+    config = config if config is not None else getattr(provider, 'extraction_config', None)
+    if not isinstance(config, LlmConfig):
+        config = None
     for path in paths:
         started = perf_counter()
         try:
@@ -114,6 +129,7 @@ def run_batch(
                 max_blocks=max_blocks,
                 mode=mode,
                 whole_timeout=whole_timeout,
+                config=config,
             )
             payload = result.to_dict()
             payload['seconds'] = perf_counter() - started
@@ -134,7 +150,7 @@ def run_batch(
         'total_seconds': total_seconds,
         'average_seconds': total_seconds / len(paths) if paths else 0.0,
         'provider': provider.name,
-        'prompt_version': WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION,
+        'prompt_version': prompt_version(mode, config),
         'mode': mode,
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
         'llm_calls': len(observed.calls),
@@ -169,6 +185,15 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--num-ctx')
     run.add_argument('--env-file')
     run.add_argument('--limit', type=int)
+    for name in (
+        'prompt_schema_text',
+        'whole_personal',
+        'max_output_tokens',
+        'keep_alive',
+        'ctx_chars_per_token',
+        'ctx_fine_tiers',
+    ):
+        run.add_argument('--' + name.replace('_', '-'))
     bench = commands.add_parser('bench')
     bench.add_argument('--input', required=True)
     bench.add_argument('--gold', required=True)
@@ -181,6 +206,15 @@ def parser() -> argparse.ArgumentParser:
     pull.add_argument('--env-file')
     pull.add_argument('--once', action='store_true')
     pull.add_argument('--log-level')
+    for name in (
+        'prompt_schema_text',
+        'whole_personal',
+        'max_output_tokens',
+        'keep_alive',
+        'ctx_chars_per_token',
+        'ctx_fine_tiers',
+    ):
+        pull.add_argument('--' + name.replace('_', '-'))
     check = commands.add_parser('check')
     check.add_argument('--env-file')
     check.add_argument('--log-level')
@@ -211,14 +245,22 @@ def print_metrics(metrics: dict, prefix: str = '') -> None:
 
 def create_provider(config: LlmConfig) -> LlmProvider:
     """Share run provider construction with the injectable benchmark factory."""
-    return OllamaProvider(
+    options = {}
+    if config.max_output_tokens is not None:
+        options['num_predict'] = config.max_output_tokens
+    if config.keep_alive is not None:
+        options['keep_alive'] = config.keep_alive
+    provider = OllamaProvider(
         config.model,
         base_url=config.base_url,
         timeout_s=config.timeout_s,
         temperature=config.temperature,
         think=config.think,
         num_ctx=config.num_ctx,
+        **options,
     )
+    provider.extraction_config = config
+    return provider
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -263,14 +305,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             llm = config.llm
             try:
-                provider = OllamaProvider(
-                    llm.model,
-                    base_url=llm.base_url,
-                    timeout_s=llm.timeout_s,
-                    temperature=llm.temperature,
-                    think=llm.think,
-                    num_ctx=llm.num_ctx,
-                )
+                provider = create_provider(llm)
             except ValueError:
                 raise PullConfigError(ENV_KEYS['base_url'], 'OLLAMA_HOST_NOT_LOCAL') from None
             return run_pull(config, provider, once=args.once)

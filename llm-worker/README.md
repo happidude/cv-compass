@@ -474,7 +474,7 @@ khác hoa/thường để tránh chung thư mục trên Windows, trả `BENCH_DU
 tên hoặc cú pháp sai trả `BENCH_INVALID_CONFIG`. File cấu hình chỉ cho phép:
 `CVC_LLM_PROVIDER`, `CVC_LLM_MODEL`, `CVC_LLM_BASE_URL`, `CVC_LLM_TIMEOUT_S`,
 `CVC_LLM_MODE`, `CVC_LLM_WHOLE_TIMEOUT_S`, `CVC_LLM_MAX_BLOCKS`,
-`CVC_LLM_TEMPERATURE`, `CVC_LLM_THINK`, `CVC_LLM_NUM_CTX`. Allowlist dễ mở rộng
+`CVC_LLM_TEMPERATURE`, `CVC_LLM_THINK`, `CVC_LLM_NUM_CTX` và sáu key O4 bên dưới. Allowlist dễ mở rộng
 nằm ở `config.BENCH_ENV_KEYS`. Key khác, kể cả key ngoài tiền tố `CVC_LLM_`,
 trả `BENCH_INVALID_CONFIG_KEY`; không in key hoặc giá trị. File vẫn dùng quy tắc
 cú pháp/giới hạn kích thước của `.env`. Key trích xuất có giá trị trong file ghi
@@ -514,6 +514,55 @@ số; không in tên file CV, đường dẫn, giá trị ứng viên, prompt ho
 
 Test tổng hợp trong `tests/test_bench.py` tiêm `cli.create_provider` hoặc
 `run_bench(..., provider_factory=...)` để dùng FakeProvider, không cần Ollama.
+
+## Tối ưu tùy chọn sau cờ (O4)
+
+Mặc định mọi tối ưu O4 đều tắt: prompt, schema, request Ollama và version giữ
+nguyên như trước O4. Hai cờ giữ nội dung cũ có mặc định `true`; đặt `false` mới
+bật tối ưu tương ứng. Cấu hình ưu tiên CLI > môi trường tiến trình > `.env`;
+giá trị trống tiếp tục lấy nguồn ưu tiên thấp hơn như các key hiện có.
+
+| Biến | Mặc định | CLI cho `run` và `pull` | Giá trị |
+| --- | --- | --- | --- |
+| `CVC_LLM_PROMPT_SCHEMA_TEXT` | `true` | `--prompt-schema-text` | `true`/`false` |
+| `CVC_LLM_WHOLE_PERSONAL` | `true` | `--whole-personal` | `true`/`false` |
+| `CVC_LLM_MAX_OUTPUT_TOKENS` | trống | `--max-output-tokens` | số nguyên dương |
+| `CVC_LLM_KEEP_ALIVE` | trống | `--keep-alive` | `[0-9]{1,6}(ms|s|m|h)` hoặc số nguyên `-1`, `[0-9]{1,6}` |
+| `CVC_LLM_CTX_CHARS_PER_TOKEN` | `2.5` | `--ctx-chars-per-token` | số hữu hạn từ 0.5 đến 10 |
+| `CVC_LLM_CTX_FINE_TIERS` | `false` | `--ctx-fine-tiers` | `true`/`false` |
+
+`PROMPT_SCHEMA_TEXT=false` dùng `Return only JSON.`, bỏ JSON schema trong prompt
+và câu tiếng Việt trùng nghĩa, giữ bản tiếng Anh. Schema vẫn được gửi trong
+`format` của Ollama. `WHOLE_PERSONAL=false` chỉ yêu cầu `experiences` ở lời gọi
+whole; personal vẫn lấy từ lời gọi header riêng. Chỉ hai cờ này đổi version:
+`llm-extraction-prompt/3-lean`, `llm-extraction-prompt/whole-2-xp` hoặc
+`llm-extraction-prompt/whole-2-lean-xp`. Cờ whole không đổi version ở mode blocks.
+Fallback sang blocks vẫn giữ version của mode whole đã yêu cầu.
+
+`MAX_OUTPUT_TOKENS` gửi `options.num_predict`; `KEEP_ALIVE` gửi `keep_alive` ở
+gốc request: duration có đơn vị giữ dạng chuỗi; số nguyên không đơn vị gửi dạng
+số JSON (giây). Phần chữ số có tối đa 6 chữ số. Trống thì không gửi key.
+`-1` giữ model được nạp, `0` yêu cầu dỡ model sau lời gọi. Hệ số context áp cho
+whole: `ceil(len(prompt) / CTX_CHARS_PER_TOKEN) + 4096`, chọn bậc nhỏ nhất đủ
+trong `8192, 16384, 24576, 32768`; cờ fine thêm `12288`. Vượt bậc cuối vẫn
+fallback như trước. Các tùy chọn runtime này không đổi prompt version.
+
+`pull` chốt provenance một lần khi khởi động, dùng chung cho claim và submit;
+thay đổi môi trường hoặc `.env` cần khởi động lại tiến trình. `worker_start`
+ghi cờ và số: hai cờ prompt/schema, giới hạn output (0 khi không đặt), cờ có
+keep-alive, hệ số context, cờ fine và num_ctx (0 khi không đặt).
+Giá trị sai trả mã cố định `INVALID_<TÊN_CỜ>`; `pull` thêm tên key môi trường,
+không in giá trị đã nhập.
+
+Khi Ollama trả `done_reason=length`, kết quả thêm issue nội bộ
+`OUTPUT_TRUNCATED` với field `personal` hoặc `experiences` theo lời gọi.
+Issue xuất hiện trong log tổng số và `run-summary.json`; không gửi trong
+payload backend. JSON bị cắt vẫn có `LLM_INVALID_JSON` và xử lý lỗi như trước.
+
+`bench --config NAME=ENV_FILE` nhận cả sáu key trên qua `config.BENCH_ENV_KEYS`;
+cùng cấu hình được giữ cho warmup và mọi lượt đo. Chỉ đổi mặc định sau khi đo
+bằng bench trên bộ dữ liệu đã duyệt. Các test khóa hash hiện có giữ nguyên;
+O4 bổ sung hash prompt personal và request whole mặc định bằng fixture tổng hợp.
 
 ## Đo vòng đời CV (E11)
 

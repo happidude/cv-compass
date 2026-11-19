@@ -15,7 +15,7 @@ from .config import PullConfig
 from .lifecycle import call_metrics
 from .pipeline import extract
 from .progress import command_logging, endpoint, event, model_name
-from .prompts import PROMPT_VERSION, WHOLE_PROMPT_VERSION
+from .prompts import prompt_version
 from .providers.base import ProviderError
 from .pull_payload import (
     ENGINE,
@@ -322,11 +322,13 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     on_block=on_block,
                     mode=config.llm.mode,
                     whole_timeout=config.llm.whole_timeout,
+                    config=config.llm,
                 )
                 issues = Counter(
                     (issue.code if issue.field is None else f'{issue.code}.{issue.field}')
                     for issue in result.issues
-                    if issue.code in WORKER_ISSUES | {'LLM_INVALID_JSON', 'PROVIDER_ERROR'}
+                    if issue.code
+                    in WORKER_ISSUES | {'LLM_INVALID_JSON', 'PROVIDER_ERROR', 'OUTPUT_TRUNCATED'}
                 )
                 fallback = (
                     {'fallback': 'blocks'}
@@ -420,7 +422,7 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
     counts = Counter(claimed=0, accepted=0, failed=0)
     provenance = {
         'model': config.llm.model,
-        'promptVersion': (WHOLE_PROMPT_VERSION if config.llm.mode == 'whole' else PROMPT_VERSION),
+        'promptVersion': prompt_version(config.llm.mode, config.llm),
         'workerVersion': config.worker_version,
     }
     client = BackendClient(config)
@@ -446,6 +448,13 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
         poll_s=config.poll_s,
         log_level=config.log_level,
         mode=config.llm.mode,
+        prompt_schema_text=int(config.llm.prompt_schema_text),
+        whole_personal=int(config.llm.whole_personal),
+        max_output_tokens=config.llm.max_output_tokens or 0,
+        keep_alive_set=int(config.llm.keep_alive is not None),
+        ctx_chars_per_token=config.llm.ctx_chars_per_token,
+        ctx_fine_tiers=int(config.llm.ctx_fine_tiers),
+        num_ctx=config.llm.num_ctx or 0,
     )
     try:
         token, key = secrets.token_urlsafe(32), str(uuid4())
