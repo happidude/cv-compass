@@ -6,9 +6,11 @@ from time import perf_counter
 
 from .config import LlmConfig
 from .contacts import extract_contacts
+from .lines import block_lines, number_lines
 from .ocr_input import Document
 from .prompts import (
     build_experience_prompt,
+    build_lines_prompt,
     build_personal_prompt,
     build_whole_prompt,
     prompt_version,
@@ -16,6 +18,8 @@ from .prompts import (
 from .providers.base import LlmProvider, ProviderError
 from .schema import (
     EXPERIENCE_SCHEMA,
+    LINES_EXPERIENCE_SCHEMA,
+    LINES_PERSONAL_SCHEMA,
     PERSONAL_KEYS,
     PERSONAL_SCHEMA,
     WHOLE_SCHEMA,
@@ -23,7 +27,13 @@ from .schema import (
     Issue,
 )
 from .segmenter import Block, build_header, segment, split_lines
-from .validate import validate_experiences, validate_personal, validate_whole
+from .validate import (
+    validate_experiences,
+    validate_line_experiences,
+    validate_line_personal,
+    validate_personal,
+    validate_whole,
+)
 
 
 def extract(
@@ -43,6 +53,12 @@ def extract(
         raise ValueError('INVALID_MODE')
     schema_text = config.prompt_schema_text if config is not None else True
     whole_personal = config.whole_personal if config is not None else True
+    use_lines = config is not None and config.evidence == 'lines'
+    line_table = (
+        number_lines(split_lines(tuple(p for p in document.pages if p.status == 'ok')))[1]
+        if use_lines
+        else {}
+    )
     fields = list(extract_contacts(document))
     issues = []
     experiences = []
@@ -55,8 +71,14 @@ def extract(
     if mode == 'whole':
         header = build_header(tuple(p for p in document.pages if p.status == 'ok'))
         block = Block(tuple(split_lines(tuple(p for p in document.pages if p.status == 'ok'))))
-        prompt = build_whole_prompt(
-            block.text, schema_text=schema_text, whole_personal=whole_personal
+        prompt = (
+            build_lines_prompt(
+                block_lines(block, line_table)[0], whole=True, schema_text=schema_text
+            )
+            if use_lines
+            else build_whole_prompt(
+                block.text, schema_text=schema_text, whole_personal=whole_personal
+            )
         )
         ratio = config.ctx_chars_per_token if config is not None else 2.5
         tiers = (
@@ -73,7 +95,11 @@ def extract(
             try:
                 response = provider.generate(
                     prompt,
-                    WHOLE_SCHEMA if whole_personal else EXPERIENCE_SCHEMA,
+                    LINES_EXPERIENCE_SCHEMA
+                    if use_lines
+                    else WHOLE_SCHEMA
+                    if whole_personal
+                    else EXPERIENCE_SCHEMA,
                     num_ctx=num_ctx,
                     timeout_s=whole_timeout,
                 )
@@ -81,9 +107,12 @@ def extract(
                 issues.append(Issue('PROVIDER_ERROR'))
             else:
                 check_truncated('experiences')
-                _, experiences, errors = validate_whole(
-                    response, block, whole_personal=whole_personal
-                )
+                if use_lines:
+                    experiences, errors = validate_line_experiences(response, line_table)
+                else:
+                    _, experiences, errors = validate_whole(
+                        response, block, whole_personal=whole_personal
+                    )
                 issues.extend(error for error in errors if error.field not in PERSONAL_KEYS)
             if on_block is not None:
                 on_block(1, 1 + bool(header.spans), perf_counter() - started)
@@ -104,15 +133,24 @@ def extract(
 
     if header.spans:
         started = perf_counter() if on_block is not None else 0
+        if use_lines:
+            header_text, header_table = block_lines(header, line_table)
         try:
             response = provider.generate(
-                build_personal_prompt(header.text, schema_text=schema_text), PERSONAL_SCHEMA
+                build_lines_prompt(header_text, personal=True, schema_text=schema_text)
+                if use_lines
+                else build_personal_prompt(header.text, schema_text=schema_text),
+                LINES_PERSONAL_SCHEMA if use_lines else PERSONAL_SCHEMA,
             )
         except ProviderError:
             issues.append(Issue('PROVIDER_ERROR', 'personal'))
         else:
             check_truncated('personal')
-            values, errors = validate_personal(response, header)
+            values, errors = (
+                validate_line_personal(response, header_table)
+                if use_lines
+                else validate_personal(response, header)
+            )
             fields.extend(values)
             issues.extend(errors)
         completed(started)
@@ -120,16 +158,25 @@ def extract(
         issues.append(Issue('BLOCK_LIMIT_REACHED'))
     for block in blocks[:max_blocks]:
         started = perf_counter() if on_block is not None else 0
+        if use_lines:
+            block_text, block_table = block_lines(block, line_table)
         try:
             response = provider.generate(
-                build_experience_prompt(block.text, schema_text=schema_text), EXPERIENCE_SCHEMA
+                build_lines_prompt(block_text, schema_text=schema_text)
+                if use_lines
+                else build_experience_prompt(block.text, schema_text=schema_text),
+                LINES_EXPERIENCE_SCHEMA if use_lines else EXPERIENCE_SCHEMA,
             )
         except ProviderError:
             issues.append(Issue('PROVIDER_ERROR', 'experiences'))
             completed(started)
             continue
         check_truncated('experiences')
-        values, errors = validate_experiences(response, block)
+        values, errors = (
+            validate_line_experiences(response, block_table)
+            if use_lines
+            else validate_experiences(response, block)
+        )
         experiences.extend(values)
         issues.extend(errors)
         completed(started)

@@ -13,6 +13,7 @@ ENV_KEYS = {
     'base_url': 'CVC_LLM_BASE_URL',
     'timeout': 'CVC_LLM_TIMEOUT_S',
     'mode': 'CVC_LLM_MODE',
+    'evidence': 'CVC_LLM_EVIDENCE',
     'whole_timeout': 'CVC_LLM_WHOLE_TIMEOUT_S',
     'max_blocks': 'CVC_LLM_MAX_BLOCKS',
     'temperature': 'CVC_LLM_TEMPERATURE',
@@ -42,6 +43,7 @@ BENCH_ENV_KEYS = frozenset(
         'base_url',
         'timeout',
         'mode',
+        'evidence',
         'whole_timeout',
         'max_blocks',
         'temperature',
@@ -75,6 +77,7 @@ class LlmConfig:
     keep_alive: str | None = None
     ctx_chars_per_token: float = 2.5
     ctx_fine_tiers: bool = False
+    evidence: str = 'quote'
 
 
 def default_env_file() -> Path:
@@ -195,6 +198,9 @@ def load_config(
     mode = value('mode', 'blocks')
     if mode not in ('blocks', 'whole'):
         raise ValueError('INVALID_MODE')
+    evidence = value('evidence', 'quote')
+    if evidence not in ('quote', 'lines'):
+        raise ValueError('INVALID_EVIDENCE')
     whole_timeout = _number(
         value('whole_timeout', '900'), 'INVALID_WHOLE_TIMEOUT', minimum=0, maximum=math.inf
     )
@@ -229,6 +235,7 @@ def load_config(
         think=think == 'true',
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
         mode=mode,
+        evidence=evidence,
         whole_timeout=whole_timeout,
         **flags,
         max_output_tokens=(
@@ -363,6 +370,7 @@ def load_pull_config(
             'INVALID_THINK': 'think',
             'INVALID_NUM_CTX': 'num_ctx',
             'INVALID_MODE': 'mode',
+            'INVALID_EVIDENCE': 'evidence',
             'INVALID_WHOLE_TIMEOUT': 'whole_timeout',
             'INVALID_PROMPT_SCHEMA_TEXT': 'prompt_schema_text',
             'INVALID_WHOLE_PERSONAL': 'whole_personal',

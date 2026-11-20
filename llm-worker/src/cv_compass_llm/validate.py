@@ -2,7 +2,16 @@
 
 import re
 
-from .dates import find_birth_dates, find_dates, has_present, normalize_date, parse_birth_date
+from .dates import (
+    DATE_TOKEN,
+    ENGLISH_MONTH,
+    PRESENT_TOKEN,
+    find_birth_dates,
+    find_dates,
+    has_present,
+    normalize_date,
+    parse_birth_date,
+)
 from .evidence import (
     find_personal,
     locate,
@@ -12,8 +21,11 @@ from .evidence import (
     summary_evidence,
 )
 from .json_strict import strict_json
+from .lines import line_summary
 from .schema import (
     EXPERIENCE_SCHEMA,
+    LINES_EXPERIENCE_SCHEMA,
+    LINES_PERSONAL_SCHEMA,
     PERSONAL_SCHEMA,
     WHOLE_SCHEMA,
     Evidence,
@@ -21,7 +33,7 @@ from .schema import (
     FieldValue,
     Issue,
 )
-from .segmenter import Block
+from .segmenter import Block, Span
 
 GENDERS = {
     'nam': 'MALE',
@@ -57,6 +69,8 @@ def matches_schema(value: object, schema: dict) -> bool:
         return isinstance(value, str)
     if kind == 'boolean':
         return type(value) is bool
+    if kind == 'integer':
+        return type(value) is int
     if kind == 'array':
         return (
             isinstance(value, list)
@@ -353,3 +367,202 @@ def validate_whole(
     fields, personal_issues = _personal(data, block) if whole_personal else ((), ())
     experiences, experience_issues = _experiences(data, block)
     return fields, experiences, (*personal_issues, *experience_issues)
+
+
+def _line_value(
+    item: dict, table: dict[int, Span], field: str, issues: list[Issue], *, personal: bool = False
+) -> tuple[str | None, Evidence | None]:
+    value, number = item['text'], item['line']
+    if value is None and number is None:
+        return None, None
+    if number in table and value is not None:
+        for candidate in (number, number - 1, number + 1):
+            span = table.get(candidate)
+            if span is None or span.page != table[number].page:
+                continue
+            if personal:
+                evidence = locate_personal(value, Block((span,)))
+            else:
+                evidence = locate(value, Block((span,)))
+            if evidence is not None:
+                original = evidence.text
+                if (
+                    field == 'fullName'
+                    and personal_text(original, fold=True)[0] in GENERIC_NAME_HEADINGS
+                ):
+                    continue
+                return original, evidence
+    issues.append(Issue('QUOTE_NOT_FOUND', field))
+    return None, None
+
+
+def _period_continues(text: str, following: str) -> bool:
+    """Require an explicit range boundary or an unfinished date before joining lines."""
+    text, following = text.strip(), following.strip()
+    connector = r'(?:[-–—~]|\b(?:to|đến)\b)'
+    if (
+        re.search(connector + r'$', text, re.IGNORECASE)
+        or re.match(connector, following, re.IGNORECASE)
+        or DATE_TOKEN.match(following)
+        or PRESENT_TOKEN.match(following)
+    ):
+        return True
+    partial = re.search(
+        r'(?<![\w/])(?:'
+        + ENGLISH_MONTH
+        + r'\.?(?:\s+[0-9]{1,2}(?:st|nd|rd|th)?[,]?)?'
+        + r'|[0-9]{1,2}(?:st|nd|rd|th)?\s+'
+        + ENGLISH_MONTH
+        + r'\.?'
+        + r'|(?:tháng\s+|t)[0-9]{1,2}(?:\s+năm)?'
+        + r'|[0-9]{1,2}(?:[/.-][0-9]{1,2})?[/.-]?)$',
+        text,
+        re.IGNORECASE,
+    )
+    # The tail of a complete date (e.g. the 01 in 2020-01) is not a continuation.
+    return partial is not None and not any(
+        match.start() < partial.end() and partial.start() < match.end()
+        for match in DATE_TOKEN.finditer(text)
+    )
+
+
+def _line_period(
+    item: dict, table: dict[int, Span], issues: list[Issue]
+) -> tuple[str | None, str | None, bool, Evidence | None]:
+    number = item['periodLine']
+    if number is None and not item['ongoing']:
+        return None, None, False, None
+    span = table.get(number)
+    if span is None:
+        issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
+        return None, None, False, None
+    text = span.text
+    tokens = find_dates(text)
+    following = table.get(number + 1)
+    if (
+        len(tokens) == 1
+        and not has_present(text)
+        and following is not None
+        and following.page == span.page
+        and span.end == following.start
+        and _period_continues(text, following.text)
+    ):
+        # A single period Evidence cannot represent an omitted source gap.
+        text += following.text
+        tokens = find_dates(text)
+    matches = list(DATE_TOKEN.finditer(text))
+    for match in matches:
+        try:
+            normalize_date(match.group())
+        except ValueError:
+            issues.append(Issue('INVALID_DATE', 'period'))
+            return None, None, False, None
+    present = PRESENT_TOKEN.search(text)
+    if (
+        not tokens
+        or len(tokens) > 2
+        or len(matches) != len(tokens)
+        or (present and len(tokens) != 1)
+    ):
+        issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
+        return None, None, False, None
+    left = matches[0].start()
+    right = max(matches[-1].end(), present.end() if present is not None else 0)
+    source = text[left:right]
+    period_block = Block((Span(span.page, span.start, span.start + len(text), text),))
+    return validate_period(
+        {
+            'start': tokens[0],
+            'end': tokens[1] if len(tokens) == 2 else None,
+            'ongoing': has_present(source),
+            'quotes': {'period': source},
+        },
+        period_block,
+        issues,
+    )
+
+
+def validate_line_experiences(
+    text: str, table: dict[int, Span]
+) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
+    """Resolve short model values and derive periods from numbered source lines."""
+    data = parse_response(text, LINES_EXPERIENCE_SCHEMA)
+    if data is None:
+        return (), (Issue('LLM_INVALID_JSON'),)
+    rows, issues = [], []
+    for item in data['experiences']:
+        title, title_evidence = _line_value(item['title'], table, 'title', issues)
+        company, company_evidence = _line_value(item['company'], table, 'company', issues)
+        start, end, ongoing, period = _line_period(item, table, issues)
+        if title is None and company is None:
+            issues.append(Issue('EXPERIENCE_WITHOUT_ROLE'))
+            continue
+        evidence = {
+            key: value
+            for key, value in (
+                ('title', title_evidence),
+                ('company', company_evidence),
+                ('period', period),
+            )
+            if value is not None
+        }
+        rows.append(Experience(title, company, start, end, ongoing, evidence))
+    return tuple(rows), tuple(issues)
+
+
+def validate_line_personal(
+    text: str, table: dict[int, Span]
+) -> tuple[tuple[FieldValue, ...], tuple[Issue, ...]]:
+    """Resolve personal fields with the existing E8 normalization and gender rules."""
+    data = parse_response(text, LINES_PERSONAL_SCHEMA)
+    if data is None:
+        return (), (Issue('LLM_INVALID_JSON'),)
+    fields, issues = [], []
+    for key, item in data['personal'].items():
+        if key in ('fullName', 'location'):
+            value, evidence = _line_value(item, table, key, issues, personal=True)
+        elif key == 'gender':
+            if item['line'] is None and item['value'] is None:
+                continue
+            span = table.get(item['line'])
+            if span is None:
+                issues.append(Issue('QUOTE_NOT_FOUND', key))
+                continue
+            value, evidence = _personal_value(
+                key, {'value': item['value'], 'quote': span.text.strip()}, Block((span,)), issues
+            )
+        elif key == 'dateOfBirthLine':
+            if item is None:
+                continue
+            key = 'dateOfBirth'
+            span = table.get(item)
+            tokens = find_birth_dates(span.text.replace('‐', '-')) if span is not None else []
+            if len(tokens) > 1:
+                issues.append(Issue('QUOTE_NOT_FOUND', key))
+                continue
+            if not tokens:
+                invalid = span is not None and DATE_TOKEN.search(span.text) is not None
+                issues.append(Issue('INVALID_DATE' if invalid else 'QUOTE_NOT_FOUND', key))
+                continue
+            value, evidence = _personal_value(
+                key, {'value': tokens[0][0], 'quote': span.text.strip()}, Block((span,)), issues
+            )
+        else:
+            if not item:
+                continue
+            parts = line_summary(item, table)
+            if parts is None:
+                issues.append(Issue('QUOTE_NOT_FOUND', 'summary'))
+            else:
+                fields.append(
+                    FieldValue(
+                        'summary',
+                        '\n'.join(part.text for part in parts),
+                        parts[0],
+                        parts[1:],
+                    )
+                )
+            continue
+        if value is not None and evidence is not None:
+            fields.append(FieldValue(key, value, evidence))
+    return tuple(fields), tuple(issues)
