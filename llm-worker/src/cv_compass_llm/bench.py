@@ -120,6 +120,13 @@ def _aggregate(runs: list[dict], comparisons: list[dict], seconds: list[float]) 
             )
     for summary in runs:
         counts.update({key: summary[key] for key in ('files', 'ok', 'llm_calls')})
+        counts['ctx_retry'] += summary.get('ctx_retry', 0)
+        counts.update(
+            {
+                f'num_ctx_counts.{tier}': count
+                for tier, count in summary.get('num_ctx_counts', {}).items()
+            }
+        )
         if 'fallbacks' in summary:
             counts['fallbacks'] += summary['fallbacks']
             counts.update(

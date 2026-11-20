@@ -60,6 +60,7 @@ CLI_ERRORS = {
     'INVALID_KEEP_ALIVE',
     'INVALID_CTX_CHARS_PER_TOKEN',
     'INVALID_CTX_FINE_TIERS',
+    'INVALID_CTX_GUARD',
     'INVALID_FALLBACK_MODEL',
     'INVALID_FALLBACK_DROP_RATIO',
     'INVALID_FALLBACK_CANDIDATES',
@@ -136,6 +137,8 @@ def run_batch(
     issues_by_field = Counter()
     ok, total_seconds = 0, 0.0
     calls = []
+    context_counts = Counter()
+    num_ctx_counts = Counter()
     # Bench reuses its configured provider for warmup and every measured batch.
     config = config if config is not None else getattr(provider, 'extraction_config', None)
     if not isinstance(config, LlmConfig):
@@ -147,6 +150,7 @@ def run_batch(
         observed = _MetricsProvider(local_provider)
         backup = _MetricsProvider(local_provider.fallback_provider) if cascade else None
         reasons = ()
+        contexts = []
 
         def on_fallback(codes):
             nonlocal reasons
@@ -168,6 +172,7 @@ def run_batch(
                 mode=mode,
                 whole_timeout=whole_timeout,
                 config=config,
+                on_context=contexts.append,
                 **({'fallback_provider': backup, 'on_fallback': on_fallback} if cascade else {}),
             )
             if not cascade:
@@ -187,6 +192,7 @@ def run_batch(
             perf_counter() - started,
             observed.calls + (backup.calls if backup is not None else []),
             reasons,
+            contexts,
         )
 
     if _providers is not None and len(_providers) > 1:
@@ -208,8 +214,12 @@ def run_batch(
             results = [result for _, result in sorted(item for batch in batches for item in batch)]
     else:
         results = [process(path, provider) for path in paths]
-    for error_code, result, elapsed, observations, reasons in results:
+    for error_code, result, elapsed, observations, reasons, contexts in results:
         calls.extend(observations)
+        context_counts['ctx_retry'] += sum(row.get('ctx_retry', 0) for row in contexts)
+        sizes = [row['num_ctx'] for row in contexts if 'num_ctx' in row]
+        if sizes:
+            num_ctx_counts[str(max(sizes))] += 1
         total_seconds += elapsed
         if error_code is not None:
             errors[error_code] += 1
@@ -236,6 +246,8 @@ def run_batch(
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
         'llm_calls': len(calls),
         'llm_metrics': metric_summary(calls),
+        'ctx_retry': context_counts['ctx_retry'],
+        'num_ctx_counts': dict(num_ctx_counts),
     }
     if cascade:
         summary['fallbacks'] = sum(bool(row[4]) for row in results)
@@ -279,6 +291,7 @@ def parser() -> argparse.ArgumentParser:
         'keep_alive',
         'ctx_chars_per_token',
         'ctx_fine_tiers',
+        'ctx_guard',
     ):
         run.add_argument('--' + name.replace('_', '-'))
     bench = commands.add_parser('bench')
@@ -301,6 +314,7 @@ def parser() -> argparse.ArgumentParser:
         'keep_alive',
         'ctx_chars_per_token',
         'ctx_fine_tiers',
+        'ctx_guard',
     ):
         pull.add_argument('--' + name.replace('_', '-'))
     check = commands.add_parser('check')
@@ -339,6 +353,8 @@ def create_provider(config: LlmConfig) -> LlmProvider:
         options['num_predict'] = config.max_output_tokens
     if config.keep_alive is not None:
         options['keep_alive'] = config.keep_alive
+    if config.ctx_guard:
+        options['ctx_guard'] = True
     provider = OllamaProvider(
         config.model,
         base_url=config.base_url,

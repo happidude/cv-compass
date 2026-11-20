@@ -48,12 +48,13 @@ def _interval(value: str) -> float:
 class _ObservedProvider:
     """L1 isolates ProviderError, so remember it for L5's whole-attempt outcome."""
 
-    def __init__(self, provider, supervisor) -> None:
+    def __init__(self, provider, supervisor, *, ctx_guard=False) -> None:
         self.provider = provider
         self.name = provider.name
         self.supervisor = supervisor
         self.failure = None
         self.last_metrics = {}
+        self.ctx_guard = ctx_guard
 
     def generate(
         self,
@@ -78,6 +79,8 @@ class _ObservedProvider:
             self.last_metrics = getattr(self.provider, 'last_metrics', None) or {}
             return response
         except ProviderError as error:
+            if self.ctx_guard and str(error) == 'OLLAMA_CONTEXT_OVERFLOW':
+                raise
             self.failure = (
                 'PROVIDER_TIMEOUT'
                 if str(error) in ('OLLAMA_TIMEOUT', 'PROVIDER_TIMEOUT')
@@ -296,15 +299,30 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
             except ValueError, TypeError, KeyError:
                 failure = 'INVALID_INPUT'
             if failure is None:
-                observed = _ObservedProvider(provider, attempt)
+                observed = _ObservedProvider(provider, attempt, ctx_guard=config.llm.ctx_guard)
                 cascade = bool(config.llm.fallback_model)
-                backup = _ObservedProvider(provider.fallback_provider, attempt) if cascade else None
+                backup = (
+                    _ObservedProvider(
+                        provider.fallback_provider, attempt, ctx_guard=config.llm.ctx_guard
+                    )
+                    if cascade
+                    else None
+                )
                 reasons = ()
+                context_metrics = {}
                 started = time.monotonic()
 
                 def on_fallback(codes):
                     nonlocal reasons
                     reasons = codes
+
+                def on_context(telemetry):
+                    nonlocal context_metrics
+                    context_metrics = {
+                        key: telemetry[key] for key in ('num_ctx', 'ctx_retry') if key in telemetry
+                    }
+                    for discarded in telemetry['discarded']:
+                        event('ctx_discarded', attempt=attempt.short_id, **discarded)
 
                 def on_block(index, total, seconds):
                     current = backup if reasons else observed
@@ -320,6 +338,7 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                         attempt=attempt.short_id,
                         block=f'{index}/{total}',
                         seconds=f'{seconds:.3f}',
+                        **context_metrics,
                         **metrics,
                     )
 
@@ -331,6 +350,7 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     mode=config.llm.mode,
                     whole_timeout=config.llm.whole_timeout,
                     config=config.llm,
+                    on_context=on_context,
                     **(
                         {'fallback_provider': backup, 'on_fallback': on_fallback} if cascade else {}
                     ),
@@ -339,7 +359,8 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     (issue.code if issue.field is None else f'{issue.code}.{issue.field}')
                     for issue in result.issues
                     if issue.code
-                    in WORKER_ISSUES | {'LLM_INVALID_JSON', 'PROVIDER_ERROR', 'OUTPUT_TRUNCATED'}
+                    in WORKER_ISSUES
+                    | {'LLM_INVALID_JSON', 'PROVIDER_ERROR', 'OUTPUT_TRUNCATED', 'CONTEXT_OVERFLOW'}
                 )
                 fallback = (
                     {'fallback': 'blocks'}
@@ -474,6 +495,7 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
         keep_alive_set=int(config.llm.keep_alive is not None),
         ctx_chars_per_token=config.llm.ctx_chars_per_token,
         ctx_fine_tiers=int(config.llm.ctx_fine_tiers),
+        ctx_guard=int(config.llm.ctx_guard),
         num_ctx=config.llm.num_ctx or 0,
     )
     try:

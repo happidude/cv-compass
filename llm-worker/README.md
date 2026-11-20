@@ -838,3 +838,62 @@ trong `tests/test_ollama.py` và SHA-256 `compact_result` trong
 đối chiếu serializer E10 tại base `ea16dc415d9947e34a437c557826d590e40d5c18`.
 Sandbox triển khai không có Python nên chưa chạy xác nhận hash trên code E10;
 cần verifier xác nhận mốc đó trước khi dùng làm bằng chứng hồi quy cho task sau.
+
+## Chặn tràn context (O9)
+
+`CVC_LLM_CTX_GUARD=false` là mặc định. Bật bằng `true` trong môi trường hoặc
+`.env`, hay `--ctx-guard true` cho `run`/`pull`; `bench --config` cũng nhận key
+này. Thứ tự ưu tiên là CLI > môi trường tiến trình > `.env`. Khi tắt, prompt,
+schema, tham số gọi provider và từng byte request Ollama giữ nguyên; HTTP lỗi
+không đọc body để phân loại context. `promptVersion` không đổi.
+
+Khi bật, mỗi call whole, header hoặc block được coi là tràn nếu có một trong
+ba điều kiện:
+
+- HTTP 400/500 của Ollama có từ chỉ context/độ dài đầu vào như `context length`,
+  `context window`, `input length`, `exceeds`, `too long`, `num_ctx` (không phân
+  biệt hoa thường). Provider chỉ đọc tối đa 4096 byte để nhận diện rồi đóng
+  response, trả mã cố định `OLLAMA_CONTEXT_OVERFLOW`; không giữ hoặc log body.
+- `last_metrics.prompt_tokens + output_tokens >= num_ctx - 32`, với context
+  hiệu lực của chính call đó. Thiếu context hoặc một trong hai số token thì
+  bỏ qua điều kiện này.
+- `done_reason=length` và không đặt `CVC_LLM_MAX_OUTPUT_TOKENS`. Nếu đã đặt giới
+  hạn đầu ra, `length` vẫn theo hành vi `OUTPUT_TRUNCATED` hiện có, trừ khi
+  call đồng thời thỏa điều kiện tràn khác.
+
+Toàn bộ response tràn bị bỏ trước validation: không lấy giá trị một phần,
+không phát sinh lỗi validation hoặc `OUTPUT_TRUNCATED` từ response đã bỏ.
+Mỗi đơn vị chỉ retry tối đa một lần, dùng cùng prompt/schema/timeout và bậc
+context kế tiếp trong `8192 → 16384 → 24576 → 32768`; khi
+`CVC_LLM_CTX_FINE_TIERS=true`, thêm bậc `12288` sau `8192`.
+
+Whole vẫn chọn bậc ban đầu bằng `ceil(len(prompt) / ctx_chars_per_token) + 4096`.
+Nếu retry vẫn tràn hoặc không có bậc cao hơn, ghi `WHOLE_TOO_LONG` và chuyển
+sang blocks. Header/blocks bắt đầu như trước, không truyền `num_ctx` riêng;
+context hiệu lực là `CVC_LLM_NUM_CTX`. Retry chọn bậc nhỏ nhất lớn hơn context
+đó; nếu context chưa biết thì dùng 8192 làm mốc chọn retry. Tràn sau retry hoặc
+hết bậc tạo `CONTEXT_OVERFLOW.personal` / `CONTEXT_OVERFLOW.experiences`, bỏ
+giá trị của call đó. Issue này chỉ được đếm trong log, không gửi backend.
+Lỗi provider khác giữ cách xử lý hiện có.
+
+Log `extraction_block` có `num_ctx` khi biết context hiệu lực của call cuối,
+và `ctx_retry=1` nếu đã retry. `seconds` của đơn vị bao gồm các call bị bỏ;
+metrics trên dòng này lấy từ call cuối. Mỗi call bị bỏ có thêm một event
+`ctx_discarded` chứa `attempt`, `num_ctx` khi biết, `seconds` riêng và metrics
+số theo allowlist E11 (`prompt_tokens`, `output_tokens`, các thời gian giây,
+`tok_s` khi có). Không log prompt, nội dung CV, response hoặc body lỗi.
+`ctx_discarded` chỉ phục vụ kiểm tra call bị bỏ; lifecycle-report không cộng
+thêm thời gian đó lần nữa. Event config có `ctx_guard=0|1`.
+
+`run-summary.json` có `ctx_retry` (tổng số lần retry) và `num_ctx_counts` (đếm
+mỗi CV một lần theo context cuối lớn nhất trong các đơn vị của CV, kể cả
+fallback model). `bench` cộng các run được đo, xuất `ctx_retry` và
+`num_ctx_counts.<tier>`; không cộng warmup. `lifecycle-report` cộng `ctx_retry`
+từ các `extraction_block` ghép được, và đếm mỗi document theo `num_ctx` lớn
+nhất của các call cuối. Không biết context thì không thêm vào bộ đếm bậc;
+log cũ không có các trường này vẫn đọc được.
+
+Hành vi Ollama **0.40.x chưa được kiểm chứng (NOT VERIFIED)**: đầu vào vượt
+context có thể trả lỗi hoặc bị cắt âm thầm. Guard xử lý cả lỗi nhận diện được
+và tín hiệu metrics; triển khai/test O9 chỉ dùng fixture tổng hợp và mock,
+không gọi Ollama thật.

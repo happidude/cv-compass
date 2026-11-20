@@ -2,6 +2,7 @@
 
 import json
 import math
+import re
 from email.message import Message
 from http.client import HTTPException
 from typing import BinaryIO
@@ -54,6 +55,7 @@ class OllamaProvider:
         num_ctx: int | None = None,
         num_predict: int | None = None,
         keep_alive: str | None = None,
+        ctx_guard: bool = False,
     ) -> None:
         """Validate the local endpoint and timeout for each socket operation."""
         try:
@@ -97,6 +99,7 @@ class OllamaProvider:
         self.num_ctx = num_ctx
         self.num_predict = num_predict
         self.keep_alive = keep_alive
+        self.ctx_guard = ctx_guard
         self.last_metrics: dict[str, int | str] = {}
         self.extraction_config: LlmConfig | None = None
         self._opener = build_opener(ProxyHandler({}), _NoRedirect())
@@ -145,7 +148,24 @@ class OllamaProvider:
                 data = response.read(MAX_RESPONSE_BYTES + 1)
         except HTTPError as error:
             code = error.code
-            error.close()
+            overflow = False
+            try:
+                if self.ctx_guard and code in (400, 500):
+                    overflow = (
+                        re.search(
+                            rb'context\s+(?:length|window)|input[\s_-]+length|'
+                            rb'exceeds|too\s+long|num_ctx',
+                            error.read(4096),
+                            re.IGNORECASE,
+                        )
+                        is not None
+                    )
+            except OSError, HTTPException:
+                pass
+            finally:
+                error.close()
+            if overflow:
+                raise ProviderError('OLLAMA_CONTEXT_OVERFLOW') from None
             raise ProviderError(f'OLLAMA_HTTP_{code}') from None
         except TimeoutError:
             raise ProviderError('OLLAMA_TIMEOUT') from None
