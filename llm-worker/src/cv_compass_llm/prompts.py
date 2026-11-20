@@ -26,6 +26,8 @@ def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
         version += '-lean'
     if mode == 'whole' and config is not None and not config.whole_personal:
         version += '-xp'
+    if config is not None and config.trim_input:
+        version += '-trims' if config.trim_sections else '-trim'
     return version
 
 

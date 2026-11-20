@@ -231,32 +231,44 @@ def normalize_heading(text: str) -> str:
     return ' '.join(text.rstrip(': -–\t\r\n').split()).casefold()
 
 
+def heading_kind(
+    text: str,
+    experience_headings: tuple[str, ...] = EXPERIENCE_HEADINGS,
+    other_headings: tuple[str, ...] = OTHER_HEADINGS,
+    *,
+    in_experience: bool = False,
+) -> str | None:
+    """Share the segmenter's conservative heading recognition with input trimming."""
+    if not _is_heading_candidate(text):
+        return None
+    starts = {normalize_heading(heading) for heading in experience_headings}
+    stops = {normalize_heading(heading) for heading in other_headings}
+    heading = normalize_heading(text)
+    parts = re.split(r'\s*(?:[&/,]|\band\b|\bvà\b)\s*', heading)
+    known = len(heading) <= 60 and all(part in starts | stops for part in parts)
+    if in_experience and heading in ('projects', 'dự án'):
+        known = False
+    if known:
+        return 'experience' if parts[0] in starts else 'other'
+    return None
+
+
 def scan_headings(
     lines: list[Span],
     experience_headings: tuple[str, ...],
     other_headings: tuple[str, ...],
 ) -> tuple[tuple[Block, ...], bool]:
     """Collect experience sections delimited by complete heading lines."""
-    starts = {normalize_heading(heading) for heading in experience_headings}
-    stops = {normalize_heading(heading) for heading in other_headings}
     found, active = False, False
     selected: list[Span] = []
     blocks: list[Block] = []
     for line in lines:
-        if not _is_heading_candidate(line.text):
-            if active:
-                selected.append(line)
-            continue
-        heading = normalize_heading(line.text)
-        parts = re.split(r'\s*(?:[&/,]|\band\b|\bvà\b)\s*', heading)
-        known = len(heading) <= 60 and all(part in starts | stops for part in parts)
-        if active and heading in ('projects', 'dự án'):
-            known = False
-        if known:
+        kind = heading_kind(line.text, experience_headings, other_headings, in_experience=active)
+        if kind is not None:
             if selected:
                 blocks.extend(split_spans(selected))
                 selected = []
-            active = parts[0] in starts
+            active = kind == 'experience'
             found |= active
         elif active:
             selected.append(line)

@@ -474,7 +474,7 @@ khác hoa/thường để tránh chung thư mục trên Windows, trả `BENCH_DU
 tên hoặc cú pháp sai trả `BENCH_INVALID_CONFIG`. File cấu hình chỉ cho phép:
 `CVC_LLM_PROVIDER`, `CVC_LLM_MODEL`, `CVC_LLM_BASE_URL`, `CVC_LLM_TIMEOUT_S`,
 `CVC_LLM_MODE`, `CVC_LLM_EVIDENCE`, `CVC_LLM_WHOLE_TIMEOUT_S`, `CVC_LLM_MAX_BLOCKS`,
-`CVC_LLM_TEMPERATURE`, `CVC_LLM_THINK`, `CVC_LLM_NUM_CTX` và sáu key O4 bên dưới. Allowlist dễ mở rộng
+`CVC_LLM_TEMPERATURE`, `CVC_LLM_THINK`, `CVC_LLM_NUM_CTX`, sáu key O4 và ba key O6 bên dưới. Allowlist dễ mở rộng
 nằm ở `config.BENCH_ENV_KEYS`. Key khác, kể cả key ngoài tiền tố `CVC_LLM_`,
 trả `BENCH_INVALID_CONFIG_KEY`; không in key hoặc giá trị. File vẫn dùng quy tắc
 cú pháp/giới hạn kích thước của `.env`. Key trích xuất có giá trị trong file ghi
@@ -598,6 +598,52 @@ version đã chốt khi khởi động cho claim/submit. Kết quả vẫn là e
 mặc định sau khi bench chứng minh độ chính xác ít nhất bằng `quote`.
 
 Test tổng hợp O5 nằm ở `tests/test_o5_lines.py`; các test hash hiện có giữ nguyên.
+
+## Gọn đầu vào model (O6)
+
+| Biến | Mặc định | Giá trị |
+| --- | --- | --- |
+| `CVC_LLM_TRIM_INPUT` | `false` | `true`/`false` |
+| `CVC_LLM_TRIM_SECTIONS` | `false` | `true`/`false` |
+| `CVC_LLM_TRIM_PHRASES` | trống | danh sách cả dòng phân tách bằng `\|` |
+
+Cấu hình qua môi trường hoặc `.env`, chưa có tham số CLI; `bench --config`
+nhận cả ba key. `TRIM_INPUT=false` giữ nguyên từng byte prompt và request như
+trước O6, kể cả khi hai tùy chọn còn lại được đặt. Cờ chỉ nhận `true`/`false`;
+lỗi cấu hình `pull` chỉ ghi tên key và mã lỗi cố định, không ghi giá trị đã nhập.
+
+Khi bật, chỉ text trong lời gọi kinh nghiệm (`whole`, `blocks` và fallback)
+được gọn lại. Lời gọi personal từ header luôn dùng nguyên text hiện tại.
+Raw text, spans và offset dùng cho evidence không bị sửa.
+
+- So riêng ba dòng không rỗng đầu trang với đầu trang, cuối trang với cuối
+  trang, sau khi gộp khoảng trắng và so khớp không phân biệt hoa thường.
+  Tài liệu có từ ba trang `ok` yêu cầu lặp trên ít nhất ba trang; tài liệu hai
+  trang yêu cầu hai trang. Giữ lần đầu, bỏ ở cùng mép trang những trang sau.
+  Nội dung giữa trang không bị bỏ chỉ vì trùng header/footer.
+- Chỉ bỏ số trang có 1–3 chữ số và không vượt tổng số trang `ok`; với `X/Y`,
+  `X of Y`, `Page X of Y`, `Trang X/Y`, yêu cầu `1 ≤ X ≤ Y ≤ số trang ok`,
+  `Y ≤ 999`. Dạng `- X -` cũng phải nằm trong giới hạn số trang.
+  Giữ năm và tháng/năm như `2020`, `09/2020`, `12/2019`, `2020-09`.
+  Bỏ dòng chỉ có ký hiệu/khung, và cụm cấu hình khớp cả dòng sau
+  strip, không phân biệt hoa thường. Ví dụ:
+  `CVC_LLM_TRIM_PHRASES=© topcv.vn|Private and Confidential`.
+- Gộp khoảng trắng/tab trong dòng thành một khoảng; giữ tối đa một dòng trống
+  liên tiếp. Với evidence `lines`, vẫn giữ số `[L<n>]` toàn cục của O5, có thể
+  có khoảng trống; bảng ID luôn trỏ về span nguồn chưa sửa.
+- `TRIM_SECTIONS=true` chỉ có hiệu lực khi bật `TRIM_INPUT`: bỏ từ heading
+  chắc chắn thuộc `OTHER_HEADINGS` tới heading được nhận diện kế tiếp, dùng
+  cùng quy tắc thận trọng như segmenter. Không bỏ prose hoặc heading chưa chắc
+  chắn; `Projects` trong kinh nghiệm giữ quy tắc hiện có. Cờ này mặc định tắt
+  vì rủi ro bố cục CV hai cột.
+
+Version thêm `-trim` hoặc `-trims` khi bỏ section, sau các hậu tố O4/O5.
+Block rỗng sau trim không gọi model, vẫn hoàn tất bước tiến độ.
+Số đo `chars_before`/`chars_after` qua callback `on_trim` chỉ tính lời gọi
+kinh nghiệm thực sự gọi model, không tính lời gọi personal hoặc block rỗng.
+Việc nối số đo vào log pull và run-summary vẫn chờ mở phạm vi sửa file.
+Chỉ chủ dự án bật sau khi đo bằng bench trên dữ liệu đã duyệt.
+Test tổng hợp O6 ở `tests/test_o6_trim.py`; không thay các hằng hash hiện có.
 
 ## Đo vòng đời CV (E11)
 

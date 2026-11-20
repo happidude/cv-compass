@@ -4,9 +4,10 @@ from collections.abc import Iterable
 
 from .schema import Evidence
 from .segmenter import Block, Span
+from .trim import compact_line
 
 
-def _render(table: dict[int, Span]) -> str:
+def _render(table: dict[int, Span], *, trim: bool = False) -> str:
     rows = []
     page = None
     for number, span in table.items():
@@ -14,6 +15,8 @@ def _render(table: dict[int, Span]) -> str:
             page = span.page
             rows.append(f'=== page {page} ===')
         text = ' '.join(span.text.strip().splitlines())
+        if trim:
+            text = compact_line(text)
         text = text.replace('[L', '[ L').replace('=== page', '= = = page')
         rows.append(f'[L{number}] ' + text)
     return '\n'.join(rows)
@@ -25,7 +28,9 @@ def number_lines(spans: Iterable[Span]) -> tuple[str, dict[int, Span]]:
     return _render(table), table
 
 
-def block_lines(block: Block, table: dict[int, Span]) -> tuple[str, dict[int, Span]]:
+def block_lines(
+    block: Block, table: dict[int, Span], *, trim: bool = False
+) -> tuple[str, dict[int, Span]]:
     """Restrict IDs and validation to complete lines actually supplied to a call."""
     ranges: list[tuple[int, int, int]] = []
     for span in block.spans:
@@ -41,7 +46,7 @@ def block_lines(block: Block, table: dict[int, Span]) -> tuple[str, dict[int, Sp
             for page, start, end in ranges
         )
     }
-    return _render(selected), selected
+    return _render(selected, trim=trim), selected
 
 
 def line_summary(items: list[dict], table: dict[int, Span]) -> tuple[Evidence, ...] | None:
