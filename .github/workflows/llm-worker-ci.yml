@@ -1,0 +1,58 @@
+name: LLM worker CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths: ['llm-worker/**', '.github/workflows/llm-worker-ci.yml']
+  push:
+    branches: [main, develop]
+    paths: ['llm-worker/**', '.github/workflows/llm-worker-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  llm-worker-check:
+    name: Python 3.14 / ruff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: llm-worker
+        shell: bash
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.14.8'
+      - name: Install hash-locked ruff
+        run: |
+          mkdir -p .ci-reports
+          python --version
+          python -m pip install --require-hashes --no-deps -r requirements-ci.lock 2>&1 | tee .ci-reports/install.log
+          ruff --version
+      - name: Unit tests
+        run: PYTHONPATH=src python -m unittest discover -s tests -v 2>&1 | tee .ci-reports/unittest.log
+      - name: Ruff check
+        run: ruff check src tests 2>&1 | tee .ci-reports/ruff-check.log
+      - name: Ruff format check
+        run: ruff format --check src tests 2>&1 | tee .ci-reports/ruff-format.log
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: llm-worker-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: true
+          path: llm-worker/.ci-reports/

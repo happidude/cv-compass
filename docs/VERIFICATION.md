@@ -56,7 +56,17 @@ Log dài không dán vào hội thoại.
 Ghi source SHA hoặc base + fingerprint payload trước commit; commit chỉ bằng chứng có thể trỏ payload
 đã review giống hệt, không hash tương lai tự tham chiếu. Local/CI báo riêng cùng source cuối;
 PASS đã chạy thành công; FAIL thất bại chứng minh; NOT VERIFIED thiếu bằng chứng; N/A không liên quan có lý do.
-Persistence CI mọi PR/push main; worker/frontend CI lọc đường dẫn, giữ full suite/cleanup/provenance/browser.
+CI (PR/push vào `main`, `develop`; action ghim SHA, `contents: read`, chỉ run PR chia nhóm theo số PR và bị hủy khi có run mới, run push không bị hủy):
+
+| Workflow | Trigger | Lệnh chính |
+|---|---|---|
+| Persistence CI | job `scope` (không service) quyết định; `backend-check` chỉ chạy khi `run=true`: mọi PR/push main; develop chỉ khi diff chạm `backend/**`, `frontend/tests/fixtures/llm-remote`, `worker/design` (test backend đọc), workflow này hoặc `scripts/ci/**` | `./gradlew check` (Postgres 17) |
+| Flyway immutability | mọi PR, trong job `scope`; so với đầu `origin/<base>` hiện tại | `scripts/ci/check-flyway-immutable.sh BASE HEAD` + test `scripts/ci/tests/`; FAIL nếu sửa/xóa/đổi tên migration đã có, version không tăng hoặc trùng |
+| LLM worker CI | `llm-worker/**` | `unittest discover` + `ruff check` + `ruff format --check` (ruff khóa hash `llm-worker/requirements-ci.lock`) |
+| Python worker baseline | `worker/**` | build image + `verify_baseline.py` (full suite/cleanup/provenance) |
+| Frontend CI | `frontend/**` | typecheck/lint/format, unit, build, browser |
+
+Run thất bại upload báo cáo 7 ngày.
 Run thiếu/pending không PASS; chỉ báo CI PASS sau khi kiểm đúng head mới đã kết thúc.
 Thử native dispatch/scanner có sẵn khi môi trường hỗ trợ; ghi lệnh/event/source/kết quả,
 không có thì NOT VERIFIED + lý do/bước tiếp. Parser không thay dispatch; không mặc nhiên có secret scan.
