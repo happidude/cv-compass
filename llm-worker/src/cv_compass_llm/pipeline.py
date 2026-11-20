@@ -1,6 +1,7 @@
 """Pure extraction orchestration; no I/O, logging or persistence."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from math import ceil
 from time import perf_counter
 
@@ -26,7 +27,15 @@ from .schema import (
     ExtractionResult,
     Issue,
 )
-from .segmenter import Block, build_header, segment, split_lines
+from .segmenter import (
+    EXPERIENCE_HEADINGS,
+    OTHER_HEADINGS,
+    Block,
+    build_header,
+    scan_headings,
+    segment,
+    split_lines,
+)
 from .trim import compact_text, trim_spans
 from .validate import (
     validate_experiences,
@@ -35,6 +44,35 @@ from .validate import (
     validate_personal,
     validate_whole,
 )
+
+FALLBACK_REASONS = ('INVALID_JSON', 'NO_EXPERIENCE', 'NO_FULLNAME', 'DROP_RATIO')
+
+
+def fallback_reasons(
+    result: ExtractionResult, document: Document, *, drop_ratio: float = 0.3
+) -> tuple[str, ...]:
+    """Assess quality using fixed codes, without rerouting infrastructure failures."""
+    if any(issue.code == 'PROVIDER_ERROR' for issue in result.issues):
+        return ()
+    reasons = []
+    if any(issue.code == 'LLM_INVALID_JSON' for issue in result.issues):
+        reasons.append('INVALID_JSON')
+    _, found = scan_headings(
+        split_lines(tuple(page for page in document.pages if page.status == 'ok')),
+        EXPERIENCE_HEADINGS,
+        OTHER_HEADINGS,
+    )
+    if not result.experiences and found:
+        reasons.append('NO_EXPERIENCE')
+    if not any(field.key == 'fullName' for field in result.fields):
+        reasons.append('NO_FULLNAME')
+    # Validators emit this once per rejected item, after any quote errors. A quote
+    # error alone can leave a valid role/company, so it must not count as a drop.
+    dropped = sum(issue.code == 'EXPERIENCE_WITHOUT_ROLE' for issue in result.issues)
+    total = len(result.experiences) + dropped
+    if total and dropped / total >= drop_ratio:
+        reasons.append('DROP_RATIO')
+    return tuple(reasons)
 
 
 def extract(
@@ -47,8 +85,33 @@ def extract(
     whole_timeout: float = 900,
     config: LlmConfig | None = None,
     on_trim: Callable[[int, int], None] | None = None,
+    fallback_provider: LlmProvider | None = None,
+    on_fallback: Callable[[tuple[str, ...]], None] | None = None,
 ) -> ExtractionResult:
     """Extract supported CV values while isolating provider block failures."""
+    if config is not None and config.fallback_model:
+        if fallback_provider is None:
+            raise ValueError('INVALID_FALLBACK_MODEL')
+        primary_config = replace(config, fallback_model='')
+        options = {
+            'max_blocks': max_blocks,
+            'on_block': on_block,
+            'mode': mode,
+            'whole_timeout': whole_timeout,
+            'on_trim': on_trim,
+        }
+        result = extract(document, provider, config=primary_config, **options)
+        reasons = fallback_reasons(result, document, drop_ratio=config.fallback_drop_ratio)
+        if on_fallback is not None:
+            on_fallback(reasons)
+        if reasons:
+            return extract(
+                document,
+                fallback_provider,
+                config=replace(primary_config, model=config.fallback_model),
+                **options,
+            )
+        return result
     if type(max_blocks) is not int or max_blocks < 0:
         raise ValueError('INVALID_MAX_BLOCKS')
     if mode not in ('blocks', 'whole'):

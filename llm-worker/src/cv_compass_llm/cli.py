@@ -5,12 +5,13 @@ import json
 import os
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from queue import Empty, Queue
 from time import perf_counter
 from typing import Literal
 
-from .batch_io import input_directory, prepare_output, write_json
+from .batch_io import input_directory, load_json, prepare_output, write_json
 from .bench import BENCH_ERRORS, print_bench, run_bench
 from .check import run_check
 from .compare import compare
@@ -18,7 +19,7 @@ from .config import ENV_KEYS, LlmConfig, PullConfigError, load_config, load_pull
 from .gold import draft_gold
 from .lifecycle import call_metrics, lifecycle_report, metric_summary, print_report
 from .ocr_input import load_document
-from .pipeline import extract
+from .pipeline import FALLBACK_REASONS, extract, fallback_reasons
 from .prompts import prompt_version
 from .providers.base import LlmProvider
 from .providers.ollama import OllamaProvider
@@ -59,6 +60,9 @@ CLI_ERRORS = {
     'INVALID_KEEP_ALIVE',
     'INVALID_CTX_CHARS_PER_TOKEN',
     'INVALID_CTX_FINE_TIERS',
+    'INVALID_FALLBACK_MODEL',
+    'INVALID_FALLBACK_DROP_RATIO',
+    'INVALID_FALLBACK_CANDIDATES',
 } | BENCH_ERRORS
 
 
@@ -96,6 +100,7 @@ def run_batch(
     config: LlmConfig | None = None,
     repo_root: Path | None | Literal['auto'] = 'auto',
     _providers: list[LlmProvider] | None = None,
+    only_fallback_candidates: str | Path | None = None,
 ) -> dict:
     """Extract sorted OCR files without modifying any input artifact."""
     if type(max_blocks) is not int or max_blocks < 0:
@@ -106,6 +111,24 @@ def run_batch(
         raise ValueError('INVALID_LIMIT')
     source = input_directory(input_dir)
     paths = sorted(path for path in source.glob('*.json') if path.is_file())
+    if only_fallback_candidates is not None:
+        previous = input_directory(only_fallback_candidates)
+        output = Path(output_dir).resolve()
+        if output == previous or previous in output.parents or output in previous.parents:
+            raise ValueError('UNSAFE_OUTPUT')
+        selected = set()
+        for path in sorted(previous.glob('*.result.json')):
+            if path.is_symlink() or not path.is_file():
+                continue
+            payload = load_json(path, 'INVALID_FALLBACK_CANDIDATES')
+            candidates = payload.get('fallbackCandidate', []) if isinstance(payload, dict) else None
+            if not isinstance(candidates, list) or any(
+                not isinstance(code, str) or code not in FALLBACK_REASONS for code in candidates
+            ):
+                raise ValueError('INVALID_FALLBACK_CANDIDATES')
+            if candidates:
+                selected.add(path.name.removesuffix('.result.json'))
+        paths = [path for path in paths if not path.is_symlink() and path.stem in selected]
     if limit is not None:
         paths = paths[:limit]
     target = prepare_output(source, output_dir, repo_root=repo_root)
@@ -117,9 +140,18 @@ def run_batch(
     config = config if config is not None else getattr(provider, 'extraction_config', None)
     if not isinstance(config, LlmConfig):
         config = None
+    cascade = config is not None and bool(config.fallback_model)
+    fallback_counts = Counter()
 
     def process(path, local_provider):
         observed = _MetricsProvider(local_provider)
+        backup = _MetricsProvider(local_provider.fallback_provider) if cascade else None
+        reasons = ()
+
+        def on_fallback(codes):
+            nonlocal reasons
+            reasons = codes
+
         error_code, result = None, None
         started = perf_counter()
         try:
@@ -136,11 +168,26 @@ def run_batch(
                 mode=mode,
                 whole_timeout=whole_timeout,
                 config=config,
+                **({'fallback_provider': backup, 'on_fallback': on_fallback} if cascade else {}),
             )
+            if not cascade:
+                reasons = fallback_reasons(
+                    result,
+                    document,
+                    drop_ratio=config.fallback_drop_ratio if config is not None else 0.3,
+                )
             payload = result.to_dict()
+            if cascade or reasons:
+                payload['fallbackCandidate'] = list(reasons)
             payload['seconds'] = perf_counter() - started
             write_json(target / (path.stem + '.result.json'), payload)
-        return error_code, result, perf_counter() - started, observed.calls
+        return (
+            error_code,
+            result,
+            perf_counter() - started,
+            observed.calls + (backup.calls if backup is not None else []),
+            reasons,
+        )
 
     if _providers is not None and len(_providers) > 1:
         pending = Queue()
@@ -161,12 +208,14 @@ def run_batch(
             results = [result for _, result in sorted(item for batch in batches for item in batch)]
     else:
         results = [process(path, provider) for path in paths]
-    for error_code, result, elapsed, observations in results:
+    for error_code, result, elapsed, observations, reasons in results:
         calls.extend(observations)
         total_seconds += elapsed
         if error_code is not None:
             errors[error_code] += 1
         else:
+            if cascade:
+                fallback_counts.update(reasons)
             issues.update(issue.code for issue in result.issues)
             issues_by_field.update(
                 issue.code if issue.field is None else f'{issue.code}.{issue.field}'
@@ -188,6 +237,11 @@ def run_batch(
         'llm_calls': len(calls),
         'llm_metrics': metric_summary(calls),
     }
+    if cascade:
+        summary['fallbacks'] = sum(bool(row[4]) for row in results)
+        summary['fallback_reasons'] = dict(fallback_counts)
+    if only_fallback_candidates is not None:
+        summary['selected_fallback_candidates'] = len(paths)
     write_json(target / 'run-summary.json', summary)
     return summary
 
@@ -217,6 +271,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--num-ctx')
     run.add_argument('--env-file')
     run.add_argument('--limit', type=int)
+    run.add_argument('--only-fallback-candidates')
     for name in (
         'prompt_schema_text',
         'whole_personal',
@@ -278,6 +333,7 @@ def print_metrics(metrics: dict, prefix: str = '') -> None:
 
 def create_provider(config: LlmConfig) -> LlmProvider:
     """Share run provider construction with the injectable benchmark factory."""
+    _ = config.provenance_model
     options = {}
     if config.max_output_tokens is not None:
         options['num_predict'] = config.max_output_tokens
@@ -293,6 +349,10 @@ def create_provider(config: LlmConfig) -> LlmProvider:
         **options,
     )
     provider.extraction_config = config
+    if config.fallback_model:
+        provider.fallback_provider = create_provider(
+            replace(config, model=config.fallback_model, fallback_model='')
+        )
     return provider
 
 
@@ -359,6 +419,11 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
                 mode=config.mode,
                 whole_timeout=config.whole_timeout,
+                **(
+                    {'only_fallback_candidates': args.only_fallback_candidates}
+                    if args.only_fallback_candidates
+                    else {}
+                ),
             )
             print(
                 f'processed={summary["files"]} ok={summary["ok"]} '
