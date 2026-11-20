@@ -89,6 +89,7 @@ class OllamaProvider:
         self.temperature = temperature
         self.think = think
         self.num_ctx = num_ctx
+        self.last_metrics: dict[str, int | str] = {}
         self._opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def generate(
@@ -100,6 +101,7 @@ class OllamaProvider:
         timeout_s: float | None = None,
     ) -> str:
         """Return bounded chat content or a content-free transport error."""
+        self.last_metrics = {}
         num_ctx = self.num_ctx if num_ctx is None else num_ctx
         timeout_s = self.timeout_s if timeout_s is None else timeout_s
         _validate_call_options(num_ctx, timeout_s)
@@ -146,4 +148,18 @@ class OllamaProvider:
                 raise ValueError
         except ValueError, UnicodeError, KeyError, TypeError:
             raise ProviderError('OLLAMA_BAD_RESPONSE') from None
+        for source, target in (
+            ('prompt_eval_count', 'prompt_tokens'),
+            ('eval_count', 'output_tokens'),
+            ('prompt_eval_duration', 'prompt_ns'),
+            ('eval_duration', 'output_ns'),
+            ('load_duration', 'load_ns'),
+            ('total_duration', 'total_ns'),
+        ):
+            value = root.get(source)
+            if type(value) is int and 0 <= value <= 2**53:
+                self.last_metrics[target] = value
+        reason = root.get('done_reason')
+        if reason in ('stop', 'length', 'load', 'unload'):
+            self.last_metrics['done_reason'] = reason
         return content

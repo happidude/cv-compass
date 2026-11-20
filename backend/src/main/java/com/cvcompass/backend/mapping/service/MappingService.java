@@ -298,6 +298,8 @@ public class MappingService {
                                             OperationalLog.Event.MAPPING_CLAIMED,
                                             null,
                                             Map.of(
+                                                    "documentId",
+                                                    repository.documentId(value.jobId()),
                                                     "jobId",
                                                     value.jobId(),
                                                     "extractionId",
@@ -361,6 +363,8 @@ public class MappingService {
                             OperationalLog.Event.MAPPING_COMPLETED,
                             null,
                             Map.of(
+                                    "documentId",
+                                    repository.documentId(claim.jobId()),
                                     "jobId",
                                     claim.jobId(),
                                     "extractionId",

@@ -1,5 +1,6 @@
 """Synthetic in-process HTTP tests for local transport and privacy."""
 
+import hashlib
 import json
 import threading
 import time
@@ -14,11 +15,13 @@ from cv_compass_llm.providers import OllamaProvider, ProviderError
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         """Capture a synthetic request and serve the configured response."""
+        raw = self.rfile.read(int(self.headers['Content-Length']))
+        self.server.request_bodies.append(raw)
         self.server.requests.append(
             (
                 self.path,
                 json.loads(
-                    self.rfile.read(int(self.headers['Content-Length'])),
+                    raw,
                 ),
             )
         )
@@ -41,6 +44,7 @@ class OllamaTests(unittest.TestCase):
         """Start a loopback-only synthetic server on an ephemeral port."""
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.server.requests = []
+        self.server.request_bodies = []
         self.server.status = 200
         self.server.delay = 0
         self.server.body = json.dumps({'message': {'content': 'synthetic response'}}).encode()
@@ -74,6 +78,10 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(provider.name, 'ollama:synthetic-model')
         self.assertEqual(provider.generate('synthetic prompt', schema), 'synthetic response')
         self.assertEqual(
+            hashlib.sha256(self.server.request_bodies[0]).hexdigest(),
+            '1b4961e962342b7db77b4b464a42f5f6488514e59b33a4813f56b13d726c81f4',
+        )
+        self.assertEqual(
             self.server.requests,
             [
                 (
@@ -103,6 +111,58 @@ class OllamaTests(unittest.TestCase):
             },
         ):
             self.assertEqual(self.provider().generate('synthetic', {}), 'synthetic response')
+
+    def test_response_metrics_are_numeric_optional_and_reset_for_every_call(
+        self,
+    ) -> None:
+        provider = self.provider()
+        self.server.body = json.dumps(
+            {
+                'message': {'content': 'synthetic response'},
+                'prompt_eval_count': 100,
+                'eval_count': 40,
+                'prompt_eval_duration': 2_000_000_000,
+                'eval_duration': 8_000_000_000,
+                'load_duration': 500_000_000,
+                'total_duration': 10_500_000_000,
+                'done_reason': 'stop',
+            }
+        ).encode()
+        self.assertEqual(provider.generate('synthetic', {}), 'synthetic response')
+        self.assertEqual(
+            provider.last_metrics,
+            {
+                'prompt_tokens': 100,
+                'output_tokens': 40,
+                'prompt_ns': 2_000_000_000,
+                'output_ns': 8_000_000_000,
+                'load_ns': 500_000_000,
+                'total_ns': 10_500_000_000,
+                'done_reason': 'stop',
+            },
+        )
+        self.server.body = b'{"message":{"content":"ok"}}'
+        self.assertEqual(provider.generate('synthetic', {}), 'ok')
+        self.assertEqual(provider.last_metrics, {})
+        provider.last_metrics = {'output_tokens': 123}
+        self.server.status = 500
+        with self.assertRaises(ProviderError):
+            provider.generate('synthetic', {})
+        self.assertEqual(provider.last_metrics, {})
+
+    def test_untrusted_metrics_never_change_content_or_keep_provider_text(self) -> None:
+        provider = self.provider()
+        for invalid in (True, -1, 1.5, 'PRIVATE_METRIC', None, [], {}, 2**54):
+            self.server.body = json.dumps(
+                {
+                    'message': {'content': 'ok'},
+                    'eval_count': invalid,
+                    'prompt_eval_duration': invalid,
+                    'done_reason': invalid,
+                }
+            ).encode()
+            self.assertEqual(provider.generate('synthetic', {}), 'ok')
+            self.assertEqual(provider.last_metrics, {})
 
     def test_configured_generation_options(self) -> None:
         """Send explicit generation options including optional context size."""
@@ -139,7 +199,8 @@ class OllamaTests(unittest.TestCase):
             provider.generate('synthetic', {}, num_ctx=None, timeout_s=None)
             self.assertEqual(opened.call_args.kwargs['timeout'], 2)
         self.assertEqual(
-            [call[1]['options']['num_ctx'] for call in self.server.requests], [24576, 4096]
+            [call[1]['options']['num_ctx'] for call in self.server.requests],
+            [24576, 4096],
         )
         self.assertEqual((provider.num_ctx, provider.timeout_s), (4096, 2))
 
@@ -147,7 +208,11 @@ class OllamaTests(unittest.TestCase):
         provider = self.provider()
         for key, values, code in (
             ('num_ctx', (0, -1, 1048577, True, 1.5, '8192'), 'INVALID_NUM_CTX'),
-            ('timeout_s', (0, -1, float('nan'), float('inf'), True, '900'), 'INVALID_TIMEOUT'),
+            (
+                'timeout_s',
+                (0, -1, float('nan'), float('inf'), True, '900'),
+                'INVALID_TIMEOUT',
+            ),
         ):
             for value in values:
                 with self.subTest(key=key, value=value):

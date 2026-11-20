@@ -13,6 +13,7 @@ from .check import run_check
 from .compare import compare
 from .config import ENV_KEYS, PullConfigError, load_config, load_pull_config
 from .gold import draft_gold
+from .lifecycle import call_metrics, lifecycle_report, metric_summary, print_report
 from .ocr_input import load_document
 from .pipeline import extract
 from .prompts import PROMPT_VERSION, WHOLE_PROMPT_VERSION
@@ -52,6 +53,24 @@ CLI_ERRORS = {
 }
 
 
+class _MetricsProvider:
+    """Observe every call, including whole-mode fallback, without changing orchestration."""
+
+    def __init__(self, provider):
+        self.provider = provider
+        self.name = provider.name
+        self.calls = []
+
+    def generate(self, prompt, json_schema, **options):
+        try:
+            response = self.provider.generate(prompt, json_schema, **options)
+        except Exception:
+            self.calls.append({})
+            raise
+        self.calls.append(call_metrics(getattr(self.provider, 'last_metrics', None)))
+        return response
+
+
 def run_batch(
     input_dir: str | Path,
     output_dir: str | Path,
@@ -78,6 +97,7 @@ def run_batch(
     errors, issues = Counter(), Counter()
     issues_by_field = Counter()
     ok, total_seconds = 0, 0.0
+    observed = _MetricsProvider(provider)
     for path in paths:
         started = perf_counter()
         try:
@@ -88,7 +108,11 @@ def run_batch(
             write_json(target / (path.stem + '.error.json'), {'error': code})
         else:
             result = extract(
-                document, provider, max_blocks=max_blocks, mode=mode, whole_timeout=whole_timeout
+                document,
+                observed,
+                max_blocks=max_blocks,
+                mode=mode,
+                whole_timeout=whole_timeout,
             )
             payload = result.to_dict()
             payload['seconds'] = perf_counter() - started
@@ -112,6 +136,8 @@ def run_batch(
         'prompt_version': WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION,
         'mode': mode,
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
+        'llm_calls': len(observed.calls),
+        'llm_metrics': metric_summary(observed.calls),
     }
     write_json(target / 'run-summary.json', summary)
     return summary
@@ -156,6 +182,11 @@ def parser() -> argparse.ArgumentParser:
     comparison.add_argument('--results', required=True)
     comparison.add_argument('--gold', required=True)
     comparison.add_argument('--json', action='store_true')
+    lifecycle = commands.add_parser('lifecycle-report')
+    lifecycle.add_argument('--backend-log', required=True)
+    lifecycle.add_argument('--ocr-log', required=True)
+    lifecycle.add_argument('--llm-log', required=True)
+    lifecycle.add_argument('--json', action='store_true')
     return root
 
 
@@ -173,6 +204,13 @@ def main(argv: list[str] | None = None) -> int:
     """Execute a command while keeping paths and source values out of diagnostics."""
     args = parser().parse_args(argv)
     try:
+        if args.command == 'lifecycle-report':
+            report = lifecycle_report(args.backend_log, args.ocr_log, args.llm_log)
+            if args.json:
+                print(json.dumps(report, allow_nan=False, sort_keys=True))
+            else:
+                print_report(report)
+            return 0
         if args.command == 'check':
             return run_check(
                 os.environ,

@@ -2,13 +2,16 @@ package com.cvcompass.backend.mapping.repository;
 
 import com.cvcompass.backend.mapping.dto.MappingClaim;
 import com.cvcompass.backend.mapping.dto.MappingVersions;
+import com.cvcompass.backend.web.OperationalLog;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.event.Level;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
@@ -96,15 +99,41 @@ public class MappingRepository {
                         definitionJson(configId), json)
                 .engineCompatibility()
                 .equals(engine)) throw new IllegalStateException("MAPPING_ENGINE_CONFIG_MISMATCH");
-        jdbc.update(
-                """
+        int inserted =
+                jdbc.update(
+                        """
                 INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
                 VALUES (?,?,?,?) ON CONFLICT ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") DO NOTHING
                 """,
-                extractionId,
-                configId,
-                engine,
-                maxAttempts);
+                        extractionId,
+                        configId,
+                        engine,
+                        maxAttempts);
+        if (inserted == 1) {
+            long jobId =
+                    jdbc.queryForObject(
+                            "SELECT \"ID\" FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=? AND \"ENGINE_VERSION\"=?",
+                            Long.class,
+                            extractionId,
+                            configId,
+                            engine);
+            OperationalLog.committed(
+                    Level.INFO,
+                    OperationalLog.Event.MAPPING_ENQUEUED,
+                    null,
+                    Map.of(
+                            "documentId", documentId(jobId),
+                            "jobId", jobId,
+                            "extractionId", extractionId));
+        }
+    }
+
+    /** Read only identity metadata for operational logs. */
+    public long documentId(long jobId) {
+        return jdbc.queryForObject(
+                "SELECT e.\"CV_DOCUMENT_ID\" FROM \"CV_MAPPING_JOBS\" j JOIN \"CV_EXTRACTIONS\" e ON e.\"ID\"=j.\"EXTRACTION_ID\" WHERE j.\"ID\"=?",
+                Long.class,
+                jobId);
     }
 
     public Optional<MappingClaim> claim(

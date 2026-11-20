@@ -25,6 +25,11 @@ public class CompletedMappings {
         return repository.upperId();
     }
 
+    /** Identity metadata only; no result body is exposed to operational logging. */
+    public Long jobId(long resultId) {
+        return repository.jobId(resultId);
+    }
+
     public List<Long> scan(long after, long upper, int limit) {
         if (after < 0 || limit < 1 || limit > 1000)
             throw new IllegalArgumentException("Invalid publication page");
