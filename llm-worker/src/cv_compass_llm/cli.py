@@ -9,9 +9,10 @@ from time import perf_counter
 from typing import Literal
 
 from .batch_io import input_directory, prepare_output, write_json
+from .bench import BENCH_ERRORS, print_bench, run_bench
 from .check import run_check
 from .compare import compare
-from .config import ENV_KEYS, PullConfigError, load_config, load_pull_config
+from .config import ENV_KEYS, LlmConfig, PullConfigError, load_config, load_pull_config
 from .gold import draft_gold
 from .lifecycle import call_metrics, lifecycle_report, metric_summary, print_report
 from .ocr_input import load_document
@@ -50,7 +51,7 @@ CLI_ERRORS = {
     'INVALID_NUM_CTX',
     'INVALID_MODE',
     'INVALID_WHOLE_TIMEOUT',
-}
+} | BENCH_ERRORS
 
 
 class _MetricsProvider:
@@ -168,6 +169,14 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--num-ctx')
     run.add_argument('--env-file')
     run.add_argument('--limit', type=int)
+    bench = commands.add_parser('bench')
+    bench.add_argument('--input', required=True)
+    bench.add_argument('--gold', required=True)
+    bench.add_argument('--output', required=True)
+    bench.add_argument('--config', action='append', required=True)
+    bench.add_argument('--repeat', type=int, default=1)
+    bench.add_argument('--warmup', type=int, default=0)
+    bench.add_argument('--json', action='store_true')
     pull = commands.add_parser('pull')
     pull.add_argument('--env-file')
     pull.add_argument('--once', action='store_true')
@@ -200,10 +209,37 @@ def print_metrics(metrics: dict, prefix: str = '') -> None:
             print(f'{name}={value}')
 
 
+def create_provider(config: LlmConfig) -> LlmProvider:
+    """Share run provider construction with the injectable benchmark factory."""
+    return OllamaProvider(
+        config.model,
+        base_url=config.base_url,
+        timeout_s=config.timeout_s,
+        temperature=config.temperature,
+        think=config.think,
+        num_ctx=config.num_ctx,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Execute a command while keeping paths and source values out of diagnostics."""
     args = parser().parse_args(argv)
     try:
+        if args.command == 'bench':
+            report = run_bench(
+                args.input,
+                args.gold,
+                args.output,
+                args.config,
+                repeat=args.repeat,
+                warmup=args.warmup,
+                provider_factory=create_provider,
+            )
+            if args.json:
+                print(json.dumps(report, allow_nan=False, sort_keys=True))
+            else:
+                print_bench(report)
+            return 0
         if args.command == 'lifecycle-report':
             report = lifecycle_report(args.backend_log, args.ocr_log, args.llm_log)
             if args.json:
@@ -245,14 +281,7 @@ def main(argv: list[str] | None = None) -> int:
                 Path(args.env_file) if args.env_file is not None else None,
                 env_file_explicit=args.env_file is not None,
             )
-            provider = OllamaProvider(
-                config.model,
-                base_url=config.base_url,
-                timeout_s=config.timeout_s,
-                temperature=config.temperature,
-                think=config.think,
-                num_ctx=config.num_ctx,
-            )
+            provider = create_provider(config)
             summary = run_batch(
                 args.input,
                 args.output,

@@ -27,6 +27,22 @@ ENV_KEYS = {
     'log_level': 'CVC_LLM_LOG_LEVEL',
 }
 MAX_ENV_BYTES = 64 * 1024
+# Keep benchmark overrides separate from pull credentials and transport settings.
+BENCH_ENV_KEYS = frozenset(
+    ENV_KEYS[name]
+    for name in (
+        'provider',
+        'model',
+        'base_url',
+        'timeout',
+        'mode',
+        'whole_timeout',
+        'max_blocks',
+        'temperature',
+        'think',
+        'num_ctx',
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -48,7 +64,9 @@ def default_env_file() -> Path:
     return Path(__file__).resolve().parents[2] / '.env'
 
 
-def _read_env(path: Path, explicit: bool) -> dict[str, str]:
+def _read_env(
+    path: Path, explicit: bool, *, allowed_keys: frozenset[str] | None = None
+) -> dict[str, str]:
     try:
         with path.open('rb') as stream:
             data = stream.read(MAX_ENV_BYTES + 1)
@@ -71,6 +89,8 @@ def _read_env(path: Path, explicit: bool) -> dict[str, str]:
             key, value = key.strip(), value.strip()
             if not separator or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', key):
                 raise ValueError
+            if allowed_keys is not None and key not in allowed_keys:
+                raise ValueError('BENCH_INVALID_CONFIG_KEY')
             if value.startswith(('"', "'")):
                 if len(value) < 2 or value[-1] != value[0]:
                     raise ValueError
@@ -84,7 +104,9 @@ def _read_env(path: Path, explicit: bool) -> dict[str, str]:
         return values
     except PullConfigError:
         raise
-    except ValueError, UnicodeError:
+    except ValueError as error:
+        if str(error) == 'BENCH_INVALID_CONFIG_KEY':
+            raise
         raise ValueError('INVALID_ENV_FILE') from None
 
 
@@ -169,6 +191,18 @@ def load_config(
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
         mode=mode,
         whole_timeout=whole_timeout,
+    )
+
+
+def load_bench_config(env_file: Path, environ: Mapping[str, str]) -> LlmConfig:
+    """Overlay extraction-only benchmark settings without reading the default dotenv."""
+    values = _read_env(env_file, True, allowed_keys=BENCH_ENV_KEYS)
+    return load_config(
+        {name: values.get(key) for name, key in ENV_KEYS.items() if key in BENCH_ENV_KEYS},
+        environ,
+        env_file,
+        env_file_explicit=True,
+        _file_values={},
     )
 
 

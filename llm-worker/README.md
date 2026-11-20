@@ -456,6 +456,65 @@ hiện host:port, model chỉ ghi tên check `model`. Thoát 0 khi mọi check O
 có lỗi. Lỗi kết nối là `BACKEND_UNREACHABLE`/`OLLAMA_UNREACHABLE`, model thiếu là
 `MODEL_NOT_FOUND`, token thiếu là `FAIL config code=MISSING_CONFIG`.
 
+## So sánh cấu hình offline (O3)
+
+Lệnh `bench` chạy tuần tự nhiều cấu hình trên cùng thư mục OCR và gold đã xác
+nhận, dùng nguyên pipeline của `run` và cách chấm của `compare`. Không cần
+backend; model vẫn được gọi qua Ollama local như `run`. Mỗi cấu hình tạo một
+`LlmConfig` và provider riêng, dùng lại provider đó cho warmup và các lượt đo.
+
+```powershell
+$env:PYTHONPATH='src'
+py -3.14 -m cv_compass_llm bench --input C:\cv-compass-synthetic\ocr --gold C:\cv-compass-synthetic\gold --output C:\cv-compass-synthetic\bench-01 --config base=C:\cv-compass-synthetic\base.env --config candidate=C:\cv-compass-synthetic\candidate.env --repeat 2 --warmup 1
+# Thêm --json để lấy cùng số liệu và chênh lệch ở dạng JSON.
+```
+
+Mỗi `--config NAME=ENV_FILE` nhận tên `[A-Za-z0-9_-]{1,32}`. Tên trùng, kể cả
+khác hoa/thường để tránh chung thư mục trên Windows, trả `BENCH_DUPLICATE_CONFIG`;
+tên hoặc cú pháp sai trả `BENCH_INVALID_CONFIG`. File cấu hình chỉ cho phép:
+`CVC_LLM_PROVIDER`, `CVC_LLM_MODEL`, `CVC_LLM_BASE_URL`, `CVC_LLM_TIMEOUT_S`,
+`CVC_LLM_MODE`, `CVC_LLM_WHOLE_TIMEOUT_S`, `CVC_LLM_MAX_BLOCKS`,
+`CVC_LLM_TEMPERATURE`, `CVC_LLM_THINK`, `CVC_LLM_NUM_CTX`. Allowlist dễ mở rộng
+nằm ở `config.BENCH_ENV_KEYS`. Key khác, kể cả key ngoài tiền tố `CVC_LLM_`,
+trả `BENCH_INVALID_CONFIG_KEY`; không in key hoặc giá trị. File vẫn dùng quy tắc
+cú pháp/giới hạn kích thước của `.env`. Key trích xuất có giá trị trong file ghi
+đè môi trường tiến trình; key thiếu/rỗng lấy từ môi trường rồi tới mặc định.
+Bench không đọc `.env` mặc định và không thay đổi môi trường tiến trình.
+
+`--repeat N` mặc định 1, phải từ 1 trở lên (`BENCH_INVALID_REPEAT`);
+`--warmup N` mặc định 0, phải không âm (`BENCH_INVALID_WARMUP`). Warmup chạy
+một lần trên N file OCR đầu theo thứ tự tên, tối đa số file hiện có, ghi riêng
+vào `OUT_DIR/<NAME>/warmup/`. Các lượt đo chạy lại toàn bộ OCR, ghi vào
+`OUT_DIR/<NAME>/r1/`, `r2/`, … với result/error và `run-summary.json` như `run`.
+Output phải mới hoặc rỗng, ngoài repo, OCR và gold; không ghi đè dữ liệu cũ.
+Giữ output riêng tư vì các file result chứa kết quả trích xuất.
+
+Bảng có cột cho từng tên cấu hình và cột `Δ` bằng cấu hình đó trừ cấu hình đầu.
+JSON có `configurations`, mỗi phần tử gồm `name`, `metrics`, `delta`; tên metric
+giống các hàng trong bảng. Báo cáo chỉ in tên cấu hình, tên metric/mã issue và
+số; không in tên file CV, đường dẫn, giá trị ứng viên, prompt hoặc output model.
+
+- `experiences.<kind>.precision/recall` cho `positions`, `companies`, `titles`,
+  `companyPeriods`; personal theo field được `compare` chấm có
+  `correct/wrong/missing/extra`. Các bộ đếm cộng tất cả lượt đo; precision/recall
+  tính lại từ tổng matched/predicted/gold. Gold DRAFT không được chấm; bộ đếm
+  gold/result lỗi, thiếu hoặc không ghép được cũng xuất hiện trong bảng.
+- `seconds.average/p50/p90` đo trên các result thành công của tất cả lượt đo,
+  bỏ toàn bộ warmup. p90 nội suy tuyến tính tại `(n-1)*0.9` như E11.
+  `seconds.count` cho biết số mẫu; lỗi đọc OCR nằm ở `errors.<code>`.
+- `prompt_tokens.average`, `output_tokens.average`, `tok_s.average` là TB mỗi
+  lời gọi, gộp theo số mẫu metrics E11 của các lượt đo. Mỗi metric có `.count`;
+  thiếu metrics không được tính như 0. `tok_s` là tốc độ sinh token như E11.
+  Thiếu mẫu hiển thị `-` trong bảng, `null` trong JSON và delta.
+- `issues.<code>` cộng issue theo mã; mã không xuất hiện ở một cấu hình có
+  số đếm 0 để so delta. `different_cvs` đếm số CV có result/error khác lượt đầu
+  ở ít nhất một lượt sau, mỗi CV chỉ tính một lần. So sánh bỏ `seconds` và
+  metrics, giữ giá trị, evidence và issue. Dùng temperature 0 để kiểm tra độ
+  ổn định; bench không ép lại temperature đã cấu hình.
+
+Test tổng hợp trong `tests/test_bench.py` tiêm `cli.create_provider` hoặc
+`run_bench(..., provider_factory=...)` để dùng FakeProvider, không cần Ollama.
+
 ## Đo vòng đời CV (E11)
 
 `OllamaProvider.last_metrics` được reset trước mỗi lời gọi. Khi response có số
