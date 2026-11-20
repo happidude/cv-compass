@@ -458,10 +458,10 @@ có lỗi. Lỗi kết nối là `BACKEND_UNREACHABLE`/`OLLAMA_UNREACHABLE`, mod
 
 ## So sánh cấu hình offline (O3)
 
-Lệnh `bench` chạy tuần tự nhiều cấu hình trên cùng thư mục OCR và gold đã xác
+Lệnh `bench` chạy lần lượt nhiều cấu hình trên cùng thư mục OCR và gold đã xác
 nhận, dùng nguyên pipeline của `run` và cách chấm của `compare`. Không cần
 backend; model vẫn được gọi qua Ollama local như `run`. Mỗi cấu hình tạo một
-`LlmConfig` và provider riêng, dùng lại provider đó cho warmup và các lượt đo.
+`LlmConfig` riêng; mỗi luồng có provider riêng, dùng lại cho warmup và các lượt đo.
 
 ```powershell
 $env:PYTHONPATH='src'
@@ -489,6 +489,13 @@ vào `OUT_DIR/<NAME>/warmup/`. Các lượt đo chạy lại toàn bộ OCR, ghi
 Output phải mới hoặc rỗng, ngoài repo, OCR và gold; không ghi đè dữ liệu cũ.
 Giữ output riêng tư vì các file result chứa kết quả trích xuất.
 
+`--parallel N` mặc định 1, nhận số nguyên 1–16 (`BENCH_INVALID_PARALLEL`).
+Mỗi cấu hình chạy N luồng lấy CV từ một hàng đợi, mỗi luồng giữ provider riêng
+để số đo `last_metrics` không tranh chấp. Mỗi CV vẫn có file kết quả riêng;
+tổng hợp, ghép gold và so độ ổn định không phụ thuộc thứ tự hoàn thành.
+`--parallel 1` giữ cách chạy tuần tự O3. Warmup vẫn chọn N file theo
+`--warmup`, không nhân số file theo số luồng.
+
 Bảng có cột cho từng tên cấu hình và cột `Δ` bằng cấu hình đó trừ cấu hình đầu.
 JSON có `configurations`, mỗi phần tử gồm `name`, `metrics`, `delta`; tên metric
 giống các hàng trong bảng. Báo cáo chỉ in tên cấu hình, tên metric/mã issue và
@@ -502,6 +509,9 @@ số; không in tên file CV, đường dẫn, giá trị ứng viên, prompt ho
 - `seconds.average/p50/p90` đo trên các result thành công của tất cả lượt đo,
   bỏ toàn bộ warmup. p90 nội suy tuyến tính tại `(n-1)*0.9` như E11.
   `seconds.count` cho biết số mẫu; lỗi đọc OCR nằm ở `errors.<code>`.
+- `throughput_cv_per_min` = tổng `ok` × 60 / tổng thời gian wall-clock của
+  các batch đo, gồm đọc/ghi và gọi model; loại warmup và thời gian chấm gold.
+  Không lấy tổng thời gian từng CV làm mẫu số khi chúng chạy song song.
 - `prompt_tokens.average`, `output_tokens.average`, `tok_s.average` là TB mỗi
   lời gọi, gộp theo số mẫu metrics E11 của các lượt đo. Mỗi metric có `.count`;
   thiếu metrics không được tính như 0. `tok_s` là tốc độ sinh token như E11.
@@ -514,6 +524,53 @@ số; không in tên file CV, đường dẫn, giá trị ứng viên, prompt ho
 
 Test tổng hợp trong `tests/test_bench.py` tiêm `cli.create_provider` hoặc
 `run_bench(..., provider_factory=...)` để dùng FakeProvider, không cần Ollama.
+
+## Chạy nhiều worker song song (O7)
+
+Trên tiến trình phục vụ Ollama, đặt `OLLAMA_NUM_PARALLEL` bằng số luồng cần
+phục vụ rồi khởi động lại Ollama theo cách đang vận hành. Ví dụ hai luồng:
+
+```powershell
+$env:OLLAMA_NUM_PARALLEL='2'
+ollama serve
+```
+
+VRAM phải đủ cho model và KV cache của mọi luồng; KV cache nhân theo số luồng.
+Model 4b với hai luồng context 16k thường không vừa GPU 4 GB. Dùng context
+nhỏ hơn hoặc model nhỏ hơn, rồi đo lại; tăng song song không đảm bảo nhanh hơn.
+
+Mở N terminal worker, dùng cùng cấu hình backend/model và cơ chế token hiện
+có; đặt tên khác nhau cho từng tiến trình. Ví dụ trong terminal thứ nhất:
+
+```powershell
+$env:PYTHONPATH='src'
+$env:CVC_LLM_WORKER_NAME='local-1'
+py -3.14 -m cv_compass_llm pull
+```
+
+Terminal thứ hai dùng `CVC_LLM_WORKER_NAME=local-2` rồi chạy cùng lệnh `pull`.
+Tên cấu hình phải khớp `[A-Za-z0-9][A-Za-z0-9-]{0,39}`; sai trả
+`CVC_LLM_WORKER_NAME INVALID_WORKER_NAME`, không in giá trị. Có thể đặt trong
+`.env`; môi trường tiến trình có ưu tiên cao hơn. Nếu không đặt, tên mặc định
+là hostname ngắn đã bỏ ký tự ngoài chữ/số/`-`, nối `-<pid>`, tối đa 40 ký tự
+và giữ phần PID. Hostname rỗng sau khi lọc dùng `worker`.
+
+Mọi dòng log `pull` có `worker=<tên>` ngay sau `event=<tên sự kiện>`, kể cả
+`worker_start`, heartbeat và lỗi. Tên chỉ dùng trong log local, không gửi lên
+backend. Backend vẫn claim bằng khóa hiện có `FOR UPDATE SKIP LOCKED`;
+lease 120 giây và heartbeat giữ nguyên. Các lệnh khác không đặt ngữ cảnh worker.
+
+Đo offline trên dữ liệu đã duyệt, output riêng tư ngoài repo:
+
+```powershell
+py -3.14 -m cv_compass_llm bench --input C:\cv-compass-synthetic\ocr --gold C:\cv-compass-synthetic\gold --output C:\cv-compass-synthetic\bench-parallel-2 --config base=C:\cv-compass-synthetic\base.env --parallel 2 --repeat 2 --warmup 2
+py -3.14 -m cv_compass_llm lifecycle-report --backend-log backend.log --ocr-log ocr.log --llm-log llm.log
+```
+
+So sánh `throughput_cv_per_min`, thời gian và chất lượng với lượt `--parallel 1`
+trên cùng bộ dữ liệu/cấu hình. Đo end-to-end bằng `lifecycle-report` theo E11
+bên dưới: ghép log các tiến trình pull trong cùng cửa sổ đo thành `llm.log`,
+giữ timestamp và đồng bộ đồng hồ/múi giờ. Parser tiếp tục nhận dòng có `worker=`.
 
 ## Tối ưu tùy chọn sau cờ (O4)
 

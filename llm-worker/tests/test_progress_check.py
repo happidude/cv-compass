@@ -21,7 +21,7 @@ from cv_compass_llm.check import BACKEND_PROBE
 from cv_compass_llm.cli import main
 from cv_compass_llm.config import load_pull_config
 from cv_compass_llm.pipeline import extract
-from cv_compass_llm.progress import LOGGER, command_logging, endpoint, model_name
+from cv_compass_llm.progress import LOGGER, command_logging, endpoint, event, model_name
 from cv_compass_llm.providers.base import ProviderError
 from cv_compass_llm.providers.fake import FakeProvider
 from cv_compass_llm.pull import _Attempt, run_pull
@@ -103,7 +103,9 @@ class ProgressTests(unittest.TestCase):
             redirect_stderr(err),
             patch.object(LOGGER, 'handle', side_effect=capture),
         ):
-            settings = replace(config(url), worker_token=TOKEN, log_level=level)
+            settings = replace(
+                config(url), worker_token=TOKEN, log_level=level, worker_name='synthetic-worker-42'
+            )
             result = run_pull(settings, provider or FakeProvider(NULL_PERSONAL), once=once)
         for marker in (
             MARKER,
@@ -122,6 +124,12 @@ class ProgressTests(unittest.TestCase):
                 )
         for record in records:
             self.assertIsNone(record.exc_info)
+            self.assertEqual(record.getMessage().split()[1], 'worker=synthetic-worker-42')
+        for _, _, _, body in backend.calls:
+            self.assertNotIn(b'synthetic-worker-42', body)
+        with self.assertLogs(LOGGER, level='INFO') as outside:
+            event('outside_pull')
+        self.assertNotIn('worker=', outside.output[0])
         return result, out.getvalue(), err.getvalue(), records
 
     def test_complete_flow_order_and_record_privacy(self):
@@ -210,7 +218,9 @@ class ProgressTests(unittest.TestCase):
         ]
         self.assertEqual(len(done), 1)
         self.assertTrue(done[0].endswith('issues=LLM_INVALID_JSON.experiences:1'))
-        self.assertIn('event=failed attempt=a0000000 code=INVALID_OUTPUT', err)
+        self.assertIn(
+            'event=failed worker=synthetic-worker-42 attempt=a0000000 code=INVALID_OUTPUT', err
+        )
         self.assertEqual(json.loads(backend.requests('failure')[0][3]), {'code': 'INVALID_OUTPUT'})
         self.assertFalse(backend.requests('result'))
 
@@ -273,10 +283,10 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(
             [record.getMessage() for record in records[1:]],
             [
-                'event=waiting code=BACKEND_UNREACHABLE',
-                'event=waiting code=NO_WORK',
-                'event=waiting code=BACKEND_UNREACHABLE',
-                'event=stopped',
+                'event=waiting worker=synthetic-worker-42 code=BACKEND_UNREACHABLE',
+                'event=waiting worker=synthetic-worker-42 code=NO_WORK',
+                'event=waiting worker=synthetic-worker-42 code=BACKEND_UNREACHABLE',
+                'event=stopped worker=synthetic-worker-42',
             ],
         )
         self.assertEqual(client.request.call_count, 7)
@@ -333,11 +343,13 @@ class ProgressTests(unittest.TestCase):
 
         _, _, err, _ = self.run_worker(Backend(), BrokenProvider())
         self.assertIn('event=provider_error', err)
-        self.assertIn('event=failed attempt=a0000000 code=PROVIDER_ERROR', err)
+        self.assertIn(
+            'event=failed worker=synthetic-worker-42 attempt=a0000000 code=PROVIDER_ERROR', err
+        )
         backend = Backend()
         backend.hook = lambda *_args: (422, {'code': MARKER, 'message': MARKER})
         _, _, err, _ = self.run_worker(backend)
-        self.assertIn('event=backend_error code=BACKEND_HTTP_ERROR', err)
+        self.assertIn('event=backend_error worker=synthetic-worker-42 code=BACKEND_HTTP_ERROR', err)
 
     def test_command_logger_restores_state_and_does_not_configure_root(self):
         root = logging.getLogger()

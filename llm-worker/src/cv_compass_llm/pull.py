@@ -14,7 +14,7 @@ from .backend_client import BackendClient, BackendError, encode
 from .config import PullConfig
 from .lifecycle import call_metrics
 from .pipeline import extract
-from .progress import command_logging, endpoint, event, model_name
+from .progress import command_logging, context, endpoint, event, model_name
 from .prompts import prompt_version
 from .providers.base import ProviderError
 from .pull_payload import (
@@ -414,7 +414,7 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
 
 def run_pull(config: PullConfig, provider, *, once: bool = False) -> int:
     """Scope stderr logging to this command and preserve the stdout counters."""
-    with command_logging(config.log_level):
+    with context(worker=config.worker_name), command_logging(config.log_level):
         return _run_pull(config, provider, once=once)
 
 

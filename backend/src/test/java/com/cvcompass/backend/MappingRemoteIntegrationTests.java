@@ -24,9 +24,12 @@ import com.cvcompass.backend.mapping.service.MappingRemoteFixtures;
 import com.cvcompass.backend.mapping.service.MappingRemoteService;
 import com.cvcompass.backend.mapping.service.MappingService;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -48,6 +51,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContextManager;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -73,6 +78,7 @@ class MappingRemoteIntegrationTests {
     @Autowired CompletedMappings completed;
     @Autowired MappingRemoteProperties properties;
     @Autowired MockMvc mvc;
+    @Autowired PlatformTransactionManager transactions;
     @Autowired com.cvcompass.backend.candidate.service.PublicationService publication;
 
     @DynamicPropertySource
@@ -290,6 +296,93 @@ class MappingRemoteIntegrationTests {
         assertThatThrownBy(() -> remote.claim("synthetic_worker", request, HASH, changed))
                 .hasMessage("IDEMPOTENCY_CONFLICT");
         assertThat(claim(UUID.randomUUID()).status()).isEqualTo(204);
+    }
+
+    @Test
+    void overlappingClaimsSkipLockedJobAndClaimTwoDistinctJobs() throws Exception {
+        long firstJob = seed();
+        long secondJob = seed();
+        var replies = overlappingClaims();
+        assertThat(replies)
+                .extracting(MappingRemoteService.Reply::status)
+                .containsExactly(201, 201);
+        assertThat(id(replies.get(0))).isNotEqualTo(id(replies.get(1)));
+        var claimedJobs =
+                replies.stream()
+                        .map(
+                                reply ->
+                                        jdbc.queryForObject(
+                                                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                                Long.class,
+                                                id(reply)))
+                        .toList();
+        assertThat(claimedJobs).containsExactlyInAnyOrder(firstJob, secondJob);
+    }
+
+    @Test
+    void overlappingClaimsWithOneJobReturnOneClaimAndOneNoWork() throws Exception {
+        long job = seed();
+        var replies = overlappingClaims();
+        assertThat(replies)
+                .extracting(MappingRemoteService.Reply::status)
+                .containsExactlyInAnyOrder(201, 204);
+        var claimed =
+                replies.stream().filter(reply -> reply.status() == 201).findFirst().orElseThrow();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                Long.class,
+                                id(claimed)))
+                .isEqualTo(job);
+        var idle =
+                replies.stream().filter(reply -> reply.status() == 204).findFirst().orElseThrow();
+        assertThat(idle.data()).isEmpty();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"STATUS\"='ACTIVE'",
+                                Integer.class))
+                .isEqualTo(1);
+    }
+
+    private List<MappingRemoteService.Reply> overlappingClaims() throws Exception {
+        var connected = new CyclicBarrier(2);
+        var claimed = new CyclicBarrier(2);
+        var connections = ConcurrentHashMap.<Integer>newKeySet();
+        Callable<MappingRemoteService.Reply> task =
+                () ->
+                        new TransactionTemplate(transactions)
+                                .execute(
+                                        status -> {
+                                            connections.add(
+                                                    jdbc.queryForObject(
+                                                            "SELECT pg_backend_pid()",
+                                                            Integer.class));
+                                            awaitClaimBarrier(connected);
+                                            var reply = claim(UUID.randomUUID());
+                                            // Keep the claimed row locked until both service calls
+                                            // return.
+                                            awaitClaimBarrier(claimed);
+                                            return reply;
+                                        });
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(task);
+            var second = executor.submit(task);
+            var replies =
+                    List.of(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS));
+            assertThat(connections).hasSize(2);
+            return replies;
+        }
+    }
+
+    private void awaitClaimBarrier(CyclicBarrier barrier) {
+        try {
+            barrier.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Concurrent claim interrupted", error);
+        } catch (Exception error) {
+            throw new AssertionError("Concurrent claim barrier failed", error);
+        }
     }
 
     @Test
