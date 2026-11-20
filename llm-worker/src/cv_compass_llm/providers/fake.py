@@ -2,6 +2,7 @@
 
 import json
 
+from ..config import LlmConfig
 from .base import ProviderError
 
 
@@ -13,6 +14,9 @@ class FakeProvider:
         responses: list[str | dict | ProviderError] | dict,
         *,
         metrics: list[dict] | dict | None = None,
+        num_predict: int | None = None,
+        keep_alive: str | None = None,
+        extraction_config: LlmConfig | None = None,
     ) -> None:
         """Store predetermined responses for synthetic in-memory tests."""
         self.responses = list(responses) if isinstance(responses, list) else [responses]
@@ -20,6 +24,10 @@ class FakeProvider:
         self.calls: list[tuple[dict, int | None, float | None]] = []
         self.metrics = metrics
         self.last_metrics: dict = {}
+        self.num_predict = num_predict
+        self.keep_alive = keep_alive
+        self.extraction_config = extraction_config
+        self.request_options: list[dict] = []
 
     def generate(
         self,
@@ -36,6 +44,9 @@ class FakeProvider:
             metrics = metrics.pop(0) if metrics else None
         self.prompts.append(prompt)
         self.calls.append((json_schema, num_ctx, timeout_s))
+        self.request_options.append(
+            {'num_predict': self.num_predict, 'keep_alive': self.keep_alive}
+        )
         if not self.responses:
             raise ProviderError('FAKE_EXHAUSTED')
         response = self.responses.pop(0)

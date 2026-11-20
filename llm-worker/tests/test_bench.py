@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cv_compass_llm.bench import print_bench, run_bench
-from cv_compass_llm.cli import main
+from cv_compass_llm.cli import create_provider, main
 from cv_compass_llm.config import load_bench_config
 from cv_compass_llm.gold import PERSONAL_FIELDS
 from cv_compass_llm.providers import FakeProvider, ProviderError
@@ -72,6 +72,55 @@ class BenchTests(unittest.TestCase):
                 for key in (*PERSONAL_FIELDS, 'summary')
             }
         }
+
+    def test_o4_env_file_flags_reach_warmup_and_measured_pipeline(self):
+        for name in ('base', 'candidate'):
+            path = self.root / (name + '.env')
+            with path.open('a', encoding='utf-8') as stream:
+                stream.write('CVC_LLM_MODE=whole\n')
+                if name == 'candidate':
+                    stream.write(
+                        'CVC_LLM_PROMPT_SCHEMA_TEXT=false\nCVC_LLM_WHOLE_PERSONAL=false\n'
+                        'CVC_LLM_MAX_OUTPUT_TOKENS=256\nCVC_LLM_KEEP_ALIVE=10m\n'
+                        'CVC_LLM_CTX_CHARS_PER_TOKEN=1.5\nCVC_LLM_CTX_FINE_TIERS=true\n'
+                    )
+        providers = []
+
+        def local_provider(model, **options):
+            whole = (
+                dict(self.response(), experiences=[]) if model == 'base' else {'experiences': []}
+            )
+            provider = FakeProvider(
+                [whole, self.response()] * 2,
+                num_predict=options.get('num_predict'),
+                keep_alive=options.get('keep_alive'),
+            )
+            providers.append(provider)
+            return provider
+
+        with patch('cv_compass_llm.cli.OllamaProvider', side_effect=local_provider):
+            self.run_bench(create_provider, warmup=1)
+        for name, provider in zip(('base', 'candidate'), providers, strict=True):
+            version = 'llm-extraction-prompt/whole-2' + ('-lean-xp' if name == 'candidate' else '')
+            for run in ('warmup', 'r1'):
+                summary = json.loads(
+                    (self.output / name / run / 'run-summary.json').read_text(encoding='utf-8')
+                )
+                self.assertEqual(summary['prompt_version'], version)
+                self.assertEqual(summary['issues'], {})
+            self.assertEqual(len(provider.prompts), 4)
+            for prompt in provider.prompts:
+                self.assertEqual('matching this schema' in prompt, name == 'base')
+            if name == 'candidate':
+                self.assertTrue(
+                    all(
+                        set(call[0]['properties']) == {'experiences'}
+                        for call in provider.calls[::2]
+                    )
+                )
+                self.assertEqual(
+                    provider.request_options, [{'num_predict': 256, 'keep_alive': '10m'}] * 4
+                )
 
     def run_bench(self, factory, **options):
         return run_bench(

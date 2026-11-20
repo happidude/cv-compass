@@ -9,7 +9,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import URLError
 
+from cv_compass_llm.prompts import build_whole_prompt
 from cv_compass_llm.providers import OllamaProvider, ProviderError
+from cv_compass_llm.schema import WHOLE_SCHEMA
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -111,6 +113,46 @@ class OllamaTests(unittest.TestCase):
             },
         ):
             self.assertEqual(self.provider().generate('synthetic', {}), 'synthetic response')
+
+    def test_default_whole_request_sha256(self) -> None:
+        """Freeze the pre-O4 whole request including its prompt, schema and context."""
+        self.provider().generate(build_whole_prompt('Line A\nLine B'), WHOLE_SCHEMA, num_ctx=8192)
+        self.assertEqual(
+            hashlib.sha256(self.server.request_bodies[0]).hexdigest(),
+            '3fab1cb36b9d1e745a52547ea15ba7ea1d097341e03ec8c8295452790a78fd90',
+        )
+
+    def test_optional_output_limit_and_keep_alive(self) -> None:
+        for options, keep_alive in (
+            ({'num_predict': 128}, None),
+            ({'keep_alive': '10m'}, '10m'),
+            ({'num_predict': 256, 'keep_alive': '-1'}, -1),
+            ({'keep_alive': '0'}, 0),
+            ({'keep_alive': '30'}, 30),
+            ({'keep_alive': '500ms'}, '500ms'),
+        ):
+            with self.subTest(options=options):
+                self.provider(**options).generate('synthetic', {}, num_ctx=12288)
+                payload = self.server.requests[-1][1]
+                expected = {'temperature': 0, 'num_ctx': 12288}
+                if 'num_predict' in options:
+                    expected['num_predict'] = options['num_predict']
+                self.assertEqual(payload['options'], expected)
+                if 'keep_alive' in options:
+                    self.assertEqual(payload['keep_alive'], keep_alive)
+                    self.assertIs(type(payload['keep_alive']), type(keep_alive))
+                else:
+                    self.assertNotIn('keep_alive', payload)
+                self.assertEqual(payload['format'], {})
+
+    def test_invalid_output_options_do_not_make_requests(self) -> None:
+        for value in (0, -1, True, 1.5, '128'):
+            with self.assertRaisesRegex(ValueError, '^INVALID_MAX_OUTPUT_TOKENS$'):
+                self.provider(num_predict=value)
+        for value in ('private-value', '1.5m', '1d', '1000000ms', '1000000', -1, 0):
+            with self.assertRaisesRegex(ValueError, '^INVALID_KEEP_ALIVE$'):
+                self.provider(keep_alive=value)
+        self.assertEqual(self.server.requests, [])
 
     def test_response_metrics_are_numeric_optional_and_reset_for_every_call(
         self,

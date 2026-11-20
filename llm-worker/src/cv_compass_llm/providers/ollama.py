@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+from ..config import LlmConfig, validate_keep_alive
 from ..json_strict import strict_json
 from .base import ProviderError
 
@@ -51,6 +52,8 @@ class OllamaProvider:
         temperature: float = 0.0,
         think: bool = False,
         num_ctx: int | None = None,
+        num_predict: int | None = None,
+        keep_alive: str | None = None,
     ) -> None:
         """Validate the local endpoint and timeout for each socket operation."""
         try:
@@ -82,6 +85,9 @@ class OllamaProvider:
             raise ValueError('INVALID_TEMPERATURE')
         if type(think) is not bool:
             raise ValueError('INVALID_THINK')
+        if num_predict is not None and (type(num_predict) is not int or num_predict < 1):
+            raise ValueError('INVALID_MAX_OUTPUT_TOKENS')
+        validate_keep_alive(keep_alive)
         self.model = model
         self.name = 'ollama:' + model
         self.url = urlunsplit((url.scheme, url.netloc, '/api/chat', '', ''))
@@ -89,7 +95,10 @@ class OllamaProvider:
         self.temperature = temperature
         self.think = think
         self.num_ctx = num_ctx
+        self.num_predict = num_predict
+        self.keep_alive = keep_alive
         self.last_metrics: dict[str, int | str] = {}
+        self.extraction_config: LlmConfig | None = None
         self._opener = build_opener(ProxyHandler({}), _NoRedirect())
 
     def generate(
@@ -115,6 +124,16 @@ class OllamaProvider:
         }
         if num_ctx is not None:
             payload['options']['num_ctx'] = num_ctx
+        if self.num_predict is not None:
+            payload['options']['num_predict'] = self.num_predict
+        if self.keep_alive is not None:
+            payload['keep_alive'] = (
+                int(self.keep_alive)
+                if self.keep_alive == '-1'
+                or self.keep_alive.isascii()
+                and self.keep_alive.isdigit()
+                else self.keep_alive
+            )
         try:
             request = Request(
                 self.url,
