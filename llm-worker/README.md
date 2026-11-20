@@ -850,10 +850,16 @@ không đọc body để phân loại context. `promptVersion` không đổi.
 Khi bật, mỗi call whole, header hoặc block được coi là tràn nếu có một trong
 ba điều kiện:
 
-- HTTP 400/500 của Ollama có từ chỉ context/độ dài đầu vào như `context length`,
-  `context window`, `input length`, `exceeds`, `too long`, `num_ctx` (không phân
-  biệt hoa thường). Provider chỉ đọc tối đa 4096 byte để nhận diện rồi đóng
-  response, trả mã cố định `OLLAMA_CONTEXT_OVERFLOW`; không giữ hoặc log body.
+- HTTP 400/500 của Ollama nêu rõ độ dài vượt giới hạn: `context length`,
+  `context window`, `context size` hoặc `input length` (kể cả `input_length`,
+  `input-length`) theo ngay sau bởi `exceed`, `exceeds`, `exceeded`, `too long`
+  hoặc `too large`; cho phép xen `is`, `was`, `has been`. Cũng nhận cụm
+  `prompt is too long`. Không phân biệt hoa thường, khoảng trắng có thể thay
+  đổi. Các từ riêng lẻ `exceeds`, `too long`, `num_ctx` không đủ; lỗi như
+  `invalid option num_ctx` hoặc `request too long` vẫn là `OLLAMA_HTTP_<code>`:
+  pipeline ghi `PROVIDER_ERROR`, không retry, pull đánh dấu attempt thất bại.
+  Provider chỉ đọc tối đa 4096 byte để nhận diện rồi đóng response, trả mã cố
+  định `OLLAMA_CONTEXT_OVERFLOW` khi khớp; không giữ hoặc log body.
 - `last_metrics.prompt_tokens + output_tokens >= num_ctx - 32`, với context
   hiệu lực của chính call đó. Thiếu context hoặc một trong hai số token thì
   bỏ qua điều kiện này.

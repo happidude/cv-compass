@@ -151,10 +151,14 @@ class OllamaProvider:
             overflow = False
             try:
                 if self.ctx_guard and code in (400, 500):
+                    # Match context length/window/size or input length, optionally is/was/has been,
+                    # then exceed(s/ed) or too long/large; also "prompt is too long".
                     overflow = (
                         re.search(
-                            rb'context\s+(?:length|window)|input[\s_-]+length|'
-                            rb'exceeds|too\s+long|num_ctx',
+                            rb'\b(?:context\s+(?:length|window|size)|input[\s_-]+length)'
+                            rb'\s+(?:(?:is|was|has\s+been)\s+)?'
+                            rb'(?:exceed(?:s|ed)?|too\s+(?:long|large))\b|'
+                            rb'\bprompt\s+is\s+too\s+long\b',
                             error.read(4096),
                             re.IGNORECASE,
                         )

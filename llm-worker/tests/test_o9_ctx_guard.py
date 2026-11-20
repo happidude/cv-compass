@@ -296,6 +296,24 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(result.issues, (Issue('PROVIDER_ERROR', 'personal'),))
         self.assertEqual(len(provider.calls), 1)
 
+    def test_http_error_is_not_retried_and_marks_observed_attempt_failure(self):
+        for observe in (False, True):
+            with self.subTest(observe=observe):
+                provider = FakeProvider([ProviderError('OLLAMA_HTTP_500'), NAME])
+                observed = _ObservedProvider(
+                    provider, SimpleNamespace(lost=False, outcome_started=False), ctx_guard=True
+                )
+                result = extract(
+                    document(HEADER_TEXT),
+                    observed if observe else provider,
+                    config=settings(ctx_guard=True),
+                )
+                self.assertEqual(result.issues, (Issue('PROVIDER_ERROR', 'personal'),))
+                self.assertEqual(provider.calls, [(PERSONAL_SCHEMA, None, None)])
+                self.assertNotIn('CONTEXT_OVERFLOW', [issue.code for issue in result.issues])
+                if observe:
+                    self.assertEqual(observed.failure, 'PROVIDER_ERROR')
+
     def test_unit_seconds_include_discarded_call_and_metrics_are_final(self):
         provider = FakeProvider(
             [personal(), NAME], metrics=[{'done_reason': 'length'}, {'output_tokens': 7}]
@@ -333,16 +351,26 @@ class TransportTests(unittest.TestCase):
 
     def test_http_error_matching_is_bounded_opt_in_and_content_free(self):
         for guard in (False, True):
-            for status in (400, 500, 401):
-                for body in (
-                    b'PRIVATE context LENGTH exceeded',
-                    b'PRIVATE CONTEXT window',
-                    b'PRIVATE input length',
-                    b'PRIVATE exceeds limit',
-                    b'PRIVATE too LONG',
-                    b'PRIVATE num_ctx',
-                    b'PRIVATE unrelated',
-                    b'x' * 4096 + b'context length',
+            for status in (400, 500, 401, 404):
+                for body, expected_overflow in (
+                    (b'PRIVATE context LENGTH exceeded', True),
+                    (b'PRIVATE context window is too LONG', True),
+                    (b'PRIVATE context size was too large', True),
+                    (b'PRIVATE input length exceeds the context length', True),
+                    (b'PRIVATE the input length exceeds the context length (8192)', True),
+                    (b'PRIVATE prompt is too long for context window', True),
+                    (b'PRIVATE CONTEXT window', False),
+                    (b'PRIVATE input length', False),
+                    (b'PRIVATE exceeds limit', False),
+                    (b'PRIVATE too LONG', False),
+                    (b'PRIVATE num_ctx', False),
+                    (b"PRIVATE model 'x' not found", False),
+                    (b'PRIVATE internal error', False),
+                    (b'PRIVATE invalid option num_ctx', False),
+                    (b'PRIVATE value exceeds limit', False),
+                    (b'PRIVATE request too long', False),
+                    (b'PRIVATE unrelated', False),
+                    (b'x' * 4096 + b'input length exceeds the context length', False),
                 ):
                     with self.subTest(guard=guard, status=status, body_length=len(body)):
                         stream = io.BytesIO(body)
@@ -355,11 +383,7 @@ class TransportTests(unittest.TestCase):
                         stderr = io.StringIO()
                         with redirect_stderr(stderr), self.assertRaises(ProviderError) as caught:
                             provider.generate('synthetic', {})
-                        matched = (
-                            guard
-                            and status in (400, 500)
-                            and body not in (b'PRIVATE unrelated', b'x' * 4096 + b'context length')
-                        )
+                        matched = guard and status in (400, 500) and expected_overflow
                         self.assertEqual(
                             str(caught.exception), OVERFLOW if matched else f'OLLAMA_HTTP_{status}'
                         )
@@ -454,6 +478,27 @@ class ConfigTests(unittest.TestCase):
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_pull_http_error_fails_attempt_without_submitting_partial_result(self):
+        backend = Backend()
+        backend.input = {'pages': [{'page': 1, 'raw_text': HEADER_TEXT}]}
+        provider = FakeProvider([ProviderError('OLLAMA_HTTP_500'), NAME])
+        stderr = io.StringIO()
+        with (
+            backend_server(backend) as url,
+            redirect_stderr(stderr),
+            redirect_stdout(io.StringIO()),
+        ):
+            cfg = config(url)
+            run_pull(replace(cfg, llm=replace(cfg.llm, ctx_guard=True)), provider, once=True)
+        self.assertEqual(provider.calls, [(PERSONAL_SCHEMA, None, None)])
+        self.assertEqual(backend.requests('result'), [])
+        failures = backend.requests('failure')
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(json.loads(failures[0][3]), {'code': 'PROVIDER_ERROR'})
+        self.assertIn('code=PROVIDER_ERROR', stderr.getvalue())
+        for field in ('CONTEXT_OVERFLOW', 'ctx_retry=1', 'event=ctx_discarded'):
+            self.assertNotIn(field, stderr.getvalue())
+
     def test_observed_overflow_does_not_poison_guarded_attempt(self):
         for guard in (True, False):
             provider = FakeProvider([ProviderError(OVERFLOW), personal()])
