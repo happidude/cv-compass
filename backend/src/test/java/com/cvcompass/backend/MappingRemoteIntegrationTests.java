@@ -412,6 +412,72 @@ class MappingRemoteIntegrationTests {
     }
 
     @Test
+    void honorificFullNameIsStoredAndPublishedWithOriginalRawAndEvidence() {
+        long job = seed();
+        String value = "Mr Cao";
+        jdbc.update(
+                """
+                UPDATE "CV_EXTRACTIONS"
+                SET "OCR_RESULT"=jsonb_set("OCR_RESULT",'{pages,0,raw_text}',to_jsonb(?::text))
+                WHERE "ID"=(SELECT "EXTRACTION_ID" FROM "CV_MAPPING_JOBS" WHERE "ID"=?)
+                """,
+                MappingRemoteFixtures.RAW + "\n" + value,
+                job);
+        var claim = claim(UUID.randomUUID());
+        var body = MappingRemoteFixtures.result((String) claim.data().get("inputSha256"));
+        int start =
+                MappingRemoteFixtures.RAW.codePointCount(0, MappingRemoteFixtures.RAW.length()) + 1;
+        var evidence =
+                json.createObjectNode()
+                        .put("page", 1)
+                        .put("start", start)
+                        .put("end", start + value.length())
+                        .put("text", value);
+        ((ObjectNode) body.path("personal"))
+                .putObject("fullName")
+                .put("value", value)
+                .set("evidence", evidence);
+        remote.result("synthetic_worker", id(claim), HASH, body.toString());
+        long resultId =
+                jdbc.queryForObject(
+                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        Long.class,
+                        job);
+        var stored = completed.read(resultId).orElseThrow();
+        var persisted = json.readTree(stored.body()).path("personalInfo").path("fullName");
+        var expected =
+                json.createArrayNode()
+                        .add(evidence.deepCopy().put("extractionId", stored.extractionId()));
+        assertThat(persisted.path("raw").asString()).isEqualTo(value);
+        assertThat(persisted.path("normalized").asString()).isEqualTo("Cao");
+        assertThat(persisted.path("state").asString()).isEqualTo("PROPOSED");
+        assertThat(persisted.path("issues").isEmpty()).isTrue();
+        assertThat(persisted.path("evidence")).isEqualTo(json.readTree(expected.toString()));
+        assertThat(completed.publishable(stored)).isPresent();
+        assertThat(publication.publish(resultId)).isTrue();
+        var profile =
+                jdbc.queryForMap(
+                        """
+                        SELECT p."BASIC"::text, p."EXTENSIONS"::text, c."STATUS"
+                        FROM "CANDIDATE_PROFILES" p
+                        JOIN "CANDIDATE_PUBLICATIONS" c ON c."CANDIDATE_ID"=p."CANDIDATE_ID"
+                        WHERE c."RESULT_ID"=?
+                        """,
+                        resultId);
+        assertThat(profile.get("STATUS")).isEqualTo("PUBLISHED");
+        assertThat(json.readTree((String) profile.get("BASIC")).path("fullName").asString())
+                .isEqualTo(value);
+        var metadata =
+                json.readTree((String) profile.get("EXTENSIONS"))
+                        .path("personalInfo")
+                        .path("fields")
+                        .path("fullName");
+        assertThat(metadata.path("raw").asString()).isEqualTo(value);
+        assertThat(metadata.path("normalized").asString()).isEqualTo("Cao");
+        assertThat(metadata.path("evidence")).isEqualTo(json.readTree(expected.toString()));
+    }
+
+    @Test
     void invalidEvidenceConsumesAttemptAndNeverWritesResult() {
         long job = seed();
         var claim = claim(UUID.randomUUID());

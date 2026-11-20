@@ -159,7 +159,7 @@ public class MappingRemoteVerifier {
                 evidence.clear();
                 fieldIssues.add(new Issue("FIELD_DISABLED", field, List.of()));
             } else if (raw != null) {
-                var checked = PersonalInfoValidation.check(field, raw);
+                var checked = PersonalInfoValidation.checkRemote(field, raw);
                 normalized = checked.normalized();
                 String code =
                         field.equals("gender") && raw.equals("OTHER")
