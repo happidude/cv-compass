@@ -140,6 +140,7 @@ def extract(
     whole_personal = config.whole_personal if config is not None else True
     name_style = config.name_style if config is not None else 'raw'
     dates = config.dates if config is not None else 'v1'
+    name_trim = config.name_trim if config is not None else 'off'
     use_lines = config is not None and config.evidence == 'lines'
     trim_input = config is not None and config.trim_input
     retained = set()
@@ -337,11 +338,15 @@ def extract(
                 check_truncated('experiences')
                 if use_lines:
                     experiences, errors = validate_line_experiences(
-                        response, block_table, dates=dates
+                        response, block_table, dates=dates, name_trim=name_trim
                     )
                 else:
                     _, experiences, errors = validate_whole(
-                        response, block, whole_personal=whole_personal, dates=dates
+                        response,
+                        block,
+                        whole_personal=whole_personal,
+                        dates=dates,
+                        name_trim=name_trim,
                     )
                 issues.extend(error for error in errors if error.field not in PERSONAL_KEYS)
             if on_block is not None:
@@ -421,9 +426,9 @@ def extract(
             continue
         check_truncated('experiences')
         values, errors = (
-            validate_line_experiences(response, block_table, dates=dates)
+            validate_line_experiences(response, block_table, dates=dates, name_trim=name_trim)
             if use_lines
-            else validate_experiences(response, block, dates=dates)
+            else validate_experiences(response, block, dates=dates, name_trim=name_trim)
         )
         experiences.extend(values)
         issues.extend(errors)

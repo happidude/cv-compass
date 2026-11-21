@@ -496,6 +496,7 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
         log_level=config.log_level,
         mode=config.llm.mode,
         name_style=config.llm.name_style,
+        name_trim=config.llm.name_trim,
         prompt_schema_text=int(config.llm.prompt_schema_text),
         whole_personal=int(config.llm.whole_personal),
         max_output_tokens=config.llm.max_output_tokens or 0,

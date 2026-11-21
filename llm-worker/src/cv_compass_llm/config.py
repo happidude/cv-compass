@@ -19,6 +19,7 @@ ENV_KEYS = {
     'mode': 'CVC_LLM_MODE',
     'evidence': 'CVC_LLM_EVIDENCE',
     'name_style': 'CVC_LLM_NAME_STYLE',
+    'name_trim': 'CVC_LLM_NAME_TRIM',
     'dates': 'CVC_LLM_DATES',
     'trim_input': 'CVC_LLM_TRIM_INPUT',
     'trim_sections': 'CVC_LLM_TRIM_SECTIONS',
@@ -58,6 +59,7 @@ BENCH_ENV_KEYS = frozenset(
         'mode',
         'evidence',
         'name_style',
+        'name_trim',
         'dates',
         'trim_input',
         'trim_sections',
@@ -105,6 +107,7 @@ class LlmConfig:
     fallback_drop_ratio: float = 0.3
     name_style: str = 'raw'
     dates: str = 'v1'
+    name_trim: str = 'off'
 
     @property
     def provenance_model(self) -> str:
@@ -243,6 +246,9 @@ def load_config(
     name_style = value('name_style', 'raw')
     if name_style not in ('raw', 'clean'):
         raise ValueError('INVALID_NAME_STYLE')
+    name_trim = value('name_trim', 'off')
+    if name_trim not in ('off', 'on'):
+        raise ValueError('INVALID_NAME_TRIM')
     dates = value('dates', 'v1')
     if dates not in ('v1', 'v2'):
         raise ValueError('INVALID_DATES')
@@ -295,6 +301,7 @@ def load_config(
         mode=mode,
         evidence=evidence,
         name_style=name_style,
+        name_trim=name_trim,
         dates=dates,
         trim_phrases=tuple(
             part.strip() for part in value('trim_phrases').split('|') if part.strip()
@@ -452,6 +459,7 @@ def load_pull_config(
             'INVALID_MODE': 'mode',
             'INVALID_EVIDENCE': 'evidence',
             'INVALID_NAME_STYLE': 'name_style',
+            'INVALID_NAME_TRIM': 'name_trim',
             'INVALID_DATES': 'dates',
             'INVALID_TRIM_INPUT': 'trim_input',
             'INVALID_TRIM_SECTIONS': 'trim_sections',
