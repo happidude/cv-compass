@@ -1,6 +1,7 @@
 """Aggregate-only comparison against explicitly confirmed gold."""
 
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 from .batch_io import input_directory
@@ -11,15 +12,20 @@ from .gold import (
     group_experiences,
     load_gold,
     normalize,
+    normalize_loose,
     result_values,
 )
 
 
-def experience_keys(items: list[dict], kind: str) -> Counter:
+def experience_keys(
+    items: list[dict],
+    kind: str,
+    normalizer: Callable[[str | None], str | None] = normalize,
+) -> Counter:
     """Build a multiset so duplicate predictions cannot inflate matches."""
     keys = []
     for item in items:
-        company = normalize(item['company'])
+        company = normalizer(item['company'])
         if company is None:
             continue
         period = company_period(item)
@@ -30,7 +36,7 @@ def experience_keys(items: list[dict], kind: str) -> Counter:
                 keys.append((company, *period))
         else:
             for position in item['positions']:
-                title = normalize(position['title'])
+                title = normalizer(position['title'])
                 if title is not None:
                     keys.append(
                         (company, title)
@@ -50,6 +56,10 @@ def compare(results: str | Path, gold: str | Path) -> dict:
         kind: {'matched': 0, 'predicted': 0, 'gold': 0}
         for kind in ('companies', 'companyPeriods', 'titles', 'positions')
     }
+    for counts in personal.values():
+        counts['loose'] = dict.fromkeys(('correct', 'wrong', 'missing', 'extra'), 0)
+    for counts in experiences.values():
+        counts['loose'] = {'matched': 0, 'predicted': 0, 'gold': 0}
     summary = {
         'compared': 0,
         'skipped_draft': 0,
@@ -90,25 +100,32 @@ def compare(results: str | Path, gold: str | Path) -> dict:
         records = group_experiences(records)
         summary['average_seconds'] += (seconds - summary['average_seconds']) / summary['compared']
         for key in PERSONAL_FIELDS:
-            expected, actual = normalize(reference['personal'][key]), normalize(fields[key])
-            if expected == actual:
-                category = 'correct'
-            elif expected is None:
-                category = 'extra'
-            elif actual is None:
-                category = 'missing'
-            else:
-                category = 'wrong'
-            personal[key][category] += 1
+            for counts, normalizer in (
+                (personal[key], normalize),
+                (personal[key]['loose'], normalize_loose),
+            ):
+                expected = normalizer(reference['personal'][key])
+                actual = normalizer(fields[key])
+                if expected == actual:
+                    category = 'correct'
+                elif expected is None:
+                    category = 'extra'
+                elif actual is None:
+                    category = 'missing'
+                else:
+                    category = 'wrong'
+                counts[category] += 1
         for kind, counts in experiences.items():
-            expected = experience_keys(reference['experiences'], kind)
-            actual = experience_keys(records, kind)
-            counts['matched'] += sum((expected & actual).values())
-            counts['predicted'] += actual.total()
-            counts['gold'] += expected.total()
+            for level, normalizer in ((counts, normalize), (counts['loose'], normalize_loose)):
+                expected = experience_keys(reference['experiences'], kind, normalizer)
+                actual = experience_keys(records, kind, normalizer)
+                level['matched'] += sum((expected & actual).values())
+                level['predicted'] += actual.total()
+                level['gold'] += expected.total()
     for counts in experiences.values():
-        counts['precision'] = (
-            counts['matched'] / counts['predicted'] if counts['predicted'] else 0.0
-        )
-        counts['recall'] = counts['matched'] / counts['gold'] if counts['gold'] else 0.0
+        for level in (counts, counts['loose']):
+            level['precision'] = (
+                level['matched'] / level['predicted'] if level['predicted'] else 0.0
+            )
+            level['recall'] = level['matched'] / level['gold'] if level['gold'] else 0.0
     return summary
