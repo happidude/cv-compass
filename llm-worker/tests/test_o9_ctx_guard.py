@@ -73,9 +73,14 @@ class GuardTests(unittest.TestCase):
                     self.assertEqual(
                         [hashlib.sha256(p.encode()).hexdigest() for p in provider.prompts], hashes
                     )
+                    self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
+                    # A1 adds only this internal issue; retain the legacy data fingerprint.
                     self.assertEqual(
                         hashlib.sha256(
-                            json.dumps(result.to_dict(), sort_keys=True).encode()
+                            json.dumps(
+                                replace(result, issues=()).to_dict(),
+                                sort_keys=True,
+                            ).encode()
                         ).hexdigest(),
                         result_hash,
                     )
@@ -134,7 +139,7 @@ class GuardTests(unittest.TestCase):
                     self.assertEqual(provider.calls[first][2], provider.calls[first + 1][2])
                     self.assertEqual(result.fields, ())
                     self.assertEqual(result.experiences, ())
-                    self.assertEqual(result.issues, ())
+                    self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
                     self.assertEqual(len(completed), 2)
                     self.assertTrue(all(row[2] >= 0 for row in completed))
                     telemetry = contexts[first]
@@ -145,7 +150,7 @@ class GuardTests(unittest.TestCase):
     def test_discarded_invalid_json_never_produces_validation_or_truncation_issues(self):
         provider = FakeProvider(['not json', personal()], metrics=[{'done_reason': 'length'}, {}])
         result = extract(document(HEADER_TEXT), provider, config=settings(ctx_guard=True))
-        self.assertEqual(result.issues, ())
+        self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
         self.assertEqual(result.fields, ())
 
     def test_whole_uses_explicit_context_instead_of_configured_default(self):
@@ -162,7 +167,7 @@ class GuardTests(unittest.TestCase):
         )
         self.assertEqual([call[1] for call in provider.calls], [8192, 16384, None])
         self.assertEqual(result.experiences, ())
-        self.assertEqual(result.issues, ())
+        self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
 
     def test_metrics_overflow_after_retry_discards_both_responses(self):
         for reason in ('tokens', 'length'):

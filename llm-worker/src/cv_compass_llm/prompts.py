@@ -15,6 +15,33 @@ PROMPT_VERSION = 'llm-extraction-prompt/3'
 WHOLE_PROMPT_VERSION = 'llm-extraction-prompt/whole-2'
 BEGIN = '<<<CV_DATA_BEGIN>>>'
 END = '<<<CV_DATA_END>>>'
+CLEAN_NAME_INSTRUCTIONS = (
+    'For clean names, keep all existing quote rules: values must be verbatim contiguous '
+    'substrings of the CV. Choose the shortest contiguous span naming the company or title; '
+    'never join non-adjacent parts; if a name breaks across a line, keep the source text. '
+    'Company: use the short legal/brand name; drop slogans/descriptions after |, descriptive '
+    'parentheses such as (Incl: ...) or (2 PLANTS), location/parent group after a comma or dash '
+    'or before the name (<Country>, <Name> -> <Name>), and label prefixes such as Company:. '
+    'KEEP a parent/legal name in parentheses immediately after the name. '
+    'Title: use the short job title; drop Position:; Work as X in Y -> X; drop trailing '
+    'for .../consults for ... descriptions and long descriptive parentheses, but KEEP short '
+    'abbreviations/channels such as (CGO) or (KA channel). Never append the company to the title. '
+    'A -> B promotion in the same company means two records; sub-positions with their own '
+    'years each need a record with their own period; a period quote may use shared text '
+    'when only one period is given. Invented examples: '
+    'NORTHWIND TRADING CO., LTD, HELIX GROUP AG, SWITZERLAND -> NORTHWIND TRADING CO., LTD; '
+    'CANADA, MAPLE LANTERN LABS -> MAPLE LANTERN LABS; '
+    'Position: Work as Sales Lead (KA channel) in MAPLE LANTERN LABS -> Sales Lead (KA channel).'
+)
+CLEAN_NAME_LINES_INSTRUCTIONS = CLEAN_NAME_INSTRUCTIONS.replace(
+    'For clean names, keep all existing quote rules: values must be verbatim contiguous '
+    'substrings of the CV. ',
+    'For clean names, text must be a short verbatim substring of that line. ',
+).replace(
+    'years each need a record with their own period; a period quote may use shared text '
+    'when only one period is given. ',
+    'years each need a record with their own periodLine. ',
+)
 
 
 def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
@@ -22,6 +49,8 @@ def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
     version = WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION
     if config is not None and config.evidence == 'lines':
         version = 'llm-extraction-prompt/' + ('whole-lines-1' if mode == 'whole' else 'lines-1')
+    if config is not None and config.name_style == 'clean':
+        version += '-clean'
     if config is not None and not config.prompt_schema_text:
         version += '-lean'
     if mode == 'whole' and config is not None and not config.whole_personal:
@@ -32,7 +61,12 @@ def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
 
 
 def build_lines_prompt(
-    text: str, *, personal: bool = False, whole: bool = False, schema_text: bool = True
+    text: str,
+    *,
+    personal: bool = False,
+    whole: bool = False,
+    schema_text: bool = True,
+    name_style: str = 'raw',
 ) -> str:
     """Request line references and short source values without model-written dates."""
     schema = LINES_PERSONAL_SCHEMA if personal else LINES_EXPERIENCE_SCHEMA
@@ -74,6 +108,8 @@ def build_lines_prompt(
             'Dates may continue onto the next line. Do not write dates or quotes. '
             'Ongoing requires an explicit Present/Now/Current/Hiện tại/Nay marker. '
         )
+        if name_style == 'clean':
+            instructions = instructions.rstrip() + '\n' + CLEAN_NAME_LINES_INSTRUCTIONS + '\n'
     escaped = text.replace(BEGIN, '[CV_BEGIN_ESCAPED]').replace(END, '[CV_END_ESCAPED]')
     return prefix + instructions.rstrip() + '\n' + BEGIN + '\n' + escaped + '\n' + END
 
@@ -106,7 +142,9 @@ def _schema_text(prompt: str, schema: dict, enabled: bool, *, personal_only: boo
     return '\n'.join(line.rstrip(' ') for line in prompt.split('\n'))
 
 
-def build_prompt(block_text: str, schema: dict, *, schema_text: bool = True) -> str:
+def build_prompt(
+    block_text: str, schema: dict, *, schema_text: bool = True, name_style: str = 'raw'
+) -> str:
     """Enclose escaped CV data in a versioned schema-specific prompt."""
     escaped = block_text.replace(BEGIN, '[CV_BEGIN_ESCAPED]').replace(END, '[CV_END_ESCAPED]')
     prompt = (
@@ -135,11 +173,13 @@ def build_prompt(block_text: str, schema: dict, *, schema_text: bool = True) -> 
     )
     # Transform instructions only; CV data may contain the same phrases verbatim.
     instructions, data = prompt.split(BEGIN, 1)
+    if name_style == 'clean':
+        instructions += CLEAN_NAME_INSTRUCTIONS + '\n'
     return _schema_text(instructions, schema, schema_text) + BEGIN + data
 
 
 def build_personal_prompt(block_text: str, *, schema_text: bool = True) -> str:
-    """Build the prompt for personal fields."""
+    """Build the prompt for personal fields independently of the name style."""
     escaped = block_text.replace(BEGIN, '[CV_BEGIN_ESCAPED]').replace(END, '[CV_END_ESCAPED]')
     prompt = (
         'Return only JSON matching this schema: ' + json.dumps(PERSONAL_SCHEMA) + '\n'
@@ -168,12 +208,22 @@ def build_personal_prompt(block_text: str, *, schema_text: bool = True) -> str:
     )
 
 
-def build_experience_prompt(block_text: str, *, schema_text: bool = True) -> str:
+def build_experience_prompt(
+    block_text: str, *, schema_text: bool = True, name_style: str = 'raw'
+) -> str:
     """Build the prompt for experience records."""
-    return build_prompt(block_text, EXPERIENCE_SCHEMA, schema_text=schema_text)
+    return build_prompt(
+        block_text, EXPERIENCE_SCHEMA, schema_text=schema_text, name_style=name_style
+    )
 
 
-def build_whole_prompt(text: str, *, schema_text: bool = True, whole_personal: bool = True) -> str:
+def build_whole_prompt(
+    text: str,
+    *,
+    schema_text: bool = True,
+    whole_personal: bool = True,
+    name_style: str = 'raw',
+) -> str:
     """Request all supported personal fields and positions across the entire CV."""
     prefix = (
         'The CV may include a cover letter or cover page. '
@@ -181,7 +231,7 @@ def build_whole_prompt(text: str, *, schema_text: bool = True, whole_personal: b
         + 'List EVERY job position in the entire CV.\n'
     )
     schema = WHOLE_SCHEMA if whole_personal else EXPERIENCE_SCHEMA
-    prompt = build_prompt(text, schema, schema_text=schema_text)
+    prompt = build_prompt(text, schema, schema_text=schema_text, name_style=name_style)
     if not whole_personal:
         instructions, data = prompt.split(BEGIN, 1)
         for old, new in (

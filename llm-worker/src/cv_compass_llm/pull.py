@@ -360,7 +360,13 @@ def run_attempt(client, config, provider, claim, token, provenance, counts) -> N
                     for issue in result.issues
                     if issue.code
                     in WORKER_ISSUES
-                    | {'LLM_INVALID_JSON', 'PROVIDER_ERROR', 'OUTPUT_TRUNCATED', 'CONTEXT_OVERFLOW'}
+                    | {
+                        'LLM_INVALID_JSON',
+                        'PROVIDER_ERROR',
+                        'OUTPUT_TRUNCATED',
+                        'CONTEXT_OVERFLOW',
+                        'PERSONAL_EMPTY',
+                    }
                 )
                 fallback = (
                     {'fallback': 'blocks'}
@@ -489,6 +495,7 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
         poll_s=config.poll_s,
         log_level=config.log_level,
         mode=config.llm.mode,
+        name_style=config.llm.name_style,
         prompt_schema_text=int(config.llm.prompt_schema_text),
         whole_personal=int(config.llm.whole_personal),
         max_output_tokens=config.llm.max_output_tokens or 0,

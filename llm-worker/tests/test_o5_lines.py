@@ -421,7 +421,7 @@ class PipelineTests(unittest.TestCase):
             ]
         )
         result = extract(doc, provider, config=settings())
-        self.assertFalse(result.issues)
+        self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
         self.assertEqual(len(result.experiences), 2)
         self.assertIn('[L3] Engineer', provider.prompts[1])
         self.assertNotIn('[L8]', provider.prompts[1])

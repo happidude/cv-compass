@@ -192,11 +192,10 @@ def run_bench(
             'mode': config.mode,
             'whole_timeout': config.whole_timeout,
             'repo_root': repo_root,
+            'config': config,
         }
         if parallel > 1:
             options['_providers'] = providers
-        if config.fallback_model:
-            options['config'] = config
         if warmup:
             run_batch(source, target / name / 'warmup', provider, limit=warmup, **options)
         runs, comparisons, seconds = [], [], []

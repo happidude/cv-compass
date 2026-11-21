@@ -18,6 +18,7 @@ ENV_KEYS = {
     'timeout': 'CVC_LLM_TIMEOUT_S',
     'mode': 'CVC_LLM_MODE',
     'evidence': 'CVC_LLM_EVIDENCE',
+    'name_style': 'CVC_LLM_NAME_STYLE',
     'trim_input': 'CVC_LLM_TRIM_INPUT',
     'trim_sections': 'CVC_LLM_TRIM_SECTIONS',
     'trim_phrases': 'CVC_LLM_TRIM_PHRASES',
@@ -55,6 +56,7 @@ BENCH_ENV_KEYS = frozenset(
         'timeout',
         'mode',
         'evidence',
+        'name_style',
         'trim_input',
         'trim_sections',
         'trim_phrases',
@@ -99,6 +101,7 @@ class LlmConfig:
     trim_phrases: tuple[str, ...] = ()
     fallback_model: str = ''
     fallback_drop_ratio: float = 0.3
+    name_style: str = 'raw'
 
     @property
     def provenance_model(self) -> str:
@@ -234,6 +237,9 @@ def load_config(
     evidence = value('evidence', 'quote')
     if evidence not in ('quote', 'lines'):
         raise ValueError('INVALID_EVIDENCE')
+    name_style = value('name_style', 'raw')
+    if name_style not in ('raw', 'clean'):
+        raise ValueError('INVALID_NAME_STYLE')
     whole_timeout = _number(
         value('whole_timeout', '900'), 'INVALID_WHOLE_TIMEOUT', minimum=0, maximum=math.inf
     )
@@ -282,6 +288,7 @@ def load_config(
         num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
         mode=mode,
         evidence=evidence,
+        name_style=name_style,
         trim_phrases=tuple(
             part.strip() for part in value('trim_phrases').split('|') if part.strip()
         ),
@@ -437,6 +444,7 @@ def load_pull_config(
             'INVALID_NUM_CTX': 'num_ctx',
             'INVALID_MODE': 'mode',
             'INVALID_EVIDENCE': 'evidence',
+            'INVALID_NAME_STYLE': 'name_style',
             'INVALID_TRIM_INPUT': 'trim_input',
             'INVALID_TRIM_SECTIONS': 'trim_sections',
             'INVALID_WHOLE_TIMEOUT': 'whole_timeout',

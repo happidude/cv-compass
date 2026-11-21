@@ -9,6 +9,7 @@ from cv_compass_llm import Document, Page, extract
 from cv_compass_llm.evidence import locate
 from cv_compass_llm.json_strict import strict_json
 from cv_compass_llm.providers import FakeProvider, ProviderError
+from cv_compass_llm.schema import Issue
 from cv_compass_llm.segmenter import segment
 from cv_compass_llm.validate import validate_experiences, validate_personal
 
@@ -176,7 +177,7 @@ class OffsetAndPipelineRegressionTests(unittest.TestCase):
             ]
         )
         result = extract(doc, provider)
-        self.assertFalse(result.issues)
+        self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
         self.assertEqual(len(result.experiences), 1)
         for ev in result.experiences[0].evidence.values():
             self.assertEqual(ev.page, 2)
