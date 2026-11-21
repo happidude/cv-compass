@@ -81,6 +81,10 @@ class _MetricsProvider:
     def last_metrics(self):
         return getattr(self.provider, 'last_metrics', None)
 
+    @property
+    def num_ctx(self):
+        return getattr(self.provider, 'num_ctx', None)
+
     def generate(self, prompt, json_schema, **options):
         try:
             response = self.provider.generate(prompt, json_schema, **options)
@@ -104,6 +108,7 @@ def run_batch(
     repo_root: Path | None | Literal['auto'] = 'auto',
     _providers: list[LlmProvider] | None = None,
     only_fallback_candidates: str | Path | None = None,
+    keep_raw: bool = False,
 ) -> dict:
     """Extract sorted OCR files without modifying any input artifact."""
     if type(max_blocks) is not int or max_blocks < 0:
@@ -168,6 +173,7 @@ def run_batch(
         backup = _MetricsProvider(local_provider.fallback_provider) if cascade else None
         reasons = ()
         contexts = []
+        raw_calls = [] if keep_raw else None
 
         def on_fallback(codes):
             nonlocal reasons
@@ -190,6 +196,7 @@ def run_batch(
                 whole_timeout=whole_timeout,
                 config=config,
                 on_context=contexts.append,
+                **({'on_raw': raw_calls.append} if keep_raw else {}),
                 **({'fallback_provider': backup, 'on_fallback': on_fallback} if cascade else {}),
             )
             if not cascade:
@@ -205,6 +212,8 @@ def run_batch(
                 payload['fallbackCandidate'] = list(reasons)
             payload['seconds'] = perf_counter() - started
             write_json(target / (path.stem + '.result.json'), payload)
+            if keep_raw:
+                write_json(target / (path.stem + '.raw.json'), {'calls': raw_calls})
         return (
             error_code,
             result,
@@ -306,6 +315,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--env-file')
     run.add_argument('--limit', type=int)
     run.add_argument('--only-fallback-candidates')
+    run.add_argument('--keep-raw', action='store_true')
     for name in (
         'name_style',
         'dates',
@@ -327,6 +337,7 @@ def parser() -> argparse.ArgumentParser:
     bench.add_argument('--warmup', type=int, default=0)
     bench.add_argument('--parallel', type=int, default=1)
     bench.add_argument('--json', action='store_true')
+    bench.add_argument('--keep-raw', action='store_true')
     pull = commands.add_parser('pull')
     pull.add_argument('--env-file')
     pull.add_argument('--once', action='store_true')
@@ -412,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
                 warmup=args.warmup,
                 parallel=args.parallel,
                 provider_factory=create_provider,
+                **({'keep_raw': True} if args.keep_raw else {}),
             )
             if args.json:
                 print(json.dumps(report, allow_nan=False, sort_keys=True))
@@ -461,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
                 mode=config.mode,
                 whole_timeout=config.whole_timeout,
+                **({'keep_raw': True} if args.keep_raw else {}),
                 **(
                     {'only_fallback_candidates': args.only_fallback_candidates}
                     if args.only_fallback_candidates
