@@ -7,6 +7,7 @@ from time import perf_counter
 
 from .config import LlmConfig
 from .contacts import extract_contacts
+from .lifecycle import call_metrics
 from .lines import block_lines, number_lines
 from .ocr_input import Document
 from .prompts import (
@@ -87,6 +88,7 @@ def extract(
     on_trim: Callable[[int, int], None] | None = None,
     fallback_provider: LlmProvider | None = None,
     on_fallback: Callable[[tuple[str, ...]], None] | None = None,
+    on_context: Callable[[dict], None] | None = None,
 ) -> ExtractionResult:
     """Extract supported CV values while isolating provider block failures."""
     if config is not None and config.fallback_model:
@@ -99,6 +101,7 @@ def extract(
             'mode': mode,
             'whole_timeout': whole_timeout,
             'on_trim': on_trim,
+            'on_context': on_context,
         }
         result = extract(document, provider, config=primary_config, **options)
         reasons = fallback_reasons(result, document, drop_ratio=config.fallback_drop_ratio)
@@ -137,6 +140,71 @@ def extract(
     fields = list(extract_contacts(document))
     issues = []
     experiences = []
+    guard = config is not None and config.ctx_guard
+    tiers = (
+        (8192, 12288, 16384, 24576, 32768)
+        if config is not None and config.ctx_fine_tiers
+        else (8192, 16384, 24576, 32768)
+    )
+
+    def generate(prompt: str, schema: dict, **options) -> str:
+        effective = options.get('num_ctx', config.num_ctx if config is not None else None)
+        telemetry = {'discarded': []}
+        try:
+            if not guard:
+                if effective is not None:
+                    telemetry['num_ctx'] = effective
+                return provider.generate(prompt, schema, **options)
+            for attempt in range(2):
+                if effective is not None:
+                    telemetry['num_ctx'] = effective
+                started = perf_counter()
+                try:
+                    response = provider.generate(prompt, schema, **options)
+                except ProviderError as error:
+                    if str(error) != 'OLLAMA_CONTEXT_OVERFLOW':
+                        raise
+                else:
+                    metrics = getattr(provider, 'last_metrics', None)
+                    metrics = metrics if isinstance(metrics, dict) else {}
+                    prompt_tokens = metrics.get('prompt_tokens')
+                    output_tokens = metrics.get('output_tokens')
+                    full = (
+                        effective is not None
+                        and type(prompt_tokens) is int
+                        and type(output_tokens) is int
+                        and prompt_tokens + output_tokens >= effective - 32
+                    )
+                    if not (
+                        full
+                        or metrics.get('done_reason') == 'length'
+                        and config.max_output_tokens is None
+                    ):
+                        return response
+                telemetry['discarded'].append(
+                    {
+                        **({'num_ctx': effective} if effective is not None else {}),
+                        'seconds': perf_counter() - started,
+                        **call_metrics(getattr(provider, 'last_metrics', None)),
+                    }
+                )
+                next_ctx = next((size for size in tiers if size > (effective or 8192)), None)
+                if attempt or next_ctx is None:
+                    raise ProviderError('OLLAMA_CONTEXT_OVERFLOW')
+                effective = next_ctx
+                options = {**options, 'num_ctx': next_ctx}
+                telemetry['ctx_retry'] = 1
+        finally:
+            if on_context is not None:
+                on_context(telemetry)
+
+    def failure(error: ProviderError, field: str | None = None) -> None:
+        if guard and str(error) == 'OLLAMA_CONTEXT_OVERFLOW':
+            issues.append(
+                Issue('WHOLE_TOO_LONG') if field is None else Issue('CONTEXT_OVERFLOW', field)
+            )
+        else:
+            issues.append(Issue('PROVIDER_ERROR', field))
 
     def experience_input(block: Block) -> tuple[Block, str, dict, int]:
         original = block_lines(block, line_table)[0] if use_lines else block.text
@@ -158,6 +226,7 @@ def extract(
         if isinstance(metrics, dict) and metrics.get('done_reason') == 'length':
             issues.append(Issue('OUTPUT_TRUNCATED', field))
 
+    whole_attempted = False
     if mode == 'whole':
         header = build_header(tuple(p for p in document.pages if p.status == 'ok'))
         block = Block(tuple(split_lines(tuple(p for p in document.pages if p.status == 'ok'))))
@@ -170,23 +239,21 @@ def extract(
             )
         )
         ratio = config.ctx_chars_per_token if config is not None else 2.5
-        tiers = (
-            (8192, 12288, 16384, 24576, 32768)
-            if config is not None and config.ctx_fine_tiers
-            else (8192, 16384, 24576, 32768)
-        )
         estimate = ceil(len(prompt) / ratio) + 4096
         num_ctx = next((size for size in tiers if size >= estimate), None)
         if trim_input and not block_text.strip():
+            if on_context is not None:
+                on_context({'discarded': []})
             if on_block is not None:
                 on_block(1, 1 + bool(header.spans), 0.0)
         elif num_ctx is None:
             issues.append(Issue('WHOLE_TOO_LONG'))
         else:
+            whole_attempted = True
             started = perf_counter() if on_block is not None else 0
             report_chars(chars_before, len(block_text))
             try:
-                response = provider.generate(
+                response = generate(
                     prompt,
                     LINES_EXPERIENCE_SCHEMA
                     if use_lines
@@ -196,8 +263,8 @@ def extract(
                     num_ctx=num_ctx,
                     timeout_s=whole_timeout,
                 )
-            except ProviderError:
-                issues.append(Issue('PROVIDER_ERROR'))
+            except ProviderError as error:
+                failure(error)
             else:
                 check_truncated('experiences')
                 if use_lines:
@@ -214,7 +281,9 @@ def extract(
         issues.extend(segment_issues)
     else:
         blocks = ()
-    whole_called = mode == 'whole' and not any(i.code == 'WHOLE_TOO_LONG' for i in issues)
+    whole_called = mode == 'whole' and (
+        not any(i.code == 'WHOLE_TOO_LONG' for i in issues) or guard and whole_attempted
+    )
     total = int(whole_called) + bool(header.spans) + min(len(blocks), max_blocks)
     index = int(whole_called)
 
@@ -229,14 +298,14 @@ def extract(
         if use_lines:
             header_text, header_table = block_lines(header, line_table)
         try:
-            response = provider.generate(
+            response = generate(
                 build_lines_prompt(header_text, personal=True, schema_text=schema_text)
                 if use_lines
                 else build_personal_prompt(header.text, schema_text=schema_text),
                 LINES_PERSONAL_SCHEMA if use_lines else PERSONAL_SCHEMA,
             )
-        except ProviderError:
-            issues.append(Issue('PROVIDER_ERROR', 'personal'))
+        except ProviderError as error:
+            failure(error, 'personal')
         else:
             check_truncated('personal')
             values, errors = (
@@ -253,18 +322,20 @@ def extract(
         started = perf_counter() if on_block is not None else 0
         block, block_text, block_table, chars_before = experience_input(block)
         if trim_input and not block_text.strip():
+            if on_context is not None:
+                on_context({'discarded': []})
             completed(started)
             continue
         report_chars(chars_before, len(block_text))
         try:
-            response = provider.generate(
+            response = generate(
                 build_lines_prompt(block_text, schema_text=schema_text)
                 if use_lines
                 else build_experience_prompt(block_text, schema_text=schema_text),
                 LINES_EXPERIENCE_SCHEMA if use_lines else EXPERIENCE_SCHEMA,
             )
-        except ProviderError:
-            issues.append(Issue('PROVIDER_ERROR', 'experiences'))
+        except ProviderError as error:
+            failure(error, 'experiences')
             completed(started)
             continue
         check_truncated('experiences')

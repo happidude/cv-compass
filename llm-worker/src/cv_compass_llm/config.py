@@ -32,6 +32,7 @@ ENV_KEYS = {
     'keep_alive': 'CVC_LLM_KEEP_ALIVE',
     'ctx_chars_per_token': 'CVC_LLM_CTX_CHARS_PER_TOKEN',
     'ctx_fine_tiers': 'CVC_LLM_CTX_FINE_TIERS',
+    'ctx_guard': 'CVC_LLM_CTX_GUARD',
     'backend_url': 'CVC_LLM_BACKEND_URL',
     'worker_token': 'CVC_LLM_WORKER_TOKEN',
     'worker_version': 'CVC_LLM_WORKER_VERSION',
@@ -68,6 +69,7 @@ BENCH_ENV_KEYS = frozenset(
         'keep_alive',
         'ctx_chars_per_token',
         'ctx_fine_tiers',
+        'ctx_guard',
     )
 )
 
@@ -90,6 +92,7 @@ class LlmConfig:
     keep_alive: str | None = None
     ctx_chars_per_token: float = 2.5
     ctx_fine_tiers: bool = False
+    ctx_guard: bool = False
     evidence: str = 'quote'
     trim_input: bool = False
     trim_sections: bool = False
@@ -247,6 +250,7 @@ def load_config(
         ('prompt_schema_text', 'true'),
         ('whole_personal', 'true'),
         ('ctx_fine_tiers', 'false'),
+        ('ctx_guard', 'false'),
         ('trim_input', 'false'),
         ('trim_sections', 'false'),
     ):
@@ -442,6 +446,7 @@ def load_pull_config(
             'INVALID_KEEP_ALIVE': 'keep_alive',
             'INVALID_CTX_CHARS_PER_TOKEN': 'ctx_chars_per_token',
             'INVALID_CTX_FINE_TIERS': 'ctx_fine_tiers',
+            'INVALID_CTX_GUARD': 'ctx_guard',
         }
         name = names.get(code, 'provider' if not value('provider') else 'model')
         raise PullConfigError(ENV_KEYS[name], code) from None

@@ -2,7 +2,7 @@
 
 import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from statistics import mean, median
@@ -111,6 +111,11 @@ def _read(path: str | Path, source: str, counts: dict) -> list[dict]:
                         value = _number(fields.get(key))
                         if value is not None:
                             record[key] = value
+                    size = _number(fields.get('num_ctx'))
+                    if size is not None and size.is_integer() and 1 <= size <= 1048576:
+                        record['num_ctx'] = int(size)
+                    if fields.get('ctx_retry') == '1':
+                        record['ctx_retry'] = 1
                     block = fields.get('block', '')
                     if re.fullmatch(r'[0-9]{1,9}/[0-9]{1,9}', block):
                         record['block'] = int(block.split('/')[0])
@@ -209,7 +214,11 @@ def lifecycle_report(backend_log: str | Path, ocr_log: str | Path, llm_log: str 
         document = next(iter(attempts[attempt]))
         call = {
             'attemptId': attempt,
-            **{key: row[key] for key in (*METRICS, 'seconds', 'block') if key in row},
+            **{
+                key: row[key]
+                for key in (*METRICS, 'seconds', 'block', 'num_ctx', 'ctx_retry')
+                if key in row
+            },
         }
         call['_at'] = row['at']
         documents[document]['calls'].append(call)
@@ -313,6 +322,14 @@ def lifecycle_report(backend_log: str | Path, ocr_log: str | Path, llm_log: str 
             'completed': len(finishes),
             'cv_per_hour': len(finishes) * 3600 / window if window > 0 else None,
             'metrics': metric_summary([call for row in output for call in row['calls']]),
+            'ctx_retry': sum(call.get('ctx_retry', 0) for row in output for call in row['calls']),
+            'num_ctx_counts': dict(
+                Counter(
+                    str(max(sizes))
+                    for row in output
+                    if (sizes := [call['num_ctx'] for call in row['calls'] if 'num_ctx' in call])
+                )
+            ),
             **stats,
         },
         'ignored_lines': ignored,
@@ -348,7 +365,7 @@ def print_report(report: dict) -> None:
             print(
                 ' '.join(
                     f'{key}={call[key]}'
-                    for key in ('attemptId', 'block', 'seconds', *METRICS)
+                    for key in ('attemptId', 'block', 'seconds', 'num_ctx', 'ctx_retry', *METRICS)
                     if key in call
                 )
             )
