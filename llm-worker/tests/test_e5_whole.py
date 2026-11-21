@@ -203,7 +203,7 @@ class WholeTests(unittest.TestCase):
             mode='whole',
             on_block=lambda *args: progress.append(args),
         )
-        self.assertEqual(result.issues, (Issue('PROVIDER_ERROR'),))
+        self.assertEqual(result.issues, (Issue('PROVIDER_ERROR'), Issue('PERSONAL_EMPTY')))
         self.assertEqual(len(result.fields), 1)
         self.assertEqual([row[:2] for row in progress], [(1, 2), (2, 2)])
 

@@ -255,7 +255,7 @@ class PromptTests(unittest.TestCase):
                 self.assertEqual(provider.calls[0][0], schema)
                 self.assertEqual(json.dumps(schema) in provider.prompts[0], schema_text)
                 self.assertEqual(result.prompt_version, 'llm-extraction-prompt/whole-2' + suffix)
-                self.assertEqual(result.issues, ())
+                self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
 
     def test_whole_fallback_keeps_lean_xp_version_and_prompts(self):
         cfg = settings(prompt_schema_text=False, whole_personal=False)
@@ -415,8 +415,11 @@ class IntegrationTests(unittest.TestCase):
             )
             summary = run_batch(source, target, provider, mode='whole', repo_root=repo)
             self.assertEqual(summary['prompt_version'], 'llm-extraction-prompt/whole-2-lean-xp')
-            self.assertEqual(summary['issues'], {'OUTPUT_TRUNCATED': 1})
-            self.assertEqual(summary['issues_by_field'], {'OUTPUT_TRUNCATED.experiences': 1})
+            self.assertEqual(summary['issues'], {'OUTPUT_TRUNCATED': 1, 'PERSONAL_EMPTY': 1})
+            self.assertEqual(
+                summary['issues_by_field'],
+                {'OUTPUT_TRUNCATED.experiences': 1, 'PERSONAL_EMPTY': 1},
+            )
             self.assertEqual(provider.calls[0][0], EXPERIENCE_SCHEMA)
             self.assertNotIn('matching this schema', provider.prompts[0])
             self.assertEqual(

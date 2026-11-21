@@ -737,6 +737,45 @@ mặc định sau khi bench chứng minh độ chính xác ít nhất bằng `qu
 
 Test tổng hợp O5 nằm ở `tests/test_o5_lines.py`; các test hash hiện có giữ nguyên.
 
+## Tên công ty/chức danh gọn (A1)
+
+`CVC_LLM_NAME_STYLE=raw|clean` mặc định `raw`: giữ nguyên từng byte prompt,
+schema và request provider. Có thể đặt bằng `--name-style` cho `run`/`pull`,
+môi trường hoặc `.env`, theo thứ tự ưu tiên CLI > môi trường > `.env`;
+`bench --config` nhận cùng key. Giá trị khác trả `INVALID_NAME_STYLE`;
+`pull` thêm tên key, không in giá trị. Event `worker_start` ghi `name_style`.
+
+`clean` thêm một đoạn chỉ dẫn tiếng Anh vào prompt kinh nghiệm của whole,
+blocks và evidence `lines`; prompt personal giữ nguyên. Giá trị vẫn phải
+là chuỗi con nguyên văn, liên tục trong CV: chọn đoạn ngắn nhất là tên,
+không ghép phần rời nhau; tên vắt dòng giữ nguyên văn bản nguồn.
+
+- Công ty: giữ tên pháp nhân/thương hiệu gọn; bỏ nhãn `Company:`, mô tả
+  sau `|`, ngoặc mô tả, địa điểm/tập đoàn mẹ trước hoặc sau dấu phẩy/gạch.
+  Giữ tên pháp nhân/tập đoàn mẹ trong ngoặc ngay sau tên.
+- Chức danh: bỏ nhãn `Position:`, lấy phần chức danh trong `Work as X in Y`,
+  bỏ mô tả cuối `for ...`/`consults for ...` và ngoặc dài; giữ viết tắt/kênh
+  ngắn trong ngoặc. Không nối tên công ty vào chức danh.
+- Thăng tiến `A -> B` trong cùng công ty thành hai record; vị trí con có
+  năm riêng có record và kỳ riêng. Nếu nguồn chỉ có một kỳ, có thể dùng
+  chung đoạn trích kỳ đó.
+
+Version thêm `-clean` ngay sau version cơ sở, trước `-lean`, `-xp`, `-trim`
+hoặc `-trims`, ví dụ `llm-extraction-prompt/whole-2-clean`,
+`llm-extraction-prompt/3-clean-lean`, `llm-extraction-prompt/lines-1-clean`.
+Version lấy từ cấu hình đã chốt của tiến trình, không theo kết quả từng CV.
+
+Mọi cấu hình đều có issue nội bộ `PERSONAL_EMPTY` khi lời gọi personal header
+trả JSON đúng schema nhưng không còn giá trị personal nào sau validation,
+trong khi nguồn gửi vào có ít nhất một chữ (`isalpha`). Áp dụng cho header
+ở blocks, whole và evidence `lines`, tối đa một lần mỗi tài liệu. Không kiểm
+tra personal từ lời gọi whole vì giá trị đó bị bỏ; header riêng cung cấp
+personal. Bỏ qua lỗi provider, JSON sai/schema sai và đầu ra bị cắt ở header.
+Chữ trong nhãn dòng/trang của `lines` không tính là chữ trong CV.
+Issue được đếm trong log pull, `run-summary.json` và bench
+`issues.PERSONAL_EMPTY`; không gửi backend và không đổi giá trị gửi backend.
+Test tổng hợp A1 nằm ở `tests/test_a1_clean_names.py`, gồm khóa SHA-256 cho `raw`.
+
 ## Gọn đầu vào model (O6)
 
 | Biến | Mặc định | Giá trị |

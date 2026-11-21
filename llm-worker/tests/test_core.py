@@ -12,7 +12,7 @@ from cv_compass_llm.evidence import locate
 from cv_compass_llm.ocr_input import MAX_BYTES
 from cv_compass_llm.prompts import BEGIN, END, PROMPT_VERSION, build_personal_prompt
 from cv_compass_llm.providers import FakeProvider, ProviderError
-from cv_compass_llm.schema import PERSONAL_KEYS
+from cv_compass_llm.schema import PERSONAL_KEYS, Issue
 from cv_compass_llm.segmenter import Block, Span, segment
 from cv_compass_llm.validate import normalize_date, validate_experiences, validate_personal
 
@@ -451,7 +451,7 @@ class PipelineTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(result.experiences), 1)
-        self.assertFalse(result.issues)
+        self.assertEqual(result.issues, (Issue('PERSONAL_EMPTY'),))
 
     def test_provider_errors_continue_and_do_not_escape(self) -> None:
         doc = document(
@@ -486,14 +486,18 @@ class PipelineTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(result.experiences), 1)
-        self.assertEqual(result.issues[0].code, 'LLM_INVALID_JSON')
+        self.assertEqual(
+            [issue.code for issue in result.issues], ['PERSONAL_EMPTY', 'LLM_INVALID_JSON']
+        )
 
     def test_block_limit_and_invalid_limits(self) -> None:
         doc = document('Experience\nRole-Z\nSkills\nExperience\nRole-A')
         provider = FakeProvider([personal()])
         result = extract(doc, provider, max_blocks=0)
         self.assertEqual(len(provider.prompts), 1)
-        self.assertEqual(result.issues[0].code, 'BLOCK_LIMIT_REACHED')
+        self.assertEqual(
+            [issue.code for issue in result.issues], ['PERSONAL_EMPTY', 'BLOCK_LIMIT_REACHED']
+        )
         for limit in (-1, True, 1.5):
             with self.assertRaisesRegex(ValueError, '^INVALID_MAX_BLOCKS$'):
                 extract(doc, FakeProvider([]), max_blocks=limit)

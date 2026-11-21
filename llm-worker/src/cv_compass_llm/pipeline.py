@@ -121,6 +121,7 @@ def extract(
         raise ValueError('INVALID_MODE')
     schema_text = config.prompt_schema_text if config is not None else True
     whole_personal = config.whole_personal if config is not None else True
+    name_style = config.name_style if config is not None else 'raw'
     use_lines = config is not None and config.evidence == 'lines'
     trim_input = config is not None and config.trim_input
     retained = set()
@@ -226,16 +227,31 @@ def extract(
         if isinstance(metrics, dict) and metrics.get('done_reason') == 'length':
             issues.append(Issue('OUTPUT_TRUNCATED', field))
 
+    def check_personal_empty(values, errors, source: str) -> None:
+        metrics = getattr(provider, 'last_metrics', None)
+        if (
+            not values
+            and not any(error.code == 'LLM_INVALID_JSON' for error in errors)
+            and not (isinstance(metrics, dict) and metrics.get('done_reason') == 'length')
+            and any(character.isalpha() for character in source)
+        ):
+            issues.append(Issue('PERSONAL_EMPTY'))
+
     whole_attempted = False
     if mode == 'whole':
         header = build_header(tuple(p for p in document.pages if p.status == 'ok'))
         block = Block(tuple(split_lines(tuple(p for p in document.pages if p.status == 'ok'))))
         block, block_text, block_table, chars_before = experience_input(block)
         prompt = (
-            build_lines_prompt(block_text, whole=True, schema_text=schema_text)
+            build_lines_prompt(
+                block_text, whole=True, schema_text=schema_text, name_style=name_style
+            )
             if use_lines
             else build_whole_prompt(
-                block_text, schema_text=schema_text, whole_personal=whole_personal
+                block_text,
+                schema_text=schema_text,
+                whole_personal=whole_personal,
+                name_style=name_style,
             )
         )
         ratio = config.ctx_chars_per_token if config is not None else 2.5
@@ -315,6 +331,11 @@ def extract(
             )
             fields.extend(values)
             issues.extend(errors)
+            # Numbered line/page markers are metadata, not letters in the CV source.
+            source = (
+                ''.join(span.text for span in header_table.values()) if use_lines else header.text
+            )
+            check_personal_empty(values, errors, source)
         completed(started)
     if len(blocks) > max_blocks:
         issues.append(Issue('BLOCK_LIMIT_REACHED'))
@@ -329,9 +350,11 @@ def extract(
         report_chars(chars_before, len(block_text))
         try:
             response = generate(
-                build_lines_prompt(block_text, schema_text=schema_text)
+                build_lines_prompt(block_text, schema_text=schema_text, name_style=name_style)
                 if use_lines
-                else build_experience_prompt(block_text, schema_text=schema_text),
+                else build_experience_prompt(
+                    block_text, schema_text=schema_text, name_style=name_style
+                ),
                 LINES_EXPERIENCE_SCHEMA if use_lines else EXPERIENCE_SCHEMA,
             )
         except ProviderError as error:
