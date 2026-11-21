@@ -61,6 +61,13 @@ lỗi quote chỉ làm mất một field của mục còn hợp lệ không đư
 Có `PROVIDER_ERROR` thì không kích hoạt dự phòng, giữ đường lỗi hạ tầng hiện tại.
 Ngưỡng 0 hoặc ngoài khoảng hợp lệ trả lỗi cấu hình `INVALID_FALLBACK_DROP_RATIO`.
 
+Khi bật cả `CVC_LLM_CTX_GUARD=true` và model dự phòng, có issue
+`CONTEXT_OVERFLOW` ở bất kỳ field nào hoặc `WHOLE_TOO_LONG` thì không chạy model
+dự phòng, kể cả khi đồng thời thiếu field hoặc mục kinh nghiệm. Các lỗi chất lượng
+khác giữ tiêu chí O8; guard tắt vẫn có thể chạy dự phòng khi có `WHOLE_TOO_LONG`
+do ước lượng vượt tier. Khi chưa cấu hình model dự phòng, metadata candidate giữ
+hành vi cũ.
+
 Nếu có lý do và cờ bật, worker chạy lại toàn bộ CV bằng model dự phòng, dùng toàn
 bộ kết quả đó kể cả khi vẫn kém; không lặp và không trộn hai kết quả. Provenance
 model cố định từ lúc khởi động là `<chính>+fallback:<dự phòng>` (ví dụ
@@ -86,6 +93,13 @@ Thiếu metadata được coi là không đánh dấu. Khi dùng tùy chọn nà
 `--limit` (lượt cũ không có metadata thì bằng 0); bỏ qua file symlink ở cả kết
 quả lượt trước và OCR được chọn. Output phải là thư mục mới/rỗng như
 `run`, tách khỏi OCR, repo và thư mục lượt trước; không sửa nguồn hoặc kết quả cũ.
+
+Với `--only-fallback-candidates`, khi guard bật và có model dự phòng, kết quả cũ
+có candidate không rỗng nhưng chứa issue `CONTEXT_OVERFLOW` hoặc `WHOLE_TOO_LONG`
+bị loại trước `--limit`. `run-summary.json` luôn thêm `skipped_overflow` đếm số CV
+bị loại, kể cả bằng 0. Khi bộ lọc này bật, `issues` phải là list các dict; sai cấu
+trúc trả lỗi `INVALID_FALLBACK_CANDIDATES`. Guard tắt, model dự phòng trống hoặc
+không dùng tùy chọn này thì giữ cách chọn cũ và không thêm key `skipped_overflow`.
 
 Với VRAM 4 GB, nếu hai model không cùng vừa bộ nhớ, mỗi lần đổi model Ollama phải
 nạp lại model, có thể làm cascade chậm hơn. Khuyên chạy dự phòng theo lô: lượt đầu

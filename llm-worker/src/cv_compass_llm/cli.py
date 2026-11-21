@@ -112,8 +112,15 @@ def run_batch(
         raise ValueError('INVALID_MODE')
     if limit is not None and (type(limit) is not int or limit < 0):
         raise ValueError('INVALID_LIMIT')
+    # Bench reuses its configured provider for warmup and every measured batch.
+    config = config if config is not None else getattr(provider, 'extraction_config', None)
+    if not isinstance(config, LlmConfig):
+        config = None
+    guard = config is not None and config.ctx_guard
+    skip_overflow = guard and bool(config.fallback_model)
     source = input_directory(input_dir)
     paths = sorted(path for path in source.glob('*.json') if path.is_file())
+    skipped_overflow = 0
     if only_fallback_candidates is not None:
         previous = input_directory(only_fallback_candidates)
         output = Path(output_dir).resolve()
@@ -129,7 +136,19 @@ def run_batch(
                 not isinstance(code, str) or code not in FALLBACK_REASONS for code in candidates
             ):
                 raise ValueError('INVALID_FALLBACK_CANDIDATES')
+            if skip_overflow:
+                previous_issues = payload.get('issues', [])
+                if not isinstance(previous_issues, list) or any(
+                    not isinstance(issue, dict) for issue in previous_issues
+                ):
+                    raise ValueError('INVALID_FALLBACK_CANDIDATES')
             if candidates:
+                if skip_overflow and any(
+                    issue.get('code') in ('CONTEXT_OVERFLOW', 'WHOLE_TOO_LONG')
+                    for issue in previous_issues
+                ):
+                    skipped_overflow += 1
+                    continue
                 selected.add(path.name.removesuffix('.result.json'))
         paths = [path for path in paths if not path.is_symlink() and path.stem in selected]
     if limit is not None:
@@ -141,10 +160,6 @@ def run_batch(
     calls = []
     context_counts = Counter()
     num_ctx_counts = Counter()
-    # Bench reuses its configured provider for warmup and every measured batch.
-    config = config if config is not None else getattr(provider, 'extraction_config', None)
-    if not isinstance(config, LlmConfig):
-        config = None
     cascade = config is not None and bool(config.fallback_model)
     fallback_counts = Counter()
 
@@ -182,6 +197,8 @@ def run_batch(
                     result,
                     document,
                     drop_ratio=config.fallback_drop_ratio if config is not None else 0.3,
+                    # Preserve first-pass candidate metadata when no backup is configured.
+                    ctx_guard=skip_overflow,
                 )
             payload = result.to_dict()
             if cascade or reasons:
@@ -257,6 +274,8 @@ def run_batch(
         summary['fallback_reasons'] = dict(fallback_counts)
     if only_fallback_candidates is not None:
         summary['selected_fallback_candidates'] = len(paths)
+        if skip_overflow:
+            summary['skipped_overflow'] = skipped_overflow
     write_json(target / 'run-summary.json', summary)
     return summary
 

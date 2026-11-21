@@ -50,10 +50,18 @@ FALLBACK_REASONS = ('INVALID_JSON', 'NO_EXPERIENCE', 'NO_FULLNAME', 'DROP_RATIO'
 
 
 def fallback_reasons(
-    result: ExtractionResult, document: Document, *, drop_ratio: float = 0.3
+    result: ExtractionResult,
+    document: Document,
+    *,
+    drop_ratio: float = 0.3,
+    ctx_guard: bool = False,
 ) -> tuple[str, ...]:
     """Assess quality using fixed codes, without rerouting infrastructure failures."""
     if any(issue.code == 'PROVIDER_ERROR' for issue in result.issues):
+        return ()
+    if ctx_guard and any(
+        issue.code in ('CONTEXT_OVERFLOW', 'WHOLE_TOO_LONG') for issue in result.issues
+    ):
         return ()
     reasons = []
     if any(issue.code == 'LLM_INVALID_JSON' for issue in result.issues):
@@ -104,7 +112,9 @@ def extract(
             'on_context': on_context,
         }
         result = extract(document, provider, config=primary_config, **options)
-        reasons = fallback_reasons(result, document, drop_ratio=config.fallback_drop_ratio)
+        reasons = fallback_reasons(
+            result, document, drop_ratio=config.fallback_drop_ratio, ctx_guard=config.ctx_guard
+        )
         if on_fallback is not None:
             on_fallback(reasons)
         if reasons:
