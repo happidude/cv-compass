@@ -30,11 +30,11 @@ def numbered(*texts):
     return number_lines(split_lines(pages))[1]
 
 
-def position(title=1, company=2, period=3, ongoing=False):
+def position(title=1, company=2, period=3, ongoing=False, *, period_text='2020 - 2022'):
     return {
-        'title': {'line': title, 'text': 'engineer'},
-        'company': {'line': company, 'text': 'synthetic works'},
-        'periodLine': period,
+        'title': {'line': title, 'value': 'engineer'},
+        'company': {'line': company, 'value': 'synthetic works'},
+        'period': {'line': period, 'text': period_text if period is not None else None},
         'ongoing': ongoing,
     }
 
@@ -42,10 +42,10 @@ def position(title=1, company=2, period=3, ongoing=False):
 def line_personal(**items):
     return {
         'personal': {
-            'fullName': {'line': None, 'text': None},
-            'location': {'line': None, 'text': None},
+            'fullName': {'line': None, 'value': None},
+            'location': {'line': None, 'endLine': None, 'value': None},
             'gender': {'line': None, 'value': None},
-            'dateOfBirthLine': None,
+            'dateOfBirth': {'line': None, 'value': None},
             'summary': [],
             **items,
         }
@@ -87,7 +87,7 @@ class NumberTests(unittest.TestCase):
         self.assertEqual(text, expected)
         self.assertEqual(block_lines(Block(tuple(table.values())), table)[0], expected)
         item = position(period=None)
-        item['title']['text'] = 'Engineer [L999] === page 42 ==='
+        item['title']['value'] = 'Engineer [L999] === page 42 ==='
         rows, issues = validate_line_experiences(json.dumps({'experiences': [item]}), table)
         self.assertFalse(issues)
         self.assertEqual(rows[0].title, raw.splitlines()[0])
@@ -100,12 +100,19 @@ class ValidationTests(unittest.TestCase):
     def experience(self, table, item=None):
         return validate_line_experiences(json.dumps({'experiences': [item or position()]}), table)
 
-    def test_title_company_source_case_spaces_and_neighbor_tolerance(self):
+    def test_title_company_source_case_spaces_and_exact_lines(self):
         table = numbered('Engineer\nSynthetic   Works\n2020 - 2022\nOther\nWrong')
-        for title, company in ((1, 2), (2, 1), (1, 3)):
+        rows, issues = self.experience(table)
+        self.assertFalse(issues)
+        self.assertEqual((rows[0].title, rows[0].company), ('Engineer', 'Synthetic   Works'))
+        for title, company in ((2, 1), (1, 3)):
             rows, issues = self.experience(table, position(title, company))
-            self.assertFalse(issues)
-            self.assertEqual((rows[0].title, rows[0].company), ('Engineer', 'Synthetic   Works'))
+            self.assertIn(Issue('QUOTE_NOT_FOUND', 'company'), issues)
+            if title == 2:
+                self.assertFalse(rows)
+                self.assertIn(Issue('QUOTE_NOT_FOUND', 'title'), issues)
+            else:
+                self.assertEqual((rows[0].title, rows[0].company), ('Engineer', None))
         for line in (5, 999, 0):
             rows, issues = self.experience(table, position(line, line))
             self.assertFalse(rows)
@@ -124,7 +131,7 @@ class ValidationTests(unittest.TestCase):
         for source, start, end, ongoing in cases:
             with self.subTest(source=source):
                 table = numbered('Engineer\nSynthetic Works\n' + source)
-                rows, _ = self.experience(table)
+                rows, _ = self.experience(table, position(period_text=source))
                 row = rows[0]
                 self.assertEqual((row.start, row.end, row.ongoing), (start, end, ongoing))
                 if start:
@@ -134,15 +141,21 @@ class ValidationTests(unittest.TestCase):
 
     def test_period_order_invalid_and_noncontiguous_spans(self):
         for source, code in (('2022 - 2020', 'PERIOD_ORDER'), ('2020 - 13/2022', 'INVALID_DATE')):
-            rows, issues = self.experience(numbered('Engineer\nSynthetic Works\n' + source))
+            rows, issues = self.experience(
+                numbered('Engineer\nSynthetic Works\n' + source), position(period_text=source)
+            )
             self.assertIsNone(rows[0].start)
             self.assertIn(Issue(code, 'period'), issues)
         table = numbered('Engineer\nSynthetic Works\n2020 -\n2022')
         table[4] = Span(1, table[4].start + 1, table[4].end + 1, table[4].text)
-        rows, issues = self.experience(table)
+        rows, issues = self.experience(table, position(period_text='2020 -\n2022'))
+        self.assertEqual((rows[0].start, rows[0].end, rows[0].ongoing), (None, None, False))
+        self.assertNotIn('period', rows[0].evidence)
+        self.assertIn(Issue('QUOTE_NOT_FOUND', 'period'), issues)
+        rows, issues = self.experience(table, position(period_text='2020'))
+        self.assertFalse(issues)
         self.assertEqual((rows[0].start, rows[0].end, rows[0].ongoing), ('2020', None, False))
         self.assertEqual(rows[0].evidence['period'].text, '2020')
-        self.assertFalse(issues)
 
     def test_period_does_not_consume_dates_in_following_prose_or_after_blank_line(self):
         cases = (
@@ -153,7 +166,9 @@ class ValidationTests(unittest.TestCase):
         )
         for source, start, quote in cases:
             with self.subTest(source=source):
-                rows, issues = self.experience(numbered('Engineer\nSynthetic Works\n' + source))
+                rows, issues = self.experience(
+                    numbered('Engineer\nSynthetic Works\n' + source), position(period_text=quote)
+                )
                 self.assertFalse(issues)
                 self.assertEqual(
                     (rows[0].start, rows[0].end, rows[0].ongoing), (start, None, False)
@@ -164,7 +179,9 @@ class ValidationTests(unittest.TestCase):
         for connector in ('-', '–', '—', 'to', 'đến', '~'):
             with self.subTest(connector=connector):
                 source = f'2020 {connector}\nEnded in 2022'
-                rows, issues = self.experience(numbered('Engineer\nSynthetic Works\n' + source))
+                rows, issues = self.experience(
+                    numbered('Engineer\nSynthetic Works\n' + source), position(period_text=source)
+                )
                 self.assertFalse(issues)
                 self.assertEqual((rows[0].start, rows[0].end), ('2020', '2022'))
         for following, end, ongoing in (
@@ -176,13 +193,15 @@ class ValidationTests(unittest.TestCase):
         ):
             with self.subTest(following=following):
                 source = '2020\n' + following
-                rows, issues = self.experience(numbered('Engineer\nSynthetic Works\n' + source))
+                rows, issues = self.experience(
+                    numbered('Engineer\nSynthetic Works\n' + source), position(period_text=source)
+                )
                 self.assertFalse(issues)
                 self.assertEqual(
                     (rows[0].start, rows[0].end, rows[0].ongoing), ('2020', end, ongoing)
                 )
 
-    def test_neighbor_fallback_never_crosses_pages_for_experience_or_personal(self):
+    def test_exact_line_matching_never_crosses_pages_for_experience_or_personal(self):
         table = numbered('Engineer\nSynthetic Works', 'Wrong line')
         rows, issues = self.experience(table, position(title=3, company=3, period=None))
         self.assertFalse(rows)
@@ -199,7 +218,15 @@ class ValidationTests(unittest.TestCase):
                 with self.subTest(texts=texts, field=field):
                     fields, issues = validate_line_personal(
                         json.dumps(
-                            line_personal(**{field: {'line': line, 'text': 'Synthetic Person'}})
+                            line_personal(
+                                **{
+                                    field: {
+                                        'line': line,
+                                        'value': 'Synthetic Person',
+                                        **({'endLine': None} if field == 'location' else {}),
+                                    }
+                                }
+                            )
                         ),
                         numbered(*texts),
                     )
@@ -209,7 +236,7 @@ class ValidationTests(unittest.TestCase):
     def test_period_null_invalid_ids_and_marker_without_date(self):
         table = numbered('Engineer\nSynthetic Works\nPresent')
         for period in (0, 999, 3):
-            rows, issues = self.experience(table, position(period=period))
+            rows, issues = self.experience(table, position(period=period, period_text='Present'))
             self.assertEqual((rows[0].start, rows[0].end, rows[0].ongoing), (None, None, False))
             self.assertIn(Issue('QUOTE_NOT_FOUND', 'period'), issues)
         rows, issues = self.experience(table, position(period=None))
@@ -219,18 +246,18 @@ class ValidationTests(unittest.TestCase):
         rows, _ = self.experience(table, position(ongoing=True))
         self.assertEqual((rows[0].start, rows[0].end, rows[0].ongoing), ('2020', '2022', False))
 
-    def test_personal_neighbors_preserve_nfd_and_reject_wrong_lines(self):
+    def test_personal_exact_line_preserves_nfd_and_rejects_wrong_lines(self):
         table = numbered('Synthetic Nu\u031b\u0303\nCity\nUnrelated\nOther')
-        for line in (1, 2):
+        for line in (1,):
             fields, issues = validate_line_personal(
-                json.dumps(line_personal(fullName={'line': line, 'text': 'Synthetic Nữ'})),
+                json.dumps(line_personal(fullName={'line': line, 'value': 'Synthetic Nữ'})),
                 table,
             )
             self.assertFalse(issues)
             self.assertEqual(fields[0].value, table[1].text.rstrip('\n'))
-        for line in (4, 0, 999):
+        for line in (2, 4, 0, 999):
             fields, issues = validate_line_personal(
-                json.dumps(line_personal(fullName={'line': line, 'text': 'Synthetic Nữ'})),
+                json.dumps(line_personal(fullName={'line': line, 'value': 'Synthetic Nữ'})),
                 table,
             )
             self.assertFalse(fields)
@@ -248,7 +275,8 @@ class ValidationTests(unittest.TestCase):
     def test_invalid_birth_date_and_outside_line_are_rejected(self):
         for line, code in ((1, 'INVALID_DATE'), (99, 'QUOTE_NOT_FOUND')):
             fields, issues = validate_line_personal(
-                json.dumps(line_personal(dateOfBirthLine=line)), numbered('DOB: 31/02/2000')
+                json.dumps(line_personal(dateOfBirth={'line': line, 'value': '31/02/2000'})),
+                numbered('DOB: 31/02/2000'),
             )
             self.assertFalse(fields)
             self.assertIn(Issue(code, 'dateOfBirth'), issues)
@@ -256,7 +284,8 @@ class ValidationTests(unittest.TestCase):
     def test_multiple_birth_dates_on_one_line_are_rejected_even_if_identical(self):
         for source in ('DOB: 2000-04-03 / 2001-05-04', 'DOB: 2000-04-03 or 2000-04-03'):
             fields, issues = validate_line_personal(
-                json.dumps(line_personal(dateOfBirthLine=1)), numbered(source)
+                json.dumps(line_personal(dateOfBirth={'line': 1, 'value': source})),
+                numbered(source),
             )
             self.assertFalse(fields)
             self.assertEqual(issues, (Issue('QUOTE_NOT_FOUND', 'dateOfBirth'),))
@@ -267,10 +296,10 @@ class ValidationTests(unittest.TestCase):
             'Continued paragraph',
         )
         response = line_personal(
-            fullName={'line': 1, 'text': "synthetic o'name"},
-            location={'line': 2, 'text': 'city - north'},
+            fullName={'line': 1, 'value': "synthetic o'name"},
+            location={'line': 2, 'endLine': None, 'value': 'city - north'},
             gender={'line': 3, 'value': 'OTHER'},
-            dateOfBirthLine=4,
+            dateOfBirth={'line': 4, 'value': '03/04/2000'},
             summary=[{'startLine': 5, 'endLine': 6}],
         )
         fields, issues = validate_line_personal(json.dumps(response), table)
@@ -290,9 +319,9 @@ class ValidationTests(unittest.TestCase):
     def test_gender_prose_generic_name_and_bad_birth_date_are_rejected(self):
         table = numbered('Resume\nFemale engineer\nNo birth date')
         response = line_personal(
-            fullName={'line': 1, 'text': 'resume'},
+            fullName={'line': 1, 'value': 'resume'},
             gender={'line': 2, 'value': 'FEMALE'},
-            dateOfBirthLine=3,
+            dateOfBirth={'line': 3, 'value': '2000-04-03'},
         )
         fields, issues = validate_line_personal(json.dumps(response), table)
         self.assertFalse(fields)
@@ -334,9 +363,9 @@ class PipelineTests(unittest.TestCase):
             [
                 {
                     'experiences': [position(3, None, None)],
-                    'personal': {'fullName': {'line': 3, 'text': 'Engineer'}},
+                    'personal': {'fullName': {'line': 3, 'value': 'Engineer'}},
                 },
-                line_personal(fullName={'line': 1, 'text': 'Synthetic Person'}),
+                line_personal(fullName={'line': 1, 'value': 'Synthetic Person'}),
             ]
         )
         result = extract(doc, provider, mode='whole', config=settings(whole_personal=True))
@@ -362,13 +391,13 @@ class PipelineTests(unittest.TestCase):
         provider = FakeProvider(
             [
                 line_personal(
-                    fullName={'line': 1, 'text': 'Synthetic Person'},
+                    fullName={'line': 1, 'value': 'Synthetic Person'},
                     gender={'line': 2, 'value': 'OTHER'},
-                    dateOfBirthLine=3,
-                    location={'line': 4, 'text': 'City – North'},
+                    dateOfBirth={'line': 3, 'value': '2000-04-03'},
+                    location={'line': 4, 'endLine': None, 'value': 'City – North'},
                     summary=[{'startLine': 6, 'endLine': 6}],
                 ),
-                {'experiences': [position(8, 9, 10)]},
+                {'experiences': [position(8, 9, 10, period_text='2020 – Present')]},
             ]
         )
         result = extract(Document(pages), provider, config=settings())
@@ -417,7 +446,7 @@ class PipelineTests(unittest.TestCase):
             [
                 line_personal(),
                 {'experiences': [position(3, 4, 5)]},
-                {'experiences': [position(8, 9, 10)]},
+                {'experiences': [position(8, 9, 10, period_text='2023 - Present')]},
             ]
         )
         result = extract(doc, provider, config=settings())
@@ -449,7 +478,7 @@ class PipelineTests(unittest.TestCase):
             (Page(1, 'ok', 'Synthetic Person\nExperience\nEngineer\nSynthetic Works\n2020 - 2022'),)
         )
         response = {'experiences': [position(3, 4, 5)]}
-        header = line_personal(fullName={'line': 1, 'text': 'Synthetic Person'})
+        header = line_personal(fullName={'line': 1, 'value': 'Synthetic Person'})
         claim = {
             'inputSha256': 'a' * 64,
             'definition': {
@@ -491,7 +520,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(payload, json.loads(compact_result(quote_result, claim, {})))
 
     def test_prompt_versions_lean_and_delimiter_escaping(self):
-        for mode, version in (('blocks', 'lines-1'), ('whole', 'whole-lines-1')):
+        for mode, version in (('blocks', 'lines-2'), ('whole', 'whole-lines-2')):
             self.assertEqual(prompt_version(mode, settings()), 'llm-extraction-prompt/' + version)
             lean = settings(prompt_schema_text=False, whole_personal=False)
             suffix = '-lean-xp' if mode == 'whole' else '-lean'
@@ -513,7 +542,7 @@ class PipelineTests(unittest.TestCase):
         provider = FakeProvider([line_personal()] + [{'experiences': []}] * 20)
         result = extract(doc, provider, mode='whole', config=settings())
         self.assertIn(Issue('WHOLE_TOO_LONG'), result.issues)
-        self.assertEqual(result.prompt_version, 'llm-extraction-prompt/whole-lines-1')
+        self.assertEqual(result.prompt_version, 'llm-extraction-prompt/whole-lines-2')
 
 
 class ConfigTests(unittest.TestCase):

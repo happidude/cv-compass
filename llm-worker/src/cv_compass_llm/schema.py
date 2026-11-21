@@ -137,15 +137,16 @@ WHOLE_SCHEMA = object_schema(
 
 NULL_LINE = {'type': ['integer', 'null']}
 LINE_TEXT_SCHEMA = object_schema({'line': NULL_LINE, 'text': NULL_STRING})
+LINE_VALUE_SCHEMA = object_schema({'line': NULL_LINE, 'value': NULL_STRING})
 LINES_EXPERIENCE_SCHEMA = object_schema(
     {
         'experiences': {
             'type': 'array',
             'items': object_schema(
                 {
-                    'title': LINE_TEXT_SCHEMA,
-                    'company': LINE_TEXT_SCHEMA,
-                    'periodLine': NULL_LINE,
+                    'title': LINE_VALUE_SCHEMA,
+                    'company': LINE_VALUE_SCHEMA,
+                    'period': LINE_TEXT_SCHEMA,
                     'ongoing': {'type': 'boolean'},
                 }
             ),
@@ -156,8 +157,10 @@ LINES_PERSONAL_SCHEMA = object_schema(
     {
         'personal': object_schema(
             {
-                'fullName': LINE_TEXT_SCHEMA,
-                'location': LINE_TEXT_SCHEMA,
+                'fullName': LINE_VALUE_SCHEMA,
+                'location': object_schema(
+                    {'line': NULL_LINE, 'endLine': NULL_LINE, 'value': NULL_STRING}
+                ),
                 'gender': object_schema(
                     {
                         'line': NULL_LINE,
@@ -169,7 +172,7 @@ LINES_PERSONAL_SCHEMA = object_schema(
                         },
                     }
                 ),
-                'dateOfBirthLine': NULL_LINE,
+                'dateOfBirth': LINE_VALUE_SCHEMA,
                 'summary': {
                     'type': 'array',
                     'maxItems': 8,

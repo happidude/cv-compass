@@ -81,19 +81,19 @@ class PromptTests(unittest.TestCase):
                 build_lines_prompt,
                 L,
                 {},
-                '674a4d1d28841fb4dacddfbdc6ac5d0d362fa3342ce07b7718c386f6ff4ac5c8',
+                '4c9d65ffa8c3e47d48c708b0c4cf312867a99de9516fafa075a5551d21c4a470',
             ),
             (
                 build_lines_prompt,
                 L,
                 {'whole': True},
-                '19992ef341573932f46768bb5912285ab1f15f2cef5767f9eb72818ac68778b8',
+                '64240b9c6c7d5edb5dbf82815a428525303ff1875ab46d692ad42ccc5534e62b',
             ),
             (
                 build_lines_prompt,
                 L,
                 {'personal': True},
-                '6d60334b64db5b7e9b668e5cfc489fd8c1009fa4cf55f8d32c07a8624174a432',
+                '41562d8aac5eba6ce854ceabe6e0d7cd2a61b6315140002c2025c0dca249ab2f',
             ),
             (
                 build_personal_prompt,
@@ -162,7 +162,7 @@ class PromptTests(unittest.TestCase):
                     if builder is build_lines_prompt:
                         self.assertNotIn('quote', paragraph.casefold())
                         self.assertIn(
-                            'text must be a short verbatim substring of that line', paragraph
+                            'value must be a short verbatim substring of that line', paragraph
                         )
                     self.assertEqual(data, raw.split(BEGIN, 1)[1])
                     self.assertEqual(data, '\n' + T + '\n' + END)
@@ -228,7 +228,7 @@ class PromptTests(unittest.TestCase):
                 trim_sections=sections,
             )
             base = (
-                ('whole-lines-1' if mode == 'whole' else 'lines-1')
+                ('whole-lines-2' if mode == 'whole' else 'lines-2')
                 if evidence == 'lines'
                 else ('whole-2' if mode == 'whole' else '3')
             )
@@ -252,9 +252,9 @@ class PromptTests(unittest.TestCase):
                 row['quotes'].update(title='Role-Z at Org-Z', company='Role-Z at Org-Z')
                 if evidence == 'lines':
                     row = {
-                        'title': {'line': 3, 'text': bad},
-                        'company': {'line': 3, 'text': bad},
-                        'periodLine': None,
+                        'title': {'line': 3, 'value': bad},
+                        'company': {'line': 3, 'value': bad},
+                        'period': {'line': None, 'text': None},
                         'ongoing': False,
                     }
                 provider = FakeProvider(
@@ -368,7 +368,7 @@ class PersonalEmptyTests(unittest.TestCase):
         for mode, evidence in product(('blocks', 'whole'), ('quote', 'lines')):
             value = {'value': 'Synthetic Person', 'quote': 'Synthetic Person'}
             header = (
-                line_personal(fullName={'line': 1, 'text': 'Synthetic Person'})
+                line_personal(fullName={'line': 1, 'value': 'Synthetic Person'})
                 if evidence == 'lines'
                 else personal(fullName=value)
             )

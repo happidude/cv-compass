@@ -356,7 +356,7 @@ class PipelineTests(unittest.TestCase):
             for mode in ('blocks', 'whole'):
                 with self.subTest(evidence=evidence_mode, mode=mode):
                     if evidence_mode == 'lines':
-                        record = position(3, 4, 5)
+                        record = position(3, 4, 5, period_text='09/2019 -\n2020')
                         personal_response = line_personal()
                         job_response = {'experiences': [record]}
                     else:
