@@ -33,14 +33,21 @@ CLEAN_NAME_INSTRUCTIONS = (
     'CANADA, MAPLE LANTERN LABS -> MAPLE LANTERN LABS; '
     'Position: Work as Sales Lead (KA channel) in MAPLE LANTERN LABS -> Sales Lead (KA channel).'
 )
-CLEAN_NAME_LINES_INSTRUCTIONS = CLEAN_NAME_INSTRUCTIONS.replace(
-    'For clean names, keep all existing quote rules: values must be verbatim contiguous '
-    'substrings of the CV. ',
-    'For clean names, text must be a short verbatim substring of that line. ',
-).replace(
-    'years each need a record with their own period; a period quote may use shared text '
-    'when only one period is given. ',
-    'years each need a record with their own periodLine. ',
+CLEAN_NAME_LINES_INSTRUCTIONS = (
+    CLEAN_NAME_INSTRUCTIONS.replace(
+        'For clean names, keep all existing quote rules: values must be verbatim contiguous '
+        'substrings of the CV. ',
+        'For clean names, value must be a short verbatim substring of that line. ',
+    )
+    .replace(
+        'if a name breaks across a line, keep the source text. ',
+        'values must come from the single referenced line. ',
+    )
+    .replace(
+        'years each need a record with their own period; a period quote may use shared text '
+        'when only one period is given. ',
+        'years each need a record with their own period {line, text}. ',
+    )
 )
 
 
@@ -48,7 +55,7 @@ def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
     """Identify prompt/schema changes only, independently of runtime options."""
     version = WHOLE_PROMPT_VERSION if mode == 'whole' else PROMPT_VERSION
     if config is not None and config.evidence == 'lines':
-        version = 'llm-extraction-prompt/' + ('whole-lines-1' if mode == 'whole' else 'lines-1')
+        version = 'llm-extraction-prompt/' + ('whole-lines-2' if mode == 'whole' else 'lines-2')
     if config is not None and config.name_style == 'clean':
         version += '-clean'
     if config is not None and not config.prompt_schema_text:
@@ -68,7 +75,7 @@ def build_lines_prompt(
     schema_text: bool = True,
     name_style: str = 'raw',
 ) -> str:
-    """Request line references and short source values without model-written dates."""
+    """Request exact line references and verbatim values or date phrases."""
     schema = LINES_PERSONAL_SCHEMA if personal else LINES_EXPERIENCE_SCHEMA
     prefix = (
         'Return only JSON matching this schema: ' + json.dumps(schema) + '\n'
@@ -82,12 +89,18 @@ def build_lines_prompt(
     )
     if personal:
         instructions += (
-            'Extract fullName and location as {line, text}; text is a short verbatim value '
-            'on that line. Do not use resume headings as names. '
-            'Gender requires a standalone or explicitly labelled Nam/Nữ/Male/Female/Other '
-            'source line; return {line, value} normalized to MALE/FEMALE/OTHER. '
+            'Extract fullName, dateOfBirth and location as {line, value}; value is the short '
+            'verbatim value copied from that exact line, WITHOUT labels such as Address: '
+            'or Date of birth:. Never return the whole sentence or line when it has other text. '
+            'For location include endLine: null, or the last line ID when an address wraps '
+            'across at most 3 contiguous lines on the same page. Copy the address substring '
+            'across those lines; never include phone numbers or emails in location. '
+            'Do not use resume headings as names. '
+            'Gender requires an explicit standalone or labelled Nam/Nữ/Khác/Male/Female/Other '
+            'token on exactly that line; return {line, value} with value normalized to '
+            'MALE/FEMALE/OTHER from that token; otherwise use null. '
             'Gender is display-only, never for filtering or ranking. '
-            'For dateOfBirthLine return only the line ID of an explicit birth date. '
+            'For dateOfBirth copy only the explicit birth date into value; do not normalize it. '
             'For summary, list EVERY Summary, Profile, Career Objective, Objective, Tóm tắt, '
             'Định hướng nghề nghiệp and Mục tiêu nghề nghiệp paragraph in reading order '
             'as {startLine, endLine}, excluding headings and job experience. '
@@ -102,10 +115,14 @@ def build_lines_prompt(
                 else ''
             )
             + 'Use one record per position; projects, education and certificates are not jobs. '
-            'Return title and company as {line, text}, with short verbatim source values. '
+            'Return title and company as {line, value}, where value is the short verbatim '
+            'value copied from that exact line WITHOUT labels such as Position: or Company:. '
+            'Never return the whole sentence or line when it has other text. '
             'Company is only the company name, without industry descriptions or locations. '
-            'For periodLine return the line ID containing the first date of the job period. '
-            'Dates may continue onto the next line. Do not write dates or quotes. '
+            'Return period as {line, text}: line contains the first date and text is only '
+            'the verbatim date phrase, never the whole sentence or line with other text. '
+            'The date phrase may continue onto the next contiguous line on the same page. '
+            'Use {line: null, text: null} when the period is unknown; do not normalize dates. '
             'Ongoing requires an explicit Present/Now/Current/Hiện tại/Nay marker. '
         )
         if name_style == 'clean':

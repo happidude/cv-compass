@@ -217,7 +217,7 @@ class DateValidationTests(unittest.TestCase):
                 )
                 table = numbered('Engineer\nSynthetic Works\n' + period)
                 rows, issues = validate_line_experiences(
-                    json.dumps({'experiences': [position()]}), table, dates='v2'
+                    json.dumps({'experiences': [position(period_text=period)]}), table, dates='v2'
                 )
                 self.assertFalse(issues)
                 self.assertEqual(
@@ -227,7 +227,9 @@ class DateValidationTests(unittest.TestCase):
     def test_lines_short_year_period(self):
         table = numbered('Engineer\nSynthetic Works\nAug 19 – May 21')
         rows, issues = validate_line_experiences(
-            json.dumps({'experiences': [position()]}), table, dates='v2'
+            json.dumps({'experiences': [position(period_text='Aug 19 – May 21')]}),
+            table,
+            dates='v2',
         )
         self.assertFalse(issues)
         self.assertEqual((rows[0].start, rows[0].end), ('2019-08', '2021-05'))
@@ -245,7 +247,7 @@ class DateValidationTests(unittest.TestCase):
                     self.assertFalse(issues)
                     self.assertEqual((rows[0].start, rows[0].end), ('2019', '2021'))
                     rows, issues = validate_line_experiences(
-                        json.dumps({'experiences': [position()]}),
+                        json.dumps({'experiences': [position(period_text=period)]}),
                         numbered('Engineer\nSynthetic Works\n' + period),
                         dates=style,
                     )
@@ -288,11 +290,13 @@ class DateValidationTests(unittest.TestCase):
             'Engineer\nSynthetic Works\n2018 - 2019\n2020 - 2022\nManager\nSynthetic Labs'
         )
         second = position(5, 6, 4)
-        second['title']['text'], second['company']['text'] = 'manager', 'synthetic labs'
+        second['title']['value'], second['company']['value'] = 'manager', 'synthetic labs'
         for style in ('v1', 'v2'):
             with self.subTest(style=style):
                 rows, issues = validate_line_experiences(
-                    json.dumps({'experiences': [position(), second]}), table, dates=style
+                    json.dumps({'experiences': [position(period_text='2018 - 2019'), second]}),
+                    table,
+                    dates=style,
                 )
                 self.assertFalse(issues)
                 self.assertEqual((rows[0].start, rows[0].end), ('2018', '2019'))
@@ -302,17 +306,22 @@ class DateValidationTests(unittest.TestCase):
         for following, period_line, title_line in (('2022', 4, 5), ('2022 Manager', 5, 4)):
             tail = 'Manager' if title_line == 5 else '2022'
             table = numbered('Engineer\nSynthetic Works\n2019\n' + following + '\n' + tail)
-            second = position(title_line, 2, period_line)
-            second['title']['text'] = 'manager'
-            payload = json.dumps({'experiences': [position(), second]})
+            second = position(title_line, 2, period_line, period_text='2022')
+            second['title']['value'] = 'manager'
+            payload = json.dumps({'experiences': [position(period_text='2019\n2022'), second]})
             with self.subTest(following=following):
                 legacy, _ = validate_line_experiences(payload, table, dates='v1')
                 self.assertEqual((legacy[0].start, legacy[0].end), ('2019', '2022'))
                 rows, issues = validate_line_experiences(payload, table, dates='v2')
+                self.assertEqual(issues, (Issue('QUOTE_NOT_FOUND', 'period'),))
+                self.assertEqual((rows[0].start, rows[0].end), (None, None))
+                self.assertNotIn('period', rows[0].evidence)
+                self.assertEqual(rows[1].start, '2022')
+                payload = json.dumps({'experiences': [position(period_text='2019'), second]})
+                rows, issues = validate_line_experiences(payload, table, dates='v2')
                 self.assertFalse(issues)
                 self.assertEqual((rows[0].start, rows[0].end), ('2019', None))
                 self.assertEqual(rows[0].evidence['period'].text, '2019')
-                self.assertEqual(rows[1].start, '2022')
 
     def test_v2_continuation_still_joins_split_range(self):
         for source, expected in (
@@ -321,22 +330,24 @@ class DateValidationTests(unittest.TestCase):
         ):
             with self.subTest(source=source):
                 rows, issues = validate_line_experiences(
-                    json.dumps({'experiences': [position()]}),
+                    json.dumps({'experiences': [position(period_text=source)]}),
                     numbered('Engineer\nSynthetic Works\n' + source),
                     dates='v2',
                 )
                 self.assertFalse(issues)
                 self.assertEqual((rows[0].start, rows[0].end), expected)
 
-    def test_v2_reserves_another_items_role_after_neighbor_resolution(self):
+    def test_v2_reserves_another_items_explicit_role_line(self):
         table = numbered('Engineer\nSynthetic Works\n2019\n2022 Manager\n2023')
-        second = position(5, 2, 5)
-        second['title']['text'] = 'manager'
+        second = position(4, 2, 5, period_text='2023')
+        second['title']['value'] = 'manager'
         rows, issues = validate_line_experiences(
-            json.dumps({'experiences': [position(), second]}), table, dates='v2'
+            json.dumps({'experiences': [position(period_text='2019\n2022'), second]}),
+            table,
+            dates='v2',
         )
-        self.assertFalse(issues)
-        self.assertEqual((rows[0].start, rows[0].end), ('2019', None))
+        self.assertEqual(issues, (Issue('QUOTE_NOT_FOUND', 'period'),))
+        self.assertEqual((rows[0].start, rows[0].end), (None, None))
         self.assertEqual((rows[1].title, rows[1].start), ('Manager', '2023'))
 
 
@@ -397,8 +408,8 @@ class DateConfigPipelineTests(unittest.TestCase):
                 for evidence in ('quote', 'lines'):
                     config = configured(CVC_LLM_DATES='v2', CVC_LLM_EVIDENCE=evidence)
                     if evidence == 'lines':
-                        header = line_personal(fullName={'line': 1, 'text': 'Synthetic Person'})
-                        payload = {'experiences': [position(3, 4, 5)]}
+                        header = line_personal(fullName={'line': 1, 'value': 'Synthetic Person'})
+                        payload = {'experiences': [position(3, 4, 5, period_text=period)]}
                     else:
                         header, payload = person, {'experiences': [item]}
                         if mode == 'whole':

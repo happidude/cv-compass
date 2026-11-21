@@ -702,7 +702,7 @@ cùng cấu hình được giữ cho warmup và mọi lượt đo. Chỉ đổi 
 bằng bench trên bộ dữ liệu đã duyệt. Các test khóa hash hiện có giữ nguyên;
 O4 bổ sung hash prompt personal và request whole mặc định bằng fixture tổng hợp.
 
-## Evidence theo số dòng (O5)
+## Evidence theo số dòng (O5, hợp đồng lines-2 của O10)
 
 `CVC_LLM_EVIDENCE=quote|lines` có mặc định `quote`: giữ nguyên prompt, schema,
 request Ollama và định dạng payload backend hiện có, kể cả các tùy chọn O4.
@@ -714,28 +714,44 @@ Hiện parser CLI chưa có `--evidence`; dùng môi trường hoặc `.env` cho
 Ở `lines`, mỗi dòng không rỗng của trang OCR `ok` được đánh số toàn tài liệu
 `[L<n>]`, có mốc `=== page <p> ===`. Block và header dùng lại số toàn cục,
 chỉ gửi các dòng thuộc phạm vi của lời gọi; dòng bị cắt ở giới hạn header bị
-bỏ qua. Raw text và offset gốc được giữ nguyên. Model trả title/company và
-fullName/location bằng `{line,text}`, gender bằng `{line,value}`, kỳ bằng
-`periodLine` và `ongoing`, ngày sinh bằng `dateOfBirthLine`, summary bằng các
-khoảng `{startLine,endLine}`. Giá trị không biết dùng null, summary vắng dùng `[]`.
+bỏ qua. Raw text và offset gốc được giữ nguyên. Hợp đồng `lines-2` thay thế
+`lines-1`: model trả title/company và fullName/dateOfBirth/gender bằng
+`{line,value}`, kỳ bằng `period: {line,text}` và `ongoing`, location bằng
+`{line,endLine,value}`, summary bằng các khoảng `{startLine,endLine}`.
+`line` và `value`/`text` không biết dùng null; `endLine` dùng null khi địa chỉ
+không vắt dòng, summary vắng dùng `[]`. Gender vẫn chỉ nhận `MALE/FEMALE/OTHER`;
+giá trị chuẩn hóa từ token Nam/Nữ/Khác/Male/Female/Other đứng riêng hoặc có nhãn
+trên đúng dòng nguồn. Evidence gender là token gốc, không phải enum chuẩn hóa.
 
-Code đối chiếu text với dòng chỉ định, thử thêm dòng liền trước/sau cho
-title/company/fullName/location, rồi lấy nguyên văn nguồn. ID ngoài bảng hoặc
-text không khớp sinh `QUOTE_NOT_FOUND.<field>`. Kỳ và ngày sinh do code đọc;
-kỳ có thể vắt hai dòng cùng trang, nhưng evidence kỳ chỉ được nối khi offset
-liền nhau. Giữ kiểm tra ngày không hợp lệ và thứ tự kỳ. Gender giữ quy tắc E8:
-giá trị phải đứng riêng hoặc có nhãn rõ ràng trên dòng chỉ định. Summary nối
-nguyên văn các dòng theo thứ tự, qua trang liền kề, tối đa 8 evidence/6000 ký tự.
+Code chỉ đối chiếu value với đúng dòng chỉ định, không tìm dòng kề;
+không phân biệt hoa thường và giữ matcher dung sai khoảng trắng/dấu câu của
+personal hiện có. Evidence là `page/start/end/text` của chính chuỗi con khớp
+trong nguồn, không phải cả dòng. ID ngoài bảng hoặc value/text không khớp sinh
+`QUOTE_NOT_FOUND.<field>` và bỏ field đó. Model phải tự bỏ nhãn `Address:`,
+`Position:`, `Company:` và chọn giá trị ngắn; code không tự cắt nhãn.
+Location có `endLine` được khớp trên tối đa 3 dòng liên tục cùng trang, bắt đầu
+tại dòng `line`; evidence giữ cả xuống dòng bên trong chuỗi con. Prompt cấm
+đưa số điện thoại/email vào location.
+
+`period.text` chỉ là cụm ngày nguyên văn. Code đọc ngày và marker hiện tại
+chỉ từ đoạn khớp đó; chỉ cho nối sang dòng kế khi điều kiện nối kỳ cho phép,
+cùng trang và offset liền nhau. Với `dates=v2`, giữ quy tắc A2 không nối vào
+dòng được record khác tham chiếu. Ngày sinh cũng chỉ parse value đã khớp.
+Giữ kiểm tra ngày không hợp lệ, thứ tự kỳ và quy tắc gender E8: giá trị phải
+đứng riêng hoặc có nhãn rõ ràng trên dòng chỉ định. Summary nối nguyên văn
+các dòng theo thứ tự, qua trang liền kề, tối đa 8 evidence/6000 ký tự.
 
 Áp dụng cho `blocks` và `whole`; lời gọi whole chỉ lấy experiences, personal
-luôn từ header riêng. Version là `llm-extraction-prompt/lines-1` hoặc
-`llm-extraction-prompt/whole-lines-1`, giữ hậu tố O4 `-lean` và `-xp` theo cờ.
+luôn từ header riêng. Version là `llm-extraction-prompt/lines-2` hoặc
+`llm-extraction-prompt/whole-lines-2`, giữ thứ tự hậu tố `-clean`, `-lean`, `-xp`,
+`-trim`/`-trims` theo cờ.
 Fallback whole sang blocks vẫn giữ version whole của tiến trình. `pull` dùng
 version đã chốt khi khởi động cho claim/submit. Kết quả vẫn là evidence
 `page/start/end/text`, không cần đổi backend. Chỉ chủ dự án quyết định đổi
 mặc định sau khi bench chứng minh độ chính xác ít nhất bằng `quote`.
 
-Test tổng hợp O5 nằm ở `tests/test_o5_lines.py`; các test hash hiện có giữ nguyên.
+Test tổng hợp nằm ở `tests/test_o5_lines.py` và `tests/test_o10_lines_v2.py`.
+Các khóa hash quote giữ nguyên; chỉ khóa hash prompt lines của A1 đổi theo lines-2.
 
 ## Tên công ty/chức danh gọn (A1)
 
@@ -762,7 +778,7 @@ không ghép phần rời nhau; tên vắt dòng giữ nguyên văn bản nguồ
 
 Version thêm `-clean` ngay sau version cơ sở, trước `-lean`, `-xp`, `-trim`
 hoặc `-trims`, ví dụ `llm-extraction-prompt/whole-2-clean`,
-`llm-extraction-prompt/3-clean-lean`, `llm-extraction-prompt/lines-1-clean`.
+`llm-extraction-prompt/3-clean-lean`, `llm-extraction-prompt/lines-2-clean`.
 Version lấy từ cấu hình đã chốt của tiến trình, không theo kết quả từng CV.
 
 Mọi cấu hình đều có issue nội bộ `PERSONAL_EMPTY` khi lời gọi personal header

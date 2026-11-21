@@ -388,28 +388,62 @@ def validate_whole(
 def _line_value(
     item: dict, table: dict[int, Span], field: str, issues: list[Issue], *, personal: bool = False
 ) -> tuple[str | None, Evidence | None]:
-    value, number = item['text'], item['line']
-    if value is None and number is None:
+    value, number = item['value'], item['line']
+    end = item.get('endLine')
+    if value is None and number is None and end is None:
         return None, None
-    if number in table and value is not None:
-        for candidate in (number, number - 1, number + 1):
-            span = table.get(candidate)
-            if span is None or span.page != table[number].page:
-                continue
-            if personal:
-                evidence = locate_personal(value, Block((span,)))
-            else:
-                evidence = locate(value, Block((span,)))
-            if evidence is not None:
-                original = evidence.text
-                if (
-                    field == 'fullName'
-                    and personal_text(original, fold=True)[0] in GENERIC_NAME_HEADINGS
-                ):
-                    continue
+    block = _line_range(number, end, table, limit=3 if field == 'location' else 1)
+    if block is not None and value is not None:
+        evidence = locate_personal(value, block) if personal else locate(value, block)
+        first = block.spans[0]
+        if evidence is not None and evidence.start < first.start + len(first.text.rstrip()):
+            original = evidence.text
+            if not (
+                field == 'fullName'
+                and personal_text(original, fold=True)[0] in GENERIC_NAME_HEADINGS
+            ):
                 return original, evidence
     issues.append(Issue('QUOTE_NOT_FOUND', field))
     return None, None
+
+
+def _line_gender(
+    item: dict, table: dict[int, Span], issues: list[Issue]
+) -> tuple[str | None, Evidence | None]:
+    """Normalize an explicit gender token on exactly the referenced source line."""
+    if item['line'] is None and item['value'] is None:
+        return None, None
+    span = table.get(item['line'])
+    if span is not None:
+        text, offsets = personal_text(span.text, fold=True)
+        label = GENDER_LABEL.match(text)
+        start = label.end() if label is not None else 0
+        value = _gender_value(text)
+        if value is not None and value == item['value']:
+            left, right = offsets[start][0], offsets[-1][1]
+            return value, Evidence(
+                span.page, span.start + left, span.start + right, span.text[left:right]
+            )
+    issues.append(Issue('QUOTE_NOT_FOUND', 'gender'))
+    return None, None
+
+
+def _line_range(
+    start: int | None, end: int | None, table: dict[int, Span], *, limit: int
+) -> Block | None:
+    """Allow only bounded, contiguous source lines on the same page."""
+    if start not in table:
+        return None
+    end = start if end is None else end
+    if not start <= end < start + limit:
+        return None
+    spans = []
+    for number in range(start, end + 1):
+        span = table.get(number)
+        if span is None or (spans and (span.page != spans[-1].page or span.start != spans[-1].end)):
+            return None
+        spans.append(span)
+    return Block(tuple(spans))
 
 
 def _period_continues(text: str, following: str, *, dates: str = 'v1') -> bool:
@@ -451,19 +485,18 @@ def _line_period(
     dates: str = 'v1',
     occupied_lines: frozenset[int] = frozenset(),
 ) -> tuple[str | None, str | None, bool, Evidence | None]:
-    number = item['periodLine']
-    if number is None and not item['ongoing']:
+    number, text = item['period']['line'], item['period']['text']
+    if number is None and text is None and not item['ongoing']:
         return None, None, False, None
     span = table.get(number)
     if span is None:
         issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
         return None, None, False, None
-    text = span.text
-    tokens = find_dates(text, style=dates)
+    block = Block((span,))
+    evidence = locate(text, block)
     following = table.get(number + 1)
     if (
-        len(tokens) == 1
-        and not has_present(text)
+        evidence is None
         and following is not None
         and following.page == span.page
         and span.end == following.start
@@ -474,11 +507,16 @@ def _line_period(
                 and len(find_dates(following.text, style=dates)) <= 1
             )
         )
-        and _period_continues(text, following.text, dates=dates)
+        and _period_continues(span.text, following.text, dates=dates)
     ):
         # A single period Evidence cannot represent an omitted source gap.
-        text += following.text
-        tokens = find_dates(text, style=dates)
+        block = Block((span, following))
+        evidence = locate(text, block)
+    if evidence is None or evidence.start >= span.start + len(span.text.rstrip()):
+        issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
+        return None, None, False, None
+    text = evidence.text
+    tokens = find_dates(text, style=dates)
     date_token = DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
     matches = list(date_token.finditer(text))
     for match in matches:
@@ -496,18 +534,14 @@ def _line_period(
     ):
         issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
         return None, None, False, None
-    left = matches[0].start()
-    right = max(matches[-1].end(), present.end() if present is not None else 0)
-    source = text[left:right]
-    period_block = Block((Span(span.page, span.start, span.start + len(text), text),))
     return validate_period(
         {
             'start': tokens[0],
             'end': tokens[1] if len(tokens) == 2 else None,
-            'ongoing': has_present(source),
-            'quotes': {'period': source},
+            'ongoing': has_present(text),
+            'quotes': {'period': text},
         },
-        period_block,
+        block,
         issues,
         dates=dates,
     )
@@ -521,9 +555,7 @@ def validate_line_experiences(
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
     rows, issues = [], []
-    item_lines = (
-        [_experience_lines(item, table) for item in data['experiences']] if dates == 'v2' else []
-    )
+    item_lines = [_experience_lines(item) for item in data['experiences']] if dates == 'v2' else []
     for index, item in enumerate(data['experiences']):
         title, title_evidence = _line_value(item['title'], table, 'title', issues)
         company, company_evidence = _line_value(item['company'], table, 'company', issues)
@@ -553,19 +585,11 @@ def validate_line_experiences(
     return tuple(rows), tuple(issues)
 
 
-def _experience_lines(item: dict, table: dict[int, Span]) -> frozenset[int]:
-    """Reserve explicit references and the actual lines resolved by neighbor tolerance."""
-    numbers = {item['title']['line'], item['company']['line'], item['periodLine']} - {None}
-    for field in ('title', 'company'):
-        _, evidence = _line_value(item[field], table, field, [])
-        if evidence is not None:
-            numbers.update(
-                number
-                for number, span in table.items()
-                if span.page == evidence.page
-                and span.start <= evidence.start < evidence.end <= span.end
-            )
-    return frozenset(numbers)
+def _experience_lines(item: dict) -> frozenset[int]:
+    """Reserve another item's explicit role, company and period references."""
+    return frozenset(
+        {item['title']['line'], item['company']['line'], item['period']['line']} - {None}
+    )
 
 
 def validate_line_personal(
@@ -577,34 +601,29 @@ def validate_line_personal(
         return (), (Issue('LLM_INVALID_JSON'),)
     fields, issues = [], []
     for key, item in data['personal'].items():
-        if key in ('fullName', 'location'):
+        if key == 'gender':
+            value, evidence = _line_gender(item, table, issues)
+        elif key != 'summary':
             value, evidence = _line_value(item, table, key, issues, personal=True)
-        elif key == 'gender':
-            if item['line'] is None and item['value'] is None:
+            if value is None or evidence is None:
                 continue
-            span = table.get(item['line'])
-            if span is None:
-                issues.append(Issue('QUOTE_NOT_FOUND', key))
-                continue
-            value, evidence = _personal_value(
-                key, {'value': item['value'], 'quote': span.text.strip()}, Block((span,)), issues
-            )
-        elif key == 'dateOfBirthLine':
-            if item is None:
-                continue
-            key = 'dateOfBirth'
-            span = table.get(item)
-            tokens = find_birth_dates(span.text.replace('‐', '-')) if span is not None else []
-            if len(tokens) > 1:
-                issues.append(Issue('QUOTE_NOT_FOUND', key))
-                continue
-            if not tokens:
-                invalid = span is not None and DATE_TOKEN.search(span.text) is not None
-                issues.append(Issue('INVALID_DATE' if invalid else 'QUOTE_NOT_FOUND', key))
-                continue
-            value, evidence = _personal_value(
-                key, {'value': tokens[0][0], 'quote': span.text.strip()}, Block((span,)), issues
-            )
+            if key == 'dateOfBirth':
+                span = table[item['line']]
+                if len(find_birth_dates(span.text.replace('‐', '-'))) > 1:
+                    issues.append(Issue('QUOTE_NOT_FOUND', key))
+                    continue
+                tokens = find_birth_dates(value.replace('‐', '-'))
+                if len(tokens) != 1:
+                    code = (
+                        'INVALID_DATE'
+                        if not tokens and DATE_TOKEN.search(value)
+                        else 'QUOTE_NOT_FOUND'
+                    )
+                    issues.append(Issue(code, key))
+                    continue
+                value, ambiguous = tokens[0]
+                if ambiguous:
+                    issues.append(Issue('DOB_DAY_FIRST_ASSUMED', key))
         else:
             if not item:
                 continue
