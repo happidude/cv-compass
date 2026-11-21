@@ -4,6 +4,7 @@ import re
 
 from .dates import (
     DATE_TOKEN,
+    DATE_TOKEN_V2,
     ENGLISH_MONTH,
     PRESENT_TOKEN,
     find_birth_dates,
@@ -266,6 +267,8 @@ def validate_period(
     item: dict,
     block: Block,
     issues: list[Issue],
+    *,
+    dates: str = 'v1',
 ) -> tuple[str | None, str | None, bool, Evidence | None]:
     """Validate quoted dates, ongoing status and chronological order."""
     if item['start'] is None and item['end'] is None and not item['ongoing']:
@@ -274,31 +277,39 @@ def validate_period(
     if evidence is None:
         issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
         return None, None, False, None
-    tokens = find_dates(evidence.text)
+    tokens = find_dates(evidence.text, style=dates)
     explicit_ongoing = has_present(evidence.text)
-    dates = []
+    normalized_dates = []
     ongoing = item['ongoing']
     for key in ('start', 'end'):
         raw = item[key]
         if raw is None:
-            dates.append(None)
+            normalized_dates.append(None)
             continue
         try:
-            date, present = normalize_date(raw)
+            date, present = normalize_date(raw, style=dates)
         except ValueError:
             issues.append(Issue('INVALID_DATE', key))
             return None, None, False, None
+        if (
+            dates == 'v2'
+            and date is not None
+            and len(date) == 7
+            and date not in tokens
+            and date[:4] in tokens
+        ):
+            date = date[:4]
         if (present and (key != 'end' or not explicit_ongoing)) or (
             not present and date not in tokens
         ):
             issues.append(Issue('QUOTE_NOT_FOUND', key))
             return None, None, False, None
-        dates.append(date)
+        normalized_dates.append(date)
         ongoing |= present
-    if ongoing and (not explicit_ongoing or dates[1] is not None):
+    if ongoing and (not explicit_ongoing or normalized_dates[1] is not None):
         issues.append(Issue('QUOTE_NOT_FOUND', 'ongoing'))
         return None, None, False, None
-    start, end = dates
+    start, end = normalized_dates
     # Mixed precision years represent intervals, not invented months.
     if start is not None and end is not None:
         earliest_start = start if len(start) == 7 else start + '-01'
@@ -312,15 +323,19 @@ def validate_period(
 def validate_experiences(
     text: str,
     block: Block,
+    *,
+    dates: str = 'v1',
 ) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     """Validate experience records and retain their source evidence."""
     data = parse_response(text, EXPERIENCE_SCHEMA)
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
-    return _experiences(data, block)
+    return _experiences(data, block, dates=dates)
 
 
-def _experiences(data: dict, block: Block) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
+def _experiences(
+    data: dict, block: Block, *, dates: str = 'v1'
+) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     experiences, issues = [], []
     for item in data['experiences']:
         title, title_evidence = supported(
@@ -337,7 +352,7 @@ def _experiences(data: dict, block: Block) -> tuple[tuple[Experience, ...], tupl
             'company',
             issues,
         )
-        start, end, ongoing, period = validate_period(item, block, issues)
+        start, end, ongoing, period = validate_period(item, block, issues, dates=dates)
         if title is None and company is None:
             issues.append(Issue('EXPERIENCE_WITHOUT_ROLE'))
             continue
@@ -359,13 +374,14 @@ def validate_whole(
     block: Block,
     *,
     whole_personal: bool = True,
+    dates: str = 'v1',
 ) -> tuple[tuple[FieldValue, ...], tuple[Experience, ...], tuple[Issue, ...]]:
     """Parse once and apply the same evidence rules as block extraction."""
     data = parse_response(text, WHOLE_SCHEMA if whole_personal else EXPERIENCE_SCHEMA)
     if data is None:
         return (), (), (Issue('LLM_INVALID_JSON'),)
     fields, personal_issues = _personal(data, block) if whole_personal else ((), ())
-    experiences, experience_issues = _experiences(data, block)
+    experiences, experience_issues = _experiences(data, block, dates=dates)
     return fields, experiences, (*personal_issues, *experience_issues)
 
 
@@ -396,14 +412,15 @@ def _line_value(
     return None, None
 
 
-def _period_continues(text: str, following: str) -> bool:
+def _period_continues(text: str, following: str, *, dates: str = 'v1') -> bool:
     """Require an explicit range boundary or an unfinished date before joining lines."""
     text, following = text.strip(), following.strip()
+    date_token = DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
     connector = r'(?:[-–—~]|\b(?:to|đến)\b)'
     if (
         re.search(connector + r'$', text, re.IGNORECASE)
         or re.match(connector, following, re.IGNORECASE)
-        or DATE_TOKEN.match(following)
+        or date_token.match(following)
         or PRESENT_TOKEN.match(following)
     ):
         return True
@@ -422,12 +439,17 @@ def _period_continues(text: str, following: str) -> bool:
     # The tail of a complete date (e.g. the 01 in 2020-01) is not a continuation.
     return partial is not None and not any(
         match.start() < partial.end() and partial.start() < match.end()
-        for match in DATE_TOKEN.finditer(text)
+        for match in date_token.finditer(text)
     )
 
 
 def _line_period(
-    item: dict, table: dict[int, Span], issues: list[Issue]
+    item: dict,
+    table: dict[int, Span],
+    issues: list[Issue],
+    *,
+    dates: str = 'v1',
+    occupied_lines: frozenset[int] = frozenset(),
 ) -> tuple[str | None, str | None, bool, Evidence | None]:
     number = item['periodLine']
     if number is None and not item['ongoing']:
@@ -437,7 +459,7 @@ def _line_period(
         issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
         return None, None, False, None
     text = span.text
-    tokens = find_dates(text)
+    tokens = find_dates(text, style=dates)
     following = table.get(number + 1)
     if (
         len(tokens) == 1
@@ -445,15 +467,23 @@ def _line_period(
         and following is not None
         and following.page == span.page
         and span.end == following.start
-        and _period_continues(text, following.text)
+        and (
+            dates != 'v2'
+            or (
+                number + 1 not in occupied_lines
+                and len(find_dates(following.text, style=dates)) <= 1
+            )
+        )
+        and _period_continues(text, following.text, dates=dates)
     ):
         # A single period Evidence cannot represent an omitted source gap.
         text += following.text
-        tokens = find_dates(text)
-    matches = list(DATE_TOKEN.finditer(text))
+        tokens = find_dates(text, style=dates)
+    date_token = DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
+    matches = list(date_token.finditer(text))
     for match in matches:
         try:
-            normalize_date(match.group())
+            normalize_date(match.group(), style=dates)
         except ValueError:
             issues.append(Issue('INVALID_DATE', 'period'))
             return None, None, False, None
@@ -479,21 +509,34 @@ def _line_period(
         },
         period_block,
         issues,
+        dates=dates,
     )
 
 
 def validate_line_experiences(
-    text: str, table: dict[int, Span]
+    text: str, table: dict[int, Span], *, dates: str = 'v1'
 ) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     """Resolve short model values and derive periods from numbered source lines."""
     data = parse_response(text, LINES_EXPERIENCE_SCHEMA)
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
     rows, issues = [], []
-    for item in data['experiences']:
+    item_lines = (
+        [_experience_lines(item, table) for item in data['experiences']] if dates == 'v2' else []
+    )
+    for index, item in enumerate(data['experiences']):
         title, title_evidence = _line_value(item['title'], table, 'title', issues)
         company, company_evidence = _line_value(item['company'], table, 'company', issues)
-        start, end, ongoing, period = _line_period(item, table, issues)
+        # An adjacent item's explicit evidence is not a continuation of this period.
+        occupied_lines = frozenset(
+            number
+            for other_index, numbers in enumerate(item_lines)
+            if other_index != index
+            for number in numbers
+        )
+        start, end, ongoing, period = _line_period(
+            item, table, issues, dates=dates, occupied_lines=occupied_lines
+        )
         if title is None and company is None:
             issues.append(Issue('EXPERIENCE_WITHOUT_ROLE'))
             continue
@@ -508,6 +551,21 @@ def validate_line_experiences(
         }
         rows.append(Experience(title, company, start, end, ongoing, evidence))
     return tuple(rows), tuple(issues)
+
+
+def _experience_lines(item: dict, table: dict[int, Span]) -> frozenset[int]:
+    """Reserve explicit references and the actual lines resolved by neighbor tolerance."""
+    numbers = {item['title']['line'], item['company']['line'], item['periodLine']} - {None}
+    for field in ('title', 'company'):
+        _, evidence = _line_value(item[field], table, field, [])
+        if evidence is not None:
+            numbers.update(
+                number
+                for number, span in table.items()
+                if span.page == evidence.page
+                and span.start <= evidence.start < evidence.end <= span.end
+            )
+    return frozenset(numbers)
 
 
 def validate_line_personal(

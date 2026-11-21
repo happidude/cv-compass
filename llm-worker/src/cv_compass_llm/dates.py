@@ -45,6 +45,32 @@ DATE_TOKEN = re.compile(
     + r')(?!\w|[/.][0-9]|,[0-9])',
     re.IGNORECASE,
 )
+# Keep the v1 token grammar independent: DOB and segmentation still use it.
+ENGLISH_V2 = '(' + ENGLISH_MONTH + r')\.?[,]?[\x27’]?(?:\s*[-–—]\s*|\s+)([0-9]{4})'
+ENGLISH_SHORT_YEAR = (
+    '(' + ENGLISH_MONTH + r')(?:[ \t]+[.\x27’]?[ \t]*|[.\x27’][ \t]*)([0-9]{2})'
+    r'(?!\w|[ \t]*[:/]|[ \t]*(?:,[ \t]*)?[0-9]{4}\b)'
+)
+DOTTED_MONTH_YEAR = r'([0-9]{1,2})[ \t]*\.[ \t]*([0-9]{4})'
+DATE_TOKEN_V2 = re.compile(
+    r'(?<![\w/])(?<![0-9][.,:])(?:'
+    + '|'.join(
+        (
+            VIETNAMESE,
+            ENGLISH_MONTH_DAY,
+            ENGLISH_DAY_MONTH,
+            ENGLISH_V2,
+            ENGLISH_SHORT_YEAR,
+            NUMERIC,
+            DOTTED_MONTH_YEAR,
+        )
+    )
+    + r')(?!\w|[/.][0-9]|,[0-9])',
+    re.IGNORECASE,
+)
+PAGE_MARKER = re.compile(r'(?<!\w)(?:page|p\.|trang|tr\.)[ \t]*$', re.IGNORECASE)
+NUMERIC_CHAIN = re.compile(r'(?<!\w)[0-9]+[ \t]*\.[ \t]*[0-9]{1,2}[ \t]*\.[ \t]*[0-9]{4}(?![0-9])')
+FOUR_DIGIT_YEAR = re.compile(r'(?<![0-9])(?:19[5-9][0-9]|20[0-9]{2}|2100)(?![0-9])')
 PRESENT = (
     'present',
     'now',
@@ -62,6 +88,17 @@ PRESENT_TOKEN = re.compile(
 )
 PHONE = re.compile(r'(?<![\w+])\+?\(?[0-9]+(?:[ \t().-]+[0-9]+)*\)?(?!\w)')
 NUMERIC_RANGE = re.compile(r'(' + NUMERIC + r')\s*[-–—]\s*(' + NUMERIC + r')')
+NUMERIC_RANGE_V2 = re.compile(
+    r'(?P<start>'
+    + DOTTED_MONTH_YEAR
+    + '|'
+    + NUMERIC
+    + r')\s*[-–—]\s*(?P<end>'
+    + DOTTED_MONTH_YEAR
+    + '|'
+    + NUMERIC
+    + ')'
+)
 
 
 def _parts(text: str) -> tuple[int, int | None, int | None, bool] | None:
@@ -110,8 +147,18 @@ def parse_birth_date(text: str) -> tuple[str | None, bool]:
     return value, bool(day_first and day <= 12 and month <= 12)
 
 
-def parse_date(text: str) -> str | None:
+def parse_date(text: str, *, style: str = 'v1', current_year: int | None = None) -> str | None:
     """Parse one explicit date, retaining only year or year-month precision."""
+    if style == 'v2':
+        if match := re.fullmatch(ENGLISH_SHORT_YEAR, text.strip(), re.IGNORECASE):
+            pivot = (date.today().year if current_year is None else current_year) % 100 + 1
+            year = int(match[2])
+            year += 2000 if year <= pivot else 1900
+            return parse_date(f'{year:04d}-{MONTH_NUMBERS[match[1].casefold()]:02d}')
+        if match := re.fullmatch(ENGLISH_V2, text.strip(), re.IGNORECASE):
+            return parse_date(f'{match[2]}-{MONTH_NUMBERS[match[1].casefold()]:02d}')
+        if match := re.fullmatch(DOTTED_MONTH_YEAR, text.strip()):
+            return parse_date(f'{match[2]}-{int(match[1]):02d}')
     value, _ = parse_birth_date(text)
     return value[:7] if value is not None else None
 
@@ -132,8 +179,46 @@ def _tokens(quote: str) -> list[str]:
     ]
 
 
-def find_dates(quote: str) -> list[str]:
+def _tokens_v2(quote: str) -> list[str]:
+    excluded = []
+    explicit_year = FOUR_DIGIT_YEAR.search(quote) is not None
+    for match in PHONE.finditer(quote):
+        digits = sum(char.isdigit() for char in match.group())
+        date_range = NUMERIC_RANGE_V2.fullmatch(match.group())
+        if 9 <= digits <= 15 and not (
+            date_range
+            and parse_date(date_range['start'], style='v2')
+            and parse_date(date_range['end'], style='v2')
+        ):
+            excluded.append((match.start(), match.end()))
+    for match in NUMERIC_CHAIN.finditer(quote):
+        # Consume malformed day.month.year runs without swallowing sentence dots after years.
+        if (
+            re.search(DOTTED_MONTH_YEAR, match.group())
+            and not re.fullmatch(DOTTED_MONTH_YEAR, match.group())
+            and parse_date(match.group()) is None
+        ):
+            excluded.append((match.start(), match.end()))
+    return [
+        match.group()
+        for match in DATE_TOKEN_V2.finditer(quote)
+        if not (
+            re.fullmatch(DOTTED_MONTH_YEAR, match.group())
+            and PAGE_MARKER.search(quote[: match.start()])
+        )
+        and not (explicit_year and re.fullmatch(ENGLISH_SHORT_YEAR, match.group(), re.IGNORECASE))
+        and not any(left < match.end() and match.start() < right for left, right in excluded)
+    ]
+
+
+def find_dates(quote: str, *, style: str = 'v1', current_year: int | None = None) -> list[str]:
     """Collect normalized dates in source order, never nested numeric fragments."""
+    if style == 'v2':
+        return [
+            value
+            for token in _tokens_v2(quote)
+            if (value := parse_date(token, style=style, current_year=current_year)) is not None
+        ]
     return [value for token in _tokens(quote) if (value := parse_date(token)) is not None]
 
 
@@ -149,11 +234,13 @@ def has_present(quote: str) -> bool:
     return PRESENT_TOKEN.search(quote) is not None
 
 
-def normalize_date(value: str) -> tuple[str | None, bool]:
+def normalize_date(
+    value: str, *, style: str = 'v1', current_year: int | None = None
+) -> tuple[str | None, bool]:
     """Compatibility wrapper for validators using the previous raising interface."""
     if PRESENT_TOKEN.fullmatch(value.strip()):
         return None, True
-    normalized = parse_date(value)
+    normalized = parse_date(value, style=style, current_year=current_year)
     if normalized is None:
         raise ValueError('INVALID_DATE')
     return normalized, False

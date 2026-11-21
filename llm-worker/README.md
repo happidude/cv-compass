@@ -776,6 +776,56 @@ Issue được đếm trong log pull, `run-summary.json` và bench
 `issues.PERSONAL_EMPTY`; không gửi backend và không đổi giá trị gửi backend.
 Test tổng hợp A1 nằm ở `tests/test_a1_clean_names.py`, gồm khóa SHA-256 cho `raw`.
 
+## Định dạng ngày kinh nghiệm mở rộng (A2)
+
+`CVC_LLM_DATES=v1|v2` mặc định `v1`, giữ nguyên cách đọc ngày hiện có.
+Bật `v2` qua `--dates v2` cho `run`/`pull`, môi trường hoặc `.env`, theo thứ tự
+ưu tiên CLI > môi trường > `.env`; `bench --config` nhận cùng key qua
+`BENCH_ENV_KEYS`. Giá trị khác trả `INVALID_DATES`; `pull` thêm tên key
+`CVC_LLM_DATES`, không in giá trị đã nhập. `.env.example` có mặc định
+`CVC_LLM_DATES=v1`; có thể đặt `v2` trong cấu hình riêng khi cần thử.
+
+Chỉ ngày kinh nghiệm dùng v2; ngày sinh và nhận diện ngày của segmenter vẫn
+giữ v1. Kết quả kinh nghiệm vẫn chỉ có `YYYY` hoặc `YYYY-MM`:
+
+- Tên tháng tiếng Anh đầy đủ/viết tắt, kể cả `Sept`, với năm hai chữ số:
+  `May 21 – Jul 23` → `2021-05` đến `2023-07`, `Aug 19` → `2019-08`.
+  Cho phép dấu chấm hoặc nháy `'`/`’` cạnh tên tháng/năm. Năm `yy` thành
+  `20yy` nếu `yy ≤ (năm hiện tại % 100) + 1`, còn lại thành `19yy`.
+  Mọi kết quả phải nằm trong 1950–2100 như v1; bỏ qua năm ngoài khoảng này.
+  Ví dụ năm hiện tại 2026: `Jan 27` → `2027-01`, `Jan 99` → `1999-01`;
+  `Jan 28`, `Jan 45` và năm trần `1932` không tạo token ngày.
+  Ngày đầy đủ như `May 21, 2019` hoặc `May 21 2019` vẫn cho `2019-05`;
+  không đọc `Mar 21st` thiếu năm thành tháng/năm. Khi cùng quote/dòng có
+  năm bốn chữ số trong 1950–2100, không đọc thêm năm hai chữ số: ví dụ
+  `May 21 – Jun 3, 2019` chỉ cho `2019-06`, giống v1.
+- Tháng.năm với khoảng trắng quanh dấu chấm: `08.2022`, `08. 2022`,
+  `08 .2022` → `2022-08`; `2019 – 08. 2022` giữ năm bắt đầu và tháng kết thúc.
+  Chỉ dạng tháng.năm bị bỏ qua khi có nhãn `page`, `p.`, `trang`, `tr.`;
+  `Nha Trang 2019 – 2021` vẫn giữ cả hai năm. Bỏ qua phần nằm trong chuỗi
+  số dài như `12.08. 2022`; vẫn loại số điện thoại và giờ như `08:20`.
+  Dấu chấm sau năm như `2019. 2020` vẫn giữ cả hai năm giống v1.
+- Dấu xen giữa tên tháng và năm: `Sep’- 2010`, `Sept'-2010` → `2010-09`,
+  `Apr - 2016` → `2016-04`, `Feb – 2017` → `2017-02`.
+- Kỳ mở cuối thiếu từ chỉ hiện tại: `08.2022 -` hoặc `2022 –` chỉ có ngày
+  bắt đầu, ngày kết thúc `null`, `ongoing=false`.
+- Tháng viết sai như `Arp 2006`, `Decem 2006` chỉ cho `2006`; không sửa
+  chính tả hoặc đoán tháng. Nếu model trả `2006-04` nhưng quote chỉ chứng minh
+  năm `2006`, v2 hạ độ chính xác xuống `2006`. V1 vẫn từ chối giá trị đó.
+
+Trong evidence `lines`, v2 không nối kỳ sang dòng evidence được mục khác
+chỉ định. V1 giữ hành vi nối dòng hiện có, kể cả trường hợp hai dòng chỉ có
+năm liền nhau bị nối nhầm; test A2 ghi nhận khác biệt này.
+Quy tắc thận trọng giữ cả dòng được model chỉ định và dòng title/company
+được tìm thấy ở lân cận; tham chiếu nhầm có thể làm bỏ nối kỳ hợp lệ.
+
+`promptVersion` không đổi vì cờ ngày không đi vào prompt. Cờ chỉ được ghi
+trong cấu hình bench/run (`run-summary.json` có `dates`), không thêm vào
+payload backend hay event khởi động pull. Luồng pull đã truyền config vào
+pipeline nên không cần sửa `pull.py`. Ngày kinh nghiệm giữ giới hạn năm
+1950–2100 của backend, kể cả sau khi chuyển năm hai chữ số bằng pivot.
+Test tổng hợp ở `tests/test_a2_dates.py`; kiểm tra parser dùng `current_year=2026`.
+
 ## Gọn đầu vào model (O6)
 
 | Biến | Mặc định | Giá trị |
