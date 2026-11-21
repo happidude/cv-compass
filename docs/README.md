@@ -5,6 +5,7 @@ Mặc định đọc root + AGENTS component + spec; nguồn kích hoạt chi ti
 
 | Khi cần | Nguồn tra cứu |
 | --- | --- |
+| Quyết định kiến trúc (ADR) | [ADR-0001 chuẩn hóa & Search v1](adr/ADR-0001-search-normalization.md) |
 | Chọn mức/handoff | [Workflow](AGENT_WORKFLOW.md) |
 | Xác định phạm vi cần duyệt, sửa kiến trúc/dữ liệu | [Policy tham chiếu](AGENT_POLICY.md) |
 | Branch/commit/PR | [Git](CV_COMPASS_GIT_WORKFLOW.md) |
