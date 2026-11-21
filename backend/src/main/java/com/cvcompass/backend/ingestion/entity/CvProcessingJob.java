@@ -22,7 +22,7 @@ import org.hibernate.type.SqlTypes;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "\"CV_PROCESSING_JOBS\"")
+@Table(schema = "\"INGESTION\"", name = "\"PROCESSING_JOBS\"")
 public class CvProcessingJob extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

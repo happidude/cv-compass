@@ -54,8 +54,8 @@ class OcrJobIntegrationTests {
 
     @BeforeEach
     void ownSchema() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
     }
 
     private CvProcessingJob seed() {
@@ -91,7 +91,7 @@ class OcrJobIntegrationTests {
 
     private long attemptId(OcrClaim claim) {
         return jdbc.queryForObject(
-                "SELECT \"ID\" FROM \"CV_OCR_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                "SELECT \"ID\" FROM \"INGESTION\".\"OCR_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                 Long.class,
                 claim.attemptId());
     }
@@ -106,7 +106,7 @@ class OcrJobIntegrationTests {
     private void expire(OcrClaim claim) {
         jdbc.update(
                 """
-            UPDATE "CV_OCR_ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '20 seconds',
+            UPDATE "INGESTION"."OCR_ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '20 seconds',
             "LEASE_EXPIRES_AT"=clock_timestamp()-interval '10 seconds' WHERE "PUBLIC_ID"=?
             """,
                 claim.attemptId());
@@ -115,14 +115,14 @@ class OcrJobIntegrationTests {
     private void releaseQuarantine(OcrClaim claim) {
         jdbc.update(
                 """
-            UPDATE "CV_OCR_ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '40 seconds',
+            UPDATE "INGESTION"."OCR_ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '40 seconds',
             "LEASE_EXPIRES_AT"=clock_timestamp()-interval '30 seconds',
             "HARD_DEADLINE_AT"=clock_timestamp()-interval '20 seconds',
             "RECLAIM_AFTER"=clock_timestamp()-interval '10 seconds' WHERE "PUBLIC_ID"=?
             """,
                 claim.attemptId());
         jdbc.update(
-                "UPDATE \"CV_PROCESSING_JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"PROCESSING_JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
                 claim.jobId());
     }
 
@@ -302,7 +302,7 @@ class OcrJobIntegrationTests {
                         () ->
                                 jdbc.update(
                                         """
-            INSERT INTO "CV_PROCESSING_JOBS" ("CV_DOCUMENT_ID","STATUS","PROFILE_REVISION","GENERATION","MAX_ATTEMPTS","ATTEMPTS_STARTED","NEXT_ATTEMPT_AT","ADMISSION_SNAPSHOT")
+            INSERT INTO "INGESTION"."PROCESSING_JOBS" ("CV_DOCUMENT_ID","STATUS","PROFILE_REVISION","GENERATION","MAX_ATTEMPTS","ATTEMPTS_STARTED","NEXT_ATTEMPT_AT","ADMISSION_SNAPSHOT")
             VALUES (?,'PENDING','different-profile',1,3,0,clock_timestamp(),'{}'::jsonb)
             """,
                                         job.getDocument().getId()))
@@ -314,9 +314,9 @@ class OcrJobIntegrationTests {
                         () ->
                                 jdbc.update(
                                         """
-            INSERT INTO "CV_EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID","EXTRACTION_METHOD","OCR_RESULT","OCR_STATUS","PROFILE_REVISION","PROVENANCE")
+            INSERT INTO "INGESTION"."EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID","EXTRACTION_METHOD","OCR_RESULT","OCR_STATUS","PROFILE_REVISION","PROVENANCE")
             SELECT "CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID","EXTRACTION_METHOD","OCR_RESULT","OCR_STATUS","PROFILE_REVISION","PROVENANCE"
-            FROM "CV_EXTRACTIONS" WHERE "PROCESSING_JOB_ID"=?
+            FROM "INGESTION"."EXTRACTIONS" WHERE "PROCESSING_JOB_ID"=?
             """,
                                         job.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
@@ -381,7 +381,7 @@ class OcrJobIntegrationTests {
                 .isEqualTo(JobStatus.PENDING);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
+                                "SELECT count(*) FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
                                 Integer.class,
                                 job.getId()))
                 .isZero();
@@ -415,7 +415,7 @@ class OcrJobIntegrationTests {
                                                         .executeWithoutResult(
                                                                 tx -> {
                                                                     jdbc.queryForObject(
-                                                                            "SELECT \"ID\" FROM \"CV_PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
+                                                                            "SELECT \"ID\" FROM \"INGESTION\".\"PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
                                                                             Long.class,
                                                                             job.getId());
                                                                     submissionLocked.countDown();
@@ -459,7 +459,7 @@ class OcrJobIntegrationTests {
                 .isEqualTo(JobStatus.PROCESSING);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
+                                "SELECT count(*) FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
                                 Integer.class,
                                 job.getId()))
                 .isZero();
@@ -476,7 +476,7 @@ class OcrJobIntegrationTests {
                         });
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
+                                "SELECT count(*) FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
                                 Integer.class,
                                 job.getId()))
                 .isZero();
@@ -557,7 +557,7 @@ class OcrJobIntegrationTests {
                 .isEqualTo(OcrAttemptStatus.ACTIVE);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
+                                "SELECT count(*) FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"PROCESSING_JOB_ID\"=?",
                                 Integer.class,
                                 job.getId()))
                 .isZero();
@@ -572,7 +572,7 @@ class OcrJobIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_PROCESSING_JOBS\" SET \"CURRENT_ATTEMPT_ID\"=? WHERE \"ID\"=?",
+                                        "UPDATE \"INGESTION\".\"PROCESSING_JOBS\" SET \"CURRENT_ATTEMPT_ID\"=? WHERE \"ID\"=?",
                                         attemptId(claim),
                                         second.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
@@ -585,7 +585,7 @@ class OcrJobIntegrationTests {
                             () ->
                                     jdbc.update(
                                             """
-                INSERT INTO "CV_EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID","EXTRACTION_METHOD","OCR_RESULT","OCR_STATUS","PROFILE_REVISION","PROVENANCE")
+                INSERT INTO "INGESTION"."EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID","EXTRACTION_METHOD","OCR_RESULT","OCR_STATUS","PROFILE_REVISION","PROVENANCE")
                 VALUES (?,?,?,'NONE',?::jsonb,'success',?,'{}'::jsonb)
                 """,
                                             claim.documentId(),
@@ -598,13 +598,13 @@ class OcrJobIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_PROCESSING_JOBS\" SET \"MAX_ATTEMPTS\"=4 WHERE \"ID\"=?",
+                                        "UPDATE \"INGESTION\".\"PROCESSING_JOBS\" SET \"MAX_ATTEMPTS\"=4 WHERE \"ID\"=?",
                                         first.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_OCR_ATTEMPTS\" SET \"STATUS\"='EXPIRED',\"FINISHED_AT\"=clock_timestamp(),\"END_REASON\"=NULL WHERE \"ID\"=?",
+                                        "UPDATE \"INGESTION\".\"OCR_ATTEMPTS\" SET \"STATUS\"='EXPIRED',\"FINISHED_AT\"=clock_timestamp(),\"END_REASON\"=NULL WHERE \"ID\"=?",
                                         attemptId(claim)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
@@ -620,7 +620,7 @@ class OcrJobIntegrationTests {
                             .execute(
                                     tx -> {
                                         jdbc.queryForObject(
-                                                "SELECT \"ID\" FROM \"CV_PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
+                                                "SELECT \"ID\" FROM \"INGESTION\".\"PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
                                                 Long.class,
                                                 job.getId());
                                         var future =
@@ -643,7 +643,7 @@ class OcrJobIntegrationTests {
                                             jdbc.execute("SELECT pg_stat_clear_snapshot()");
                                             int count =
                                                     jdbc.queryForObject(
-                                                            "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%CV_PROCESSING_JOBS%'",
+                                                            "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%INGESTION%PROCESSING_JOBS%'",
                                                             Integer.class);
                                             if (count > 0) {
                                                 blocked = true;
@@ -657,7 +657,7 @@ class OcrJobIntegrationTests {
                                                         "heartbeat is actually waiting for job row lock")
                                                 .isTrue();
                                         jdbc.update(
-                                                "UPDATE \"CV_OCR_ATTEMPTS\" SET \"LEASE_EXPIRES_AT\"=clock_timestamp()+interval '300 milliseconds' WHERE \"PUBLIC_ID\"=?",
+                                                "UPDATE \"INGESTION\".\"OCR_ATTEMPTS\" SET \"LEASE_EXPIRES_AT\"=clock_timestamp()+interval '300 milliseconds' WHERE \"PUBLIC_ID\"=?",
                                                 claim.attemptId());
                                         jdbc.execute("SELECT pg_sleep(0.6)");
                                         return future;

@@ -77,8 +77,8 @@ class DiskImportBatchLimitIntegrationTests {
 
     @Test
     void drainsTwelveFilesInFiveFiveAndTwoWithoutQueuedOrDuplicateImports() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         for (int index = 1; index <= 12; index++) {
             Files.writeString(
                     inbox.resolve("synthetic-%02d.pdf".formatted(index)),
@@ -92,16 +92,22 @@ class DiskImportBatchLimitIntegrationTests {
 
         assertThat(
                         jdbc.queryForList(
-                                "SELECT \"TOTAL_FILES\" FROM \"CV_IMPORT_BATCHES\" ORDER BY \"ID\"",
+                                "SELECT \"TOTAL_FILES\" FROM \"INGESTION\".\"IMPORT_BATCHES\" ORDER BY \"ID\"",
                                 Integer.class))
                 .containsExactly(5, 5, 2);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DOCUMENTS\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\"", Integer.class))
                 .isEqualTo(12);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_ITEMS\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"IMPORT_ITEMS\"",
+                                Integer.class))
                 .isEqualTo(12);
         assertThat(
                         jdbc.queryForList(
-                                "SELECT \"STATE\" FROM \"CV_DISK_IMPORT_FILES\"", String.class))
+                                "SELECT \"STATE\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",
+                                String.class))
                 .hasSize(12)
                 .containsOnly("PROCESSED");
         try (var files = Files.list(inbox.resolve("processed"))) {
@@ -114,16 +120,20 @@ class DiskImportBatchLimitIntegrationTests {
 
         importer.tick();
 
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                Integer.class))
                 .isEqualTo(3);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT sum(\"ATTEMPTS\") FROM \"CV_DISK_IMPORT_FILES\"",
+                                "SELECT sum(\"ATTEMPTS\") FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",
                                 Integer.class))
                 .isEqualTo(12);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_PROCESSING_JOBS\"", Integer.class))
+                                "SELECT count(*) FROM \"INGESTION\".\"PROCESSING_JOBS\"",
+                                Integer.class))
                 .isZero();
     }
 }

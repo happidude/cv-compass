@@ -41,12 +41,12 @@ class DiskImportIntegrationTests {
     }
     @BeforeEach void prepare() throws Exception {
         now.set(Instant.now().plusSeconds(3600)); when(clock.instant()).thenAnswer(call -> now.get());
-        for(String table:List.of("CV_DISK_IMPORT_FILES","CV_DISK_OBSERVATIONS","CV_IMPORT_ITEMS","CV_DOCUMENTS","CV_IMPORT_BATCHES")) jdbc.execute("DELETE FROM \""+table+"\"");
+        for(String table:List.of("INGESTION.DISK_IMPORT_FILES","INGESTION.DISK_OBSERVATIONS","INGESTION.IMPORT_ITEMS","INGESTION.DOCUMENTS","INGESTION.IMPORT_BATCHES")) jdbc.execute("DELETE FROM \""+table.replace(".", "\".\"")+"\"");
         for(Path root:List.of(INBOX.resolve("processed"),INBOX.resolve("failed"),DATABASE.storageRoot())) {
             try(var files=Files.list(root)) { for(var file:files.toList()) Files.delete(file); }
         }
         try(var files=Files.list(INBOX)) { for(var file:files.toList()) if(Files.isRegularFile(file)&&!file.getFileName().toString().startsWith(".")) Files.delete(file); }
-        assertThat(jdbc.queryForObject("SELECT current_schema()",String.class)).isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()",String.class)).isEqualTo(DATABASE.databaseName());
     }
     @AfterAll static void cleanup() throws Exception {
         new TestContextManager(DiskImportIntegrationTests.class).getTestContext().markApplicationContextDirty(DirtiesContext.HierarchyMode.EXHAUSTIVE);
@@ -56,29 +56,29 @@ class DiskImportIntegrationTests {
     }
     void advance() { now.updateAndGet(time -> time.plusSeconds(2)); }
     void stableTurn() { importer.tick(); advance(); importer.tick(); }
-    long count(String table) { return jdbc.queryForObject("SELECT count(*) FROM \""+table+"\"",Long.class); }
-    String state() { return jdbc.queryForObject("SELECT \"STATE\" FROM \"CV_DISK_IMPORT_FILES\"",String.class); }
+    long count(String table) { return jdbc.queryForObject("SELECT count(*) FROM \""+table.replace(".", "\".\"")+"\"",Long.class); }
+    String state() { return jdbc.queryForObject("SELECT \"STATE\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",String.class); }
     void put(String name,String content) throws Exception { Files.writeString(INBOX.resolve(name),content); }
 
     @Test void drainsStableOrderedBatchesAndPreservesFailedResults() throws Exception {
         put("c.pdf",PDF); put("a.pdf",PDF); put("b.pdf","invalid");
-        importer.tick(); assertThat(count("CV_IMPORT_BATCHES")).isZero();
+        importer.tick(); assertThat(count("INGESTION.IMPORT_BATCHES")).isZero();
         advance(); importer.tick();
-        assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(2);
-        assertThat(count("CV_DOCUMENTS")).isEqualTo(2);
-        assertThat(jdbc.queryForList("SELECT \"DISPLAY_NAME\" FROM \"CV_IMPORT_ITEMS\" ORDER BY \"ID\"",String.class)).containsExactly("a.pdf","b.pdf","c.pdf");
-        assertThat(jdbc.queryForList("SELECT \"STATUS\" FROM \"CV_IMPORT_BATCHES\" ORDER BY \"ID\"",String.class)).containsExactly("PARTIAL_FAILED","COMPLETED");
-        assertThat(jdbc.queryForObject("SELECT sum(\"ATTEMPTS\") FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DISK_IMPORT_FILES\" WHERE \"STATE\"='FAILED'",Integer.class)).isEqualTo(1);
-        assertThat(count("CV_PROCESSING_JOBS")).isZero(); assertThat(count("CANDIDATES")).isZero();
-        importer.tick(); assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(2);
+        assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(2);
+        assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(2);
+        assertThat(jdbc.queryForList("SELECT \"DISPLAY_NAME\" FROM \"INGESTION\".\"IMPORT_ITEMS\" ORDER BY \"ID\"",String.class)).containsExactly("a.pdf","b.pdf","c.pdf");
+        assertThat(jdbc.queryForList("SELECT \"STATUS\" FROM \"INGESTION\".\"IMPORT_BATCHES\" ORDER BY \"ID\"",String.class)).containsExactly("PARTIAL_FAILED","COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT sum(\"ATTEMPTS\") FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"INGESTION\".\"DISK_IMPORT_FILES\" WHERE \"STATE\"='FAILED'",Integer.class)).isEqualTo(1);
+        assertThat(count("INGESTION.PROCESSING_JOBS")).isZero(); assertThat(count("CANDIDATE.CANDIDATES")).isZero();
+        importer.tick(); assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(2);
     }
     @Test void changingFilesWaitWithoutAttemptsAndTemporaryFilesAreIgnored() throws Exception {
         put("a.pdf",PDF); put("x.tmp.pdf",PDF); importer.tick(); advance();
         put("a.pdf",PDF+"changed"); importer.tick();
-        assertThat(count("CV_DISK_IMPORT_FILES")).isZero(); assertThat(count("CV_IMPORT_BATCHES")).isZero();
+        assertThat(count("INGESTION.DISK_IMPORT_FILES")).isZero(); assertThat(count("INGESTION.IMPORT_BATCHES")).isZero();
         put("a.pdf",PDF); importer.tick(); advance(); importer.tick();
-        assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
+        assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
     }
     @Test void moveFailureThenRetryNeverUploadsSuccessAgain() throws Exception {
         put("a.pdf",PDF);
@@ -86,46 +86,46 @@ class DiskImportIntegrationTests {
         stableTurn(); assertThat(state()).isEqualTo("SUCCEEDED_MOVE"); assertThat(INBOX.resolve("a.pdf")).exists();
         doCallRealMethod().when(source).move(any(),anyString(),anyBoolean(),anyString());
         advance(); importer.tick();
-        assertThat(state()).isEqualTo("PROCESSED"); assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
-        assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(1); assertThat(INBOX.resolve("a.pdf")).doesNotExist();
+        assertThat(state()).isEqualTo("PROCESSED"); assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
+        assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(1); assertThat(INBOX.resolve("a.pdf")).doesNotExist();
     }
     @Test void transientStorageFailureRetriesThreeTotalAttemptsThenFails() throws Exception {
         put("a.pdf",PDF);
         doThrow(new StorageException(StorageException.Reason.WRITE_FAILED,"synthetic")).when(storage).store(any());
         stableTurn(); assertThat(state()).isEqualTo("RETRY_WAIT");
-        importer.tick(); assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(1);
+        importer.tick(); assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(1);
         advance(); importer.tick(); advance(); importer.tick();
         assertThat(state()).isEqualTo("FAILED");
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
-        assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(3); assertThat(count("CV_DOCUMENTS")).isZero();
-        importer.tick(); assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
+        assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(3); assertThat(count("INGESTION.DOCUMENTS")).isZero();
+        importer.tick(); assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(3);
     }
     @Test void unavailableStorageStopsTurnAndUnresolvedAttemptRequiresAttention() throws Exception {
         put("a.pdf",PDF); put("b.pdf",PDF);
         doThrow(new StorageException(StorageException.Reason.UNAVAILABLE,"synthetic")).when(storage).store(any());
-        stableTurn(); assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(1); assertThat(count("CV_IMPORT_ITEMS")).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DISK_IMPORT_FILES\" WHERE \"STATE\"='IMPORTING'",Integer.class)).isEqualTo(1);
+        stableTurn(); assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(1); assertThat(count("INGESTION.IMPORT_ITEMS")).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"INGESTION\".\"DISK_IMPORT_FILES\" WHERE \"STATE\"='IMPORTING'",Integer.class)).isEqualTo(1);
         doCallRealMethod().when(storage).store(any()); advance(); importer.tick();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DISK_IMPORT_FILES\" WHERE \"STATE\"='NEEDS_ATTENTION'",Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"INGESTION\".\"DISK_IMPORT_FILES\" WHERE \"STATE\"='NEEDS_ATTENTION'",Integer.class)).isEqualTo(1);
         advance(); importer.tick();
-        assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
+        assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
     }
     @Test void durableSuccessSurvivesNewRunnerAndSameNameNewContentIsImported() throws Exception {
         put("a.pdf",PDF); stableTurn();
-        put("a.pdf",PDF); stableTurn(); assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
+        put("a.pdf",PDF); stableTurn(); assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
         put("a.pdf",PDF.replace("synthetic","new synthetic")); stableTurn();
-        assertThat(count("CV_DOCUMENTS")).isEqualTo(2); assertThat(count("CV_DISK_IMPORT_FILES")).isEqualTo(2);
+        assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(2); assertThat(count("INGESTION.DISK_IMPORT_FILES")).isEqualTo(2);
     }
     @Test void historyCommitFailureRollsBackDocumentItemCounterAndCompensates() throws Exception {
         put("a.pdf",PDF);
         jdbc.execute("CREATE FUNCTION reject_import_outcome() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.\"STATE\" = ''SUCCEEDED_MOVE'' THEN RAISE EXCEPTION ''synthetic history commit failure''; END IF; RETURN NEW; END'");
-        jdbc.execute("CREATE CONSTRAINT TRIGGER reject_import_outcome AFTER UPDATE ON \"CV_DISK_IMPORT_FILES\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_import_outcome()");
+        jdbc.execute("CREATE CONSTRAINT TRIGGER reject_import_outcome AFTER UPDATE ON \"INGESTION\".\"DISK_IMPORT_FILES\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_import_outcome()");
         try {
-            stableTurn(); assertThat(count("CV_DOCUMENTS")).isZero(); assertThat(count("CV_IMPORT_ITEMS")).isZero();
-            assertThat(jdbc.queryForObject("SELECT \"SUCCESS_COUNT\" FROM \"CV_IMPORT_BATCHES\"",Integer.class)).isZero();
+            stableTurn(); assertThat(count("INGESTION.DOCUMENTS")).isZero(); assertThat(count("INGESTION.IMPORT_ITEMS")).isZero();
+            assertThat(jdbc.queryForObject("SELECT \"SUCCESS_COUNT\" FROM \"INGESTION\".\"IMPORT_BATCHES\"",Integer.class)).isZero();
             assertThat(state()).isEqualTo("IMPORTING"); assertThat(INBOX.resolve("a.pdf")).exists();
             try(var files=Files.list(DATABASE.storageRoot())) { assertThat(files.count()).isZero(); }
-        } finally { jdbc.execute("DROP TRIGGER reject_import_outcome ON \"CV_DISK_IMPORT_FILES\""); jdbc.execute("DROP FUNCTION reject_import_outcome()"); }
+        } finally { jdbc.execute("DROP TRIGGER reject_import_outcome ON \"INGESTION\".\"DISK_IMPORT_FILES\""); jdbc.execute("DROP FUNCTION reject_import_outcome()"); }
     }
     @Test void overlappingTicksDoNotCreateOverlappingWork() throws Exception {
         var entered=new CountDownLatch(1); var release=new CountDownLatch(1);
@@ -144,9 +144,9 @@ class DiskImportIntegrationTests {
         stableTurn(); advance(); importer.tick(); advance(); importer.tick();
         now.updateAndGet(time -> time.plusSeconds(10)); importer.tick();
         assertThat(state()).isEqualTo("NEEDS_ATTENTION"); assertThat(INBOX.resolve("a.pdf")).exists();
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT \"MOVE_ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
-        assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT \"MOVE_ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
+        assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
     }
     @Test void missingCommittedStorageRequiresAttentionInsteadOfReupload() throws Exception {
         put("a.pdf",PDF);
@@ -155,8 +155,8 @@ class DiskImportIntegrationTests {
         try(var files=Files.list(DATABASE.storageRoot())) { for(var file:files.toList()) Files.delete(file); }
         advance(); importer.tick();
         assertThat(state()).isEqualTo("NEEDS_ATTENTION"); assertThat(INBOX.resolve("a.pdf")).exists();
-        assertThat(jdbc.queryForObject("SELECT \"MOVE_ERROR_CODE\" FROM \"CV_DISK_IMPORT_FILES\"",String.class)).isEqualTo("STORED_FILE_MISSING");
-        assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT \"MOVE_ERROR_CODE\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",String.class)).isEqualTo("STORED_FILE_MISSING");
+        assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
     }
     @Test void sourceChangingAfterFingerprintDoesNotConsumeAttempt() throws Exception {
         put("a.pdf",PDF);
@@ -167,33 +167,33 @@ class DiskImportIntegrationTests {
         }).when(source).fingerprint(any());
         stableTurn();
         assertThat(state()).isEqualTo("RETRY_WAIT");
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isZero();
-        assertThat(count("CV_DOCUMENTS")).isZero();
-        assertThat(jdbc.queryForObject("SELECT \"ERROR_CODE\" FROM \"CV_IMPORT_ITEMS\"",String.class)).isEqualTo("SOURCE_CHANGED");
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isZero();
+        assertThat(count("INGESTION.DOCUMENTS")).isZero();
+        assertThat(jdbc.queryForObject("SELECT \"ERROR_CODE\" FROM \"INGESTION\".\"IMPORT_ITEMS\"",String.class)).isEqualTo("SOURCE_CHANGED");
     }
     @Test void batchCreationCommitFailureHasBoundedDurableClaims() throws Exception {
         put("a.pdf",PDF);
         jdbc.execute("CREATE FUNCTION reject_disk_batch() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''synthetic batch creation failure''; END'");
-        jdbc.execute("CREATE CONSTRAINT TRIGGER reject_disk_batch AFTER INSERT ON \"CV_IMPORT_BATCHES\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_disk_batch()");
+        jdbc.execute("CREATE CONSTRAINT TRIGGER reject_disk_batch AFTER INSERT ON \"INGESTION\".\"IMPORT_BATCHES\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_disk_batch()");
         try {
             stableTurn(); assertThat(state()).isEqualTo("QUEUED");
             for(int turn=0;turn<10;turn++) { advance(); importer.tick(); }
             assertThat(state()).isEqualTo("NEEDS_ATTENTION");
-            assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
-            assertThat(count("CV_IMPORT_BATCHES")).isZero(); assertThat(count("CV_DOCUMENTS")).isZero();
+            assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
+            assertThat(count("INGESTION.IMPORT_BATCHES")).isZero(); assertThat(count("INGESTION.DOCUMENTS")).isZero();
             assertThat(INBOX.resolve("a.pdf")).exists();
-        } finally { jdbc.execute("DROP TRIGGER reject_disk_batch ON \"CV_IMPORT_BATCHES\""); jdbc.execute("DROP FUNCTION reject_disk_batch()"); }
+        } finally { jdbc.execute("DROP TRIGGER reject_disk_batch ON \"INGESTION\".\"IMPORT_BATCHES\""); jdbc.execute("DROP FUNCTION reject_disk_batch()"); }
     }
     @Test void preparationReadFailuresAndImportRetriesShareOneAttemptBudget() throws Exception {
         put("a.pdf",PDF);
         doThrow(new IOException("synthetic hash read failure")).doCallRealMethod().when(source).fingerprint(any());
         doThrow(new StorageException(StorageException.Reason.WRITE_FAILED,"synthetic")).when(storage).store(any());
         stableTurn(); advance(); importer.tick();
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(2);
         advance(); importer.tick();
         assertThat(state()).isEqualTo("FAILED");
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
-        assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
+        assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(2);
     }
     @Test void readFailuresAfterAnImportFailureStillStopAtThreeTotalAttempts() throws Exception {
         put("a.pdf",PDF);
@@ -202,16 +202,16 @@ class DiskImportIntegrationTests {
         doThrow(new IOException("synthetic read failure")).when(source).fingerprint(any());
         advance(); importer.tick(); advance(); importer.tick(); advance(); importer.tick();
         assertThat(state()).isEqualTo("NEEDS_ATTENTION");
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
-        assertThat(jdbc.queryForObject("SELECT \"READ_ATTEMPTS\" FROM \"CV_DISK_OBSERVATIONS\"",Integer.class)).isEqualTo(2);
-        verify(source,times(3)).fingerprint(any()); assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT \"READ_ATTEMPTS\" FROM \"INGESTION\".\"DISK_OBSERVATIONS\"",Integer.class)).isEqualTo(2);
+        verify(source,times(3)).fingerprint(any()); assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(1);
     }
     @Test void fingerprintAndStoredContentMismatchCompensatesWithoutConsumingAttempt() throws Exception {
         put("a.pdf",PDF); doReturn("a".repeat(64)).when(source).fingerprint(any());
         stableTurn(); assertThat(state()).isEqualTo("RETRY_WAIT");
-        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\"",Integer.class)).isZero();
-        assertThat(count("CV_DOCUMENTS")).isZero();
-        assertThat(jdbc.queryForObject("SELECT \"ERROR_CODE\" FROM \"CV_IMPORT_ITEMS\"",String.class)).isEqualTo("SOURCE_CHANGED");
+        assertThat(jdbc.queryForObject("SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\"",Integer.class)).isZero();
+        assertThat(count("INGESTION.DOCUMENTS")).isZero();
+        assertThat(jdbc.queryForObject("SELECT \"ERROR_CODE\" FROM \"INGESTION\".\"IMPORT_ITEMS\"",String.class)).isEqualTo("SOURCE_CHANGED");
         try(var files=Files.list(DATABASE.storageRoot())) { assertThat(files.count()).isZero(); }
     }
     @Test void actualStorageRootLossStopsBeforeCreatingAnyBatch() throws Exception {
@@ -219,7 +219,7 @@ class DiskImportIntegrationTests {
         Path root=DATABASE.storageRoot(); Files.delete(root); Files.writeString(root,"unavailable directory");
         try {
             importer.tick();
-            assertThat(count("CV_IMPORT_BATCHES")).isZero(); assertThat(count("CV_IMPORT_ITEMS")).isZero();
+            assertThat(count("INGESTION.IMPORT_BATCHES")).isZero(); assertThat(count("INGESTION.IMPORT_ITEMS")).isZero();
             assertThat(INBOX.resolve("a.pdf")).exists(); assertThat(INBOX.resolve("b.pdf")).exists();
         } finally {
             Files.delete(root); Files.createDirectory(root);
@@ -231,17 +231,17 @@ class DiskImportIntegrationTests {
         doThrow(new StorageException(StorageException.Reason.WRITE_FAILED,"synthetic")).when(storage).store(any());
         doNothing().doThrow(new StorageException(StorageException.Reason.UNAVAILABLE,"synthetic")).when(storage).verifyAvailable();
         importer.tick();
-        assertThat(count("CV_IMPORT_BATCHES")).isEqualTo(1); assertThat(count("CV_IMPORT_ITEMS")).isZero();
-        assertThat(jdbc.queryForObject("SELECT \"FAILED_COUNT\" FROM \"CV_IMPORT_BATCHES\"",Integer.class)).isZero();
+        assertThat(count("INGESTION.IMPORT_BATCHES")).isEqualTo(1); assertThat(count("INGESTION.IMPORT_ITEMS")).isZero();
+        assertThat(jdbc.queryForObject("SELECT \"FAILED_COUNT\" FROM \"INGESTION\".\"IMPORT_BATCHES\"",Integer.class)).isZero();
         assertThat(INBOX.resolve("a.pdf")).exists(); assertThat(INBOX.resolve("b.pdf")).exists();
         verify(storage,times(1)).store(any());
     }
     @Test void unreadableFingerprintBackoffDoesNotStarveOtherFiles() throws Exception {
         put("a.pdf",PDF); put("b.pdf",PDF);
         doAnswer(call -> { com.cvcompass.backend.ingestion.dto.SourceFile file=call.getArgument(0); if(file.name().equals("a.pdf")) throw new IOException("synthetic read failure"); return call.callRealMethod(); }).when(source).fingerprint(any());
-        stableTurn(); assertThat(count("CV_DOCUMENTS")).isEqualTo(1);
+        stableTurn(); assertThat(count("INGESTION.DOCUMENTS")).isEqualTo(1);
         advance(); importer.tick(); advance(); importer.tick();
-        assertThat(jdbc.queryForObject("SELECT \"READ_ATTEMPTS\" FROM \"CV_DISK_OBSERVATIONS\" WHERE \"FILE_NAME\"='a.pdf'",Integer.class)).isEqualTo(3);
-        assertThat(jdbc.queryForObject("SELECT \"ERROR_CODE\" FROM \"CV_DISK_OBSERVATIONS\" WHERE \"FILE_NAME\"='a.pdf'",String.class)).isEqualTo("SOURCE_READ_NEEDS_ATTENTION");
+        assertThat(jdbc.queryForObject("SELECT \"READ_ATTEMPTS\" FROM \"INGESTION\".\"DISK_OBSERVATIONS\" WHERE \"FILE_NAME\"='a.pdf'",Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT \"ERROR_CODE\" FROM \"INGESTION\".\"DISK_OBSERVATIONS\" WHERE \"FILE_NAME\"='a.pdf'",String.class)).isEqualTo("SOURCE_READ_NEEDS_ATTENTION");
     }
 }

@@ -106,7 +106,7 @@ class M11IntegrationTests {
         }
         var fields =
                 jdbc.queryForMap(
-                        "SELECT \"START_DATE\",\"START_PRECISION\",\"END_DATE\",\"END_PRECISION\" FROM \"CANDIDATE_EXPERIENCES\" WHERE \"ID\"=?",
+                        "SELECT \"START_DATE\",\"START_PRECISION\",\"END_DATE\",\"END_PRECISION\" FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
                         experience.id());
         String present = endpoint.equals("start") ? "START" : "END";
         String absent = endpoint.equals("start") ? "END" : "START";
@@ -147,37 +147,39 @@ class M11IntegrationTests {
         var doc = document();
         long resultId = result(doc, raw(), false);
         long profilesBefore =
-                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE_PROFILES\"", Long.class);
+                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE\".\"PROFILES\"", Long.class);
         long experiencesBefore =
-                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\"", Long.class);
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM \"CANDIDATE\".\"EXPERIENCES\"", Long.class);
         jdbc.execute(
-                "ALTER TABLE \"CANDIDATE_HISTORY\" ADD CONSTRAINT \"TEST_FAIL_PUBLICATION_HISTORY\" CHECK (\"ACTION\"<>'PUBLISH_MAPPING') NOT VALID");
+                "ALTER TABLE \"CANDIDATE\".\"HISTORY\" ADD CONSTRAINT \"TEST_FAIL_PUBLICATION_HISTORY\" CHECK (\"ACTION\"<>'PUBLISH_MAPPING') NOT VALID");
         try {
             assertThatThrownBy(() -> publication.publish(resultId))
                     .isInstanceOf(org.springframework.dao.DataAccessException.class);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                    "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                                     Long.class,
                                     doc.getId()))
                     .isNull();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                     Long.class,
                                     resultId))
                     .isZero();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CANDIDATE_PROFILES\"", Long.class))
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"PROFILES\"", Long.class))
                     .isEqualTo(profilesBefore);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\"", Long.class))
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"EXPERIENCES\"",
+                                    Long.class))
                     .isEqualTo(experiencesBefore);
         } finally {
             jdbc.execute(
-                    "ALTER TABLE \"CANDIDATE_HISTORY\" DROP CONSTRAINT \"TEST_FAIL_PUBLICATION_HISTORY\"");
+                    "ALTER TABLE \"CANDIDATE\".\"HISTORY\" DROP CONSTRAINT \"TEST_FAIL_PUBLICATION_HISTORY\"");
         }
         assertThat(publication.publish(resultId)).isTrue();
     }
@@ -192,7 +194,7 @@ class M11IntegrationTests {
         var proposal = queries.proposals(profile.id(), null, 100).getFirst();
         var historyBefore = revisions.history(profile.id(), null, 100);
         jdbc.execute(
-                "ALTER TABLE \"CANDIDATE_HISTORY\" ADD CONSTRAINT \"TEST_FAIL_USER_HISTORY\" CHECK (\"ACTION\" NOT IN ('EDIT_BASIC','ACCEPT_PROPOSAL')) NOT VALID");
+                "ALTER TABLE \"CANDIDATE\".\"HISTORY\" ADD CONSTRAINT \"TEST_FAIL_USER_HISTORY\" CHECK (\"ACTION\" NOT IN ('EDIT_BASIC','ACCEPT_PROPOSAL')) NOT VALID");
         try {
             assertThatThrownBy(
                             () ->
@@ -220,7 +222,7 @@ class M11IntegrationTests {
             assertThat(revisions.history(before.id(), null, 100)).isEqualTo(historyBefore);
         } finally {
             jdbc.execute(
-                    "ALTER TABLE \"CANDIDATE_HISTORY\" DROP CONSTRAINT \"TEST_FAIL_USER_HISTORY\"");
+                    "ALTER TABLE \"CANDIDATE\".\"HISTORY\" DROP CONSTRAINT \"TEST_FAIL_USER_HISTORY\"");
         }
     }
 
@@ -438,14 +440,14 @@ class M11IntegrationTests {
                                 json.readValue(stream, ExperienceDefinition.class));
             }
         jdbc.update(
-                "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
+                "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
                 extraction,
                 config,
                 v1 ? "literal-mapping/1.0" : "experience-mapping/2.0");
         var mappingClaim = mapping.claim().orElseThrow();
         mapping.complete(mappingClaim, mapping.process(mappingClaim));
         return jdbc.queryForObject(
-                "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                 Long.class,
                 mappingClaim.jobId());
     }
@@ -456,7 +458,7 @@ class M11IntegrationTests {
 
     private long candidate(CvDocument d) {
         return jdbc.queryForObject(
-                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                 Long.class,
                 d.getId());
     }
@@ -470,7 +472,7 @@ class M11IntegrationTests {
     void profileExperienceSummaryUpdatesAfterPublishAndHrExclusion() throws Exception {
         var doc = document();
         jdbc.update(
-                "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"=CAST(? AS timestamptz) WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CREATED_AT\"=CAST(? AS timestamptz) WHERE \"ID\"=?",
                 "2021-06-30T23:59:59Z",
                 doc.getId());
         long mapped = result(doc, raw().replace("2018 - 2021", "January 2020 – Now"), false);
@@ -479,7 +481,7 @@ class M11IntegrationTests {
         var profile = queries.detail(candidate(doc));
         var newerDoc = document();
         jdbc.update(
-                "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"=CAST(? AS timestamptz) WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CREATED_AT\"=CAST(? AS timestamptz) WHERE \"ID\"=?",
                 "2024-06-30T23:59:59Z",
                 newerDoc.getId());
         profile =
@@ -620,7 +622,8 @@ class M11IntegrationTests {
         long r = result(doc, raw(), false);
         var ocrBefore =
                 jdbc.queryForList(
-                        "SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"CV_DOCUMENT_ID\"=?", doc.getId());
+                        "SELECT * FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"CV_DOCUMENT_ID\"=?",
+                        doc.getId());
         assertThat(publication.publish(r)).isTrue();
         assertThat(publication.publish(r)).isFalse();
         var p = queries.detail(candidate(doc));
@@ -630,7 +633,7 @@ class M11IntegrationTests {
         assertThat(p.experiences().getFirst().data().path("evidence")).isNotEmpty();
         assertThat(
                         jdbc.queryForList(
-                                "SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"CV_DOCUMENT_ID\"=?",
+                                "SELECT * FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"CV_DOCUMENT_ID\"=?",
                                 doc.getId()))
                 .isEqualTo(ocrBefore);
     }
@@ -659,7 +662,7 @@ class M11IntegrationTests {
         assertThat(queries.detail(candidate(doc)).experiences()).hasSize(1);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 Integer.class,
                                 r))
                 .isEqualTo(1);
@@ -677,13 +680,13 @@ class M11IntegrationTests {
                         });
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                                 Long.class,
                                 doc.getId()))
                 .isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 Integer.class,
                                 r))
                 .isZero();
@@ -702,7 +705,7 @@ class M11IntegrationTests {
         assertThat(queries.detail(candidate(doc))).isEqualTo(before);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 older))
                 .isEqualTo("SUPERSEDED");
@@ -712,13 +715,13 @@ class M11IntegrationTests {
             publication.publish(skipped);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                    "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                                     Long.class,
                                     other.getId()))
                     .isNull();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                    "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                     String.class,
                                     skipped))
                     .isEqualTo("SKIPPED");
@@ -745,7 +748,7 @@ class M11IntegrationTests {
                         "editor");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"FULL_NAME\" FROM \"CANDIDATE_PROFILES\" WHERE \"CANDIDATE_ID\"=?",
+                                "SELECT \"FULL_NAME\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?",
                                 String.class,
                                 p.id()))
                 .isEqualTo("Synthetic user");
@@ -771,7 +774,7 @@ class M11IntegrationTests {
         assertThat(queries.detail(p.id()).experiences()).isEmpty();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"DELETED\" FROM \"CANDIDATE_EXPERIENCES\" WHERE \"ID\"=?",
+                                "SELECT \"DELETED\" FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
                                 Boolean.class,
                                 key))
                 .isTrue();
@@ -858,7 +861,7 @@ class M11IntegrationTests {
 
     private Login login() throws Exception {
         jdbc.update(
-                "INSERT INTO \"CV_USERS\"(\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES ('synthetic-user',?,'USER') ON CONFLICT DO NOTHING",
+                "INSERT INTO \"IDENTITY\".\"USERS\"(\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES ('synthetic-user',?,'USER') ON CONFLICT DO NOTHING",
                 new BCryptPasswordEncoder(4).encode("synthetic-test-only"));
         var csrf = mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andReturn();
         String token =
@@ -985,13 +988,13 @@ class M11IntegrationTests {
         assertThat(publication.publish(id)).isTrue();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 id))
                 .isEqualTo("SKIPPED");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                                 Long.class,
                                 doc.getId()))
                 .isNull();
@@ -1002,7 +1005,7 @@ class M11IntegrationTests {
         result(document(), raw(), false);
         result(document(), raw(), false);
         jdbc.update(
-                "UPDATE \"CANDIDATE_PUBLICATION_SETTINGS\" SET \"AFTER_ID\"=0,\"UPPER_ID\"=NULL WHERE \"ID\"=1");
+                "UPDATE \"CANDIDATE\".\"PUBLICATION_SETTINGS\" SET \"AFTER_ID\"=0,\"UPPER_ID\"=NULL WHERE \"ID\"=1");
         var sweep =
                 new PublicationSweep(
                         new PublicationRepository(jdbc),
@@ -1011,7 +1014,7 @@ class M11IntegrationTests {
         var observed = new ArrayList<Long>(tx.execute(status -> sweep.reserve(1)));
         Long upper =
                 jdbc.queryForObject(
-                        "SELECT \"UPPER_ID\" FROM \"CANDIDATE_PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
+                        "SELECT \"UPPER_ID\" FROM \"CANDIDATE\".\"PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
                         Long.class);
         assertThat(upper).isNotNull();
         long later = result(document(), raw(), false);
@@ -1021,7 +1024,7 @@ class M11IntegrationTests {
                         new PublicationRepository(jdbc),
                         new CompletedMappings(new CompletedMappingRepository(jdbc), json));
         while (jdbc.queryForObject(
-                        "SELECT \"UPPER_ID\" FROM \"CANDIDATE_PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
+                        "SELECT \"UPPER_ID\" FROM \"CANDIDATE\".\"PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
                         Long.class)
                 != null) observed.addAll(tx.execute(status -> restarted.reserve(1)));
         assertThat(observed).doesNotContain(later);
@@ -1029,7 +1032,7 @@ class M11IntegrationTests {
         do {
             reconciled.addAll(tx.execute(status -> restarted.reserve(1)));
         } while (jdbc.queryForObject(
-                        "SELECT \"UPPER_ID\" FROM \"CANDIDATE_PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
+                        "SELECT \"UPPER_ID\" FROM \"CANDIDATE\".\"PUBLICATION_SETTINGS\" WHERE \"ID\"=1",
                         Long.class)
                 != null);
         assertThat(reconciled).contains(later).containsAll(observed);

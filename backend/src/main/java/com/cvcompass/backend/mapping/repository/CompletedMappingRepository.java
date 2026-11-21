@@ -17,20 +17,20 @@ public class CompletedMappingRepository {
 
     public long upperId() {
         return jdbc.queryForObject(
-                "SELECT COALESCE(max(\"ID\"),0) FROM \"CV_MAPPING_RESULTS\"", Long.class);
+                "SELECT COALESCE(max(\"ID\"),0) FROM \"MAPPING\".\"RESULTS\"", Long.class);
     }
 
     /** Read only the source job identity for publication logging. */
     public Long jobId(long resultId) {
         return jdbc.queryForObject(
-                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"ID\"=?",
+                "SELECT \"JOB_ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"ID\"=?",
                 Long.class,
                 resultId);
     }
 
     public List<Long> scan(long after, long upper, int limit) {
         return jdbc.queryForList(
-                "SELECT r.\"ID\" FROM \"CV_MAPPING_RESULTS\" r JOIN \"CV_MAPPING_JOBS\" j ON j.\"ID\"=r.\"JOB_ID\" WHERE j.\"STATUS\"='COMPLETED' AND r.\"ID\">? AND r.\"ID\"<=? ORDER BY r.\"ID\" LIMIT ?",
+                "SELECT r.\"ID\" FROM \"MAPPING\".\"RESULTS\" r JOIN \"MAPPING\".\"JOBS\" j ON j.\"ID\"=r.\"JOB_ID\" WHERE j.\"STATUS\"='COMPLETED' AND r.\"ID\">? AND r.\"ID\"<=? ORDER BY r.\"ID\" LIMIT ?",
                 Long.class,
                 after,
                 upper,
@@ -42,8 +42,8 @@ public class CompletedMappingRepository {
                 .query(
                         """
    SELECT r."ID",r."SCHEMA_VERSION",r."QUALITY",r."RESULT"::text,j."EXTRACTION_ID",j."CONFIG_ID",e."CV_DOCUMENT_ID"
-   FROM "CV_MAPPING_RESULTS" r JOIN "CV_MAPPING_JOBS" j ON j."ID"=r."JOB_ID"
-   JOIN "CV_EXTRACTIONS" e ON e."ID"=j."EXTRACTION_ID"
+   FROM "MAPPING"."RESULTS" r JOIN "MAPPING"."JOBS" j ON j."ID"=r."JOB_ID"
+   JOIN "INGESTION"."EXTRACTIONS" e ON e."ID"=j."EXTRACTION_ID"
    WHERE r."ID"=? AND j."STATUS"='COMPLETED'
    """,
                         (rs, n) ->

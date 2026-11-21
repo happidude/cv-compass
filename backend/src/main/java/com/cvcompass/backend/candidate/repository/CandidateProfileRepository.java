@@ -30,7 +30,7 @@ public class CandidateProfileRepository {
         return jdbc.query(
                 """
                 SELECT "CANDIDATE_ID","VERSION","FULL_NAME","BASIC_STATE","CREATED_AT"
-    FROM "CANDIDATE_PROFILES" WHERE (?::bigint IS NULL OR "CANDIDATE_ID"<?)
+    FROM "CANDIDATE"."PROFILES" WHERE (?::bigint IS NULL OR "CANDIDATE_ID"<?)
     ORDER BY "CANDIDATE_ID" DESC LIMIT ?
     """,
                 (rs, n) ->
@@ -49,7 +49,7 @@ public class CandidateProfileRepository {
         return jdbc.query(
                 """
    SELECT "VERSION","BASIC"::text,"BASIC_STATE","BASIC_ORIGIN","EXTENSIONS"::text
-   FROM "CANDIDATE_PROFILES" WHERE "CANDIDATE_ID"=?
+   FROM "CANDIDATE"."PROFILES" WHERE "CANDIDATE_ID"=?
    """,
                 (rs, n) ->
                         new ProfileCore(
@@ -66,7 +66,7 @@ public class CandidateProfileRepository {
                 """
    SELECT "ID","STATE","ORIGIN","DOCUMENT_ID","RESULT_ID","DATA"::text,
           "START_DATE","START_PRECISION","END_DATE","END_PRECISION","ONGOING_AS_STATED"
-   FROM "CANDIDATE_EXPERIENCES" WHERE "CANDIDATE_ID"=? AND NOT "DELETED" ORDER BY "ID"
+   FROM "CANDIDATE"."EXPERIENCES" WHERE "CANDIDATE_ID"=? AND NOT "DELETED" ORDER BY "ID"
    """,
                 (rs, n) ->
                         new ExperienceReadRow(
@@ -88,7 +88,7 @@ public class CandidateProfileRepository {
     public List<Proposal> proposals(long id, int size) {
         return jdbc.query(
                 """
-   SELECT "ID","DOCUMENT_ID","RESULT_ID","DATA"::text,"KIND" FROM "CANDIDATE_PROPOSALS"
+   SELECT "ID","DOCUMENT_ID","RESULT_ID","DATA"::text,"KIND" FROM "CANDIDATE"."PROPOSALS"
    WHERE "CANDIDATE_ID"=? AND "STATUS"='OPEN' ORDER BY "RESULT_ID","ID" LIMIT ?
    """,
                 (rs, n) ->
@@ -106,7 +106,7 @@ public class CandidateProfileRepository {
         return jdbc.query(
                 """
    SELECT "ID","VERSION","ACTOR","ACTION","BEFORE"::text,"AFTER"::text,"CREATED_AT"
-   FROM "CANDIDATE_HISTORY" WHERE "CANDIDATE_ID"=? AND (?::bigint IS NULL OR "ID"<?)
+   FROM "CANDIDATE"."HISTORY" WHERE "CANDIDATE_ID"=? AND (?::bigint IS NULL OR "ID"<?)
    ORDER BY "ID" DESC LIMIT ?
    """,
                 (rs, n) ->
@@ -127,14 +127,14 @@ public class CandidateProfileRepository {
     public boolean exists(long id) {
         return Boolean.TRUE.equals(
                 jdbc.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM \"CANDIDATE_PROFILES\" WHERE \"CANDIDATE_ID\"=?)",
+                        "SELECT EXISTS(SELECT 1 FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?)",
                         Boolean.class,
                         id));
     }
 
     public List<Long> lock(long id) {
         return jdbc.queryForList(
-                "SELECT \"VERSION\" FROM \"CANDIDATE_PROFILES\" WHERE \"CANDIDATE_ID\"=? FOR UPDATE",
+                "SELECT \"VERSION\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=? FOR UPDATE",
                 Long.class,
                 id);
     }
@@ -142,10 +142,10 @@ public class CandidateProfileRepository {
     public void revision(
             long id, long version, String actor, String action, String before, String after) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"VERSION\"=\"VERSION\"+1,\"UPDATED_AT\"=clock_timestamp() WHERE \"CANDIDATE_ID\"=?",
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"VERSION\"=\"VERSION\"+1,\"UPDATED_AT\"=clock_timestamp() WHERE \"CANDIDATE_ID\"=?",
                 id);
         jdbc.update(
-                "INSERT INTO \"CANDIDATE_HISTORY\" (\"CANDIDATE_ID\",\"VERSION\",\"ACTOR\",\"ACTION\",\"BEFORE\",\"AFTER\") VALUES (?,?,?,?,?::jsonb,?::jsonb)",
+                "INSERT INTO \"CANDIDATE\".\"HISTORY\" (\"CANDIDATE_ID\",\"VERSION\",\"ACTOR\",\"ACTION\",\"BEFORE\",\"AFTER\") VALUES (?,?,?,?,?::jsonb,?::jsonb)",
                 id,
                 version + 1,
                 actor,
@@ -156,7 +156,7 @@ public class CandidateProfileRepository {
 
     public void basic(long id, JsonNode value, BasicValues fields) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"BASIC\"=?::jsonb,\"FULL_NAME\"=?,\"EMAIL\"=?,\"PHONE\"=?,\"LOCATION\"=?,\"SUMMARY\"=?,\"BASIC_STATE\"='EDITED',\"BASIC_ORIGIN\"='USER' WHERE \"CANDIDATE_ID\"=?",
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"BASIC\"=?::jsonb,\"FULL_NAME\"=?,\"EMAIL\"=?,\"PHONE\"=?,\"LOCATION\"=?,\"SUMMARY\"=?,\"BASIC_STATE\"='EDITED',\"BASIC_ORIGIN\"='USER' WHERE \"CANDIDATE_ID\"=?",
                 value.toString(),
                 fields.fullName(),
                 fields.email(),
@@ -175,7 +175,7 @@ public class CandidateProfileRepository {
             JsonNode extensions) {
         basic(id, value, fields);
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"BASIC_STATE\"=?,\"BASIC_ORIGIN\"=?,\"EXTENSIONS\"=?::jsonb WHERE \"CANDIDATE_ID\"=?",
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"BASIC_STATE\"=?,\"BASIC_ORIGIN\"=?,\"EXTENSIONS\"=?::jsonb WHERE \"CANDIDATE_ID\"=?",
                 state,
                 origin,
                 extensions.toString(),
@@ -184,26 +184,26 @@ public class CandidateProfileRepository {
 
     public void confirmBasic(long id) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"BASIC_STATE\"='CONFIRMED' WHERE \"CANDIDATE_ID\"=?",
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"BASIC_STATE\"='CONFIRMED' WHERE \"CANDIDATE_ID\"=?",
                 id);
     }
 
     public void deleteExperience(UUID experienceId) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_EXPERIENCES\" SET \"DELETED\"=true,\"STATE\"='EDITED',\"ORIGIN\"='USER' WHERE \"ID\"=?",
+                "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"DELETED\"=true,\"STATE\"='EDITED',\"ORIGIN\"='USER' WHERE \"ID\"=?",
                 experienceId);
     }
 
     public void confirmExperience(UUID experienceId) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_EXPERIENCES\" SET \"STATE\"='CONFIRMED' WHERE \"ID\"=?",
+                "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"STATE\"='CONFIRMED' WHERE \"ID\"=?",
                 experienceId);
     }
 
     public List<Proposal> lockProposal(long id, UUID proposalId) {
         return jdbc.query(
                 """
-   SELECT "DOCUMENT_ID","RESULT_ID","DATA"::text,"KIND" FROM "CANDIDATE_PROPOSALS"
+   SELECT "DOCUMENT_ID","RESULT_ID","DATA"::text,"KIND" FROM "CANDIDATE"."PROPOSALS"
    WHERE "ID"=? AND "CANDIDATE_ID"=? AND "STATUS"='OPEN' FOR UPDATE
    """,
                 (rs, n) ->
@@ -219,7 +219,7 @@ public class CandidateProfileRepository {
 
     public void decide(UUID proposalId, String decision, String actor) {
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROPOSALS\" SET \"STATUS\"=?,\"DECIDED_BY\"=?,\"DECIDED_AT\"=clock_timestamp() WHERE \"ID\"=?",
+                "UPDATE \"CANDIDATE\".\"PROPOSALS\" SET \"STATUS\"=?,\"DECIDED_BY\"=?,\"DECIDED_AT\"=clock_timestamp() WHERE \"ID\"=?",
                 "REJECT".equals(decision) ? "REJECTED" : "ACCEPTED",
                 actor,
                 proposalId);
@@ -227,7 +227,7 @@ public class CandidateProfileRepository {
 
     public int experienceCount(long id) {
         return jdbc.queryForObject(
-                "SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\" WHERE \"CANDIDATE_ID\"=?",
+                "SELECT count(*) FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"CANDIDATE_ID\"=?",
                 Integer.class,
                 id);
     }
@@ -235,7 +235,7 @@ public class CandidateProfileRepository {
     public void insertExperience(
             UUID key, long id, JsonNode data, String state, String origin, Long doc, Long result) {
         jdbc.update(
-                "INSERT INTO \"CANDIDATE_EXPERIENCES\" (\"ID\",\"CANDIDATE_ID\",\"DATA\",\"STATE\",\"ORIGIN\",\"DOCUMENT_ID\",\"RESULT_ID\") VALUES (?,?,?::jsonb,?,?,?,?)",
+                "INSERT INTO \"CANDIDATE\".\"EXPERIENCES\" (\"ID\",\"CANDIDATE_ID\",\"DATA\",\"STATE\",\"ORIGIN\",\"DOCUMENT_ID\",\"RESULT_ID\") VALUES (?,?,?::jsonb,?,?,?,?)",
                 key,
                 id,
                 data.toString(),
@@ -255,7 +255,7 @@ public class CandidateProfileRepository {
             ExperienceValues fields) {
         jdbc.update(
                 """
-   UPDATE "CANDIDATE_EXPERIENCES" SET "DATA"=?::jsonb,"STATE"=?,"ORIGIN"=?,"DOCUMENT_ID"=?,"RESULT_ID"=?,
+   UPDATE "CANDIDATE"."EXPERIENCES" SET "DATA"=?::jsonb,"STATE"=?,"ORIGIN"=?,"DOCUMENT_ID"=?,"RESULT_ID"=?,
    "COMPANY_RAW"=?,"COMPANY_NORMALIZED"=?,"TITLE_RAW"=?,"START_DATE"=?,"START_PRECISION"=?,"END_DATE"=?,"END_PRECISION"=?,
    "ONGOING_AS_STATED"=?,"FUNCTION_CODES"=?::jsonb,"INDUSTRY_CODES"=?::jsonb,"SENIORITY_CODE"=?,"DESCRIPTION_RAW"=? WHERE "ID"=?
    """,

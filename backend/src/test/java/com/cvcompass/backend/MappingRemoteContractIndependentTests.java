@@ -101,7 +101,7 @@ class MappingRemoteContractIndependentTests {
     @BeforeEach
     void reset() {
         jdbc.execute(
-                "TRUNCATE \"CANDIDATE_PROPOSALS\",\"CANDIDATE_PUBLICATIONS\",\"CANDIDATE_EXPERIENCES\",\"CV_MAPPING_RESULTS\",\"CV_MAPPING_ATTEMPTS\",\"CV_MAPPING_JOBS\"");
+                "TRUNCATE \"CANDIDATE\".\"PROPOSALS\",\"CANDIDATE\".\"PUBLICATIONS\",\"CANDIDATE\".\"EXPERIENCES\",\"MAPPING\".\"RESULTS\",\"MAPPING\".\"ATTEMPTS\",\"MAPPING\".\"JOBS\"");
         var first = new MappingRemoteProperties.Worker();
         first.setCredentialSha256(Set.of(MappingWorkerAuthenticationFilter.hash(WORKER_TOKEN)));
         var second = new MappingRemoteProperties.Worker();
@@ -152,7 +152,7 @@ class MappingRemoteContractIndependentTests {
                         MappingRemoteFixtures.definition().revision(),
                         MappingRemoteFixtures.definition());
         jdbc.update(
-                "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\",\"MAX_ATTEMPTS\") VALUES (?,?,'llm-extraction/1.0',5)",
+                "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\",\"MAX_ATTEMPTS\") VALUES (?,?,'llm-extraction/1.0',5)",
                 extraction,
                 config);
     }
@@ -189,13 +189,13 @@ class MappingRemoteContractIndependentTests {
 
     private String dbStatus(JsonNode claim) {
         return jdbc.queryForObject(
-                "SELECT \"STATUS\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?::uuid",
+                "SELECT \"STATUS\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?::uuid",
                 String.class,
                 claim.path("attemptId").asString());
     }
 
     private int results() {
-        return jdbc.queryForObject("SELECT count(*) FROM \"CV_MAPPING_RESULTS\"", Integer.class);
+        return jdbc.queryForObject("SELECT count(*) FROM \"MAPPING\".\"RESULTS\"", Integer.class);
     }
 
     @Test
@@ -232,10 +232,10 @@ class MappingRemoteContractIndependentTests {
         assertThat(data.path("engineVersion").asString()).isEqualTo("llm-extraction/1.0");
         assertThat(data.path("inputSha256").asString()).matches("[0-9a-f]{64}");
         assertThat(data.path("definition").isObject()).isTrue();
-        long jobId = jdbc.queryForObject("SELECT \"ID\" FROM \"CV_MAPPING_JOBS\"", Long.class);
+        long jobId = jdbc.queryForObject("SELECT \"ID\" FROM \"MAPPING\".\"JOBS\"", Long.class);
         String serverToken =
                 jdbc.queryForObject(
-                        "SELECT \"TOKEN\"::text FROM \"CV_MAPPING_JOBS\"", String.class);
+                        "SELECT \"TOKEN\"::text FROM \"MAPPING\".\"JOBS\"", String.class);
         String lower = raw.toLowerCase(java.util.Locale.ROOT);
         assertThat(lower)
                 .doesNotContain("jobid", "job_id", "tokenhash", "token_hash", "credential")
@@ -246,7 +246,7 @@ class MappingRemoteContractIndependentTests {
                 .doesNotContain("\"id\":" + jobId + ",");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"LEASE_TOKEN_HASH\" FROM \"CV_MAPPING_ATTEMPTS\"",
+                                "SELECT \"LEASE_TOKEN_HASH\" FROM \"MAPPING\".\"ATTEMPTS\"",
                                 String.class))
                 .isEqualTo(MappingWorkerAuthenticationFilter.hash(leaseToken))
                 .isNotEqualTo(leaseToken);
@@ -323,7 +323,7 @@ class MappingRemoteContractIndependentTests {
                 .andExpect(jsonPath("$.code").value("INVALID_RESULT"));
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_ATTEMPTS\"", Integer.class))
+                                "SELECT count(*) FROM \"MAPPING\".\"ATTEMPTS\"", Integer.class))
                 .isZero();
     }
 
@@ -366,9 +366,9 @@ class MappingRemoteContractIndependentTests {
         JsonNode claim = claim();
         String attempt = attempt(claim);
         jdbc.update(
-                "UPDATE \"CV_MAPPING_JOBS\" SET \"LEASE_EXPIRES_AT\"=clock_timestamp()-interval '2 seconds'");
+                "UPDATE \"MAPPING\".\"JOBS\" SET \"LEASE_EXPIRES_AT\"=clock_timestamp()-interval '2 seconds'");
         jdbc.update(
-                "UPDATE \"CV_MAPPING_ATTEMPTS\" SET \"STARTED_AT\"=clock_timestamp()-interval '3 minutes',\"LEASE_EXPIRES_AT\"=clock_timestamp()-interval '2 seconds'");
+                "UPDATE \"MAPPING\".\"ATTEMPTS\" SET \"STARTED_AT\"=clock_timestamp()-interval '3 minutes',\"LEASE_EXPIRES_AT\"=clock_timestamp()-interval '2 seconds'");
         for (var request :
                 List.of(
                         auth(get(attempt + "/input")),
@@ -380,9 +380,9 @@ class MappingRemoteContractIndependentTests {
         }
         // Past the hard deadline the deadline code wins over the lease code.
         jdbc.update(
-                "UPDATE \"CV_MAPPING_JOBS\" SET \"HARD_DEADLINE_AT\"=clock_timestamp()-interval '1 second'");
+                "UPDATE \"MAPPING\".\"JOBS\" SET \"HARD_DEADLINE_AT\"=clock_timestamp()-interval '1 second'");
         jdbc.update(
-                "UPDATE \"CV_MAPPING_ATTEMPTS\" SET \"HARD_DEADLINE_AT\"=clock_timestamp()-interval '1 second'");
+                "UPDATE \"MAPPING\".\"ATTEMPTS\" SET \"HARD_DEADLINE_AT\"=clock_timestamp()-interval '1 second'");
         mvc.perform(auth(put(attempt + "/lease")).content("{}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("HARD_DEADLINE_EXCEEDED"));
@@ -421,7 +421,8 @@ class MappingRemoteContractIndependentTests {
         assertThat(dbStatus(claim)).isEqualTo("FAILED");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ERROR_CODE\" FROM \"CV_MAPPING_ATTEMPTS\"", String.class))
+                                "SELECT \"ERROR_CODE\" FROM \"MAPPING\".\"ATTEMPTS\"",
+                                String.class))
                 .isEqualTo("PROVIDER_ERROR");
     }
 
@@ -442,7 +443,7 @@ class MappingRemoteContractIndependentTests {
         mvc.perform(auth(put(attempt + "/result")).content(wrongProtocol.toString()))
                 .andExpect(status().isUnprocessableContent());
         // A failed verification consumed the attempt, so use a fresh one for the size check.
-        jdbc.update("TRUNCATE \"CV_MAPPING_ATTEMPTS\",\"CV_MAPPING_JOBS\" CASCADE");
+        jdbc.update("TRUNCATE \"MAPPING\".\"ATTEMPTS\",\"MAPPING\".\"JOBS\" CASCADE");
         seed();
         JsonNode second = claim();
         properties.setMaxResultBytes(100);
@@ -498,9 +499,10 @@ class MappingRemoteContractIndependentTests {
         assertThat(results()).isZero();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ERROR_CODE\" FROM \"CV_MAPPING_ATTEMPTS\"", String.class))
+                                "SELECT \"ERROR_CODE\" FROM \"MAPPING\".\"ATTEMPTS\"",
+                                String.class))
                 .isEqualTo("INVALID_EVIDENCE");
-        assertThat(jdbc.queryForObject("SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\"", String.class))
+        assertThat(jdbc.queryForObject("SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\"", String.class))
                 .isEqualTo("PENDING");
         assertThat(
                         new String(

@@ -76,8 +76,8 @@ class LocalOcrAdmissionIntegrationTests {
 
     @Test
     void everyIngestionPipelineEnqueuesOnceWithoutAManifest() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         uploads.upload("single-synthetic.pdf", new ByteArrayInputStream(PDF));
         batches.upload(
                 List.of(
@@ -108,10 +108,13 @@ class LocalOcrAdmissionIntegrationTests {
                         });
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(DISTINCT \"CV_DOCUMENT_ID\") FROM \"CV_PROCESSING_JOBS\"",
+                                "SELECT count(DISTINCT \"CV_DOCUMENT_ID\") FROM \"INGESTION\".\"PROCESSING_JOBS\"",
                                 Integer.class))
                 .isEqualTo(4);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_EXTRACTIONS\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"EXTRACTIONS\"",
+                                Integer.class))
                 .isZero();
     }
 

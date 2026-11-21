@@ -19,7 +19,7 @@ public class CandidateDocumentRepository {
 
     public boolean attach(long documentId, long candidateId) {
         return jdbc.update(
-                        "UPDATE \"CV_DOCUMENTS\" SET \"CANDIDATE_ID\"=? WHERE \"ID\"=? AND \"MIME_TYPE\"='application/pdf' AND (\"CANDIDATE_ID\" IS NULL OR \"CANDIDATE_ID\"=?)",
+                        "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CANDIDATE_ID\"=? WHERE \"ID\"=? AND \"MIME_TYPE\"='application/pdf' AND (\"CANDIDATE_ID\" IS NULL OR \"CANDIDATE_ID\"=?)",
                         candidateId,
                         documentId,
                         candidateId)
@@ -28,19 +28,20 @@ public class CandidateDocumentRepository {
 
     public List<DocumentCandidate> lockCandidate(long documentId) {
         return jdbc.query(
-                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=? AND \"MIME_TYPE\"='application/pdf' FOR UPDATE",
+                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=? AND \"MIME_TYPE\"='application/pdf' FOR UPDATE",
                 (rs, n) -> new DocumentCandidate((Long) rs.getObject(1)),
                 documentId);
     }
 
     public long createCandidate() {
         return jdbc.queryForObject(
-                "INSERT INTO \"CANDIDATES\" DEFAULT VALUES RETURNING \"ID\"", Long.class);
+                "INSERT INTO \"CANDIDATE\".\"CANDIDATES\" DEFAULT VALUES RETURNING \"ID\"",
+                Long.class);
     }
 
     public void resolve(long id, long documentId) {
         jdbc.update(
-                "UPDATE \"CV_DOCUMENTS\" SET \"CANDIDATE_ID\"=? WHERE \"ID\"=? AND \"CANDIDATE_ID\" IS NULL",
+                "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CANDIDATE_ID\"=? WHERE \"ID\"=? AND \"CANDIDATE_ID\" IS NULL",
                 id,
                 documentId);
     }
@@ -48,14 +49,14 @@ public class CandidateDocumentRepository {
     public boolean valid(long documentId) {
         return Boolean.TRUE.equals(
                 jdbc.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM \"CV_DOCUMENTS\" WHERE \"ID\"=? AND \"MIME_TYPE\"='application/pdf')",
+                        "SELECT EXISTS(SELECT 1 FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=? AND \"MIME_TYPE\"='application/pdf')",
                         Boolean.class,
                         documentId));
     }
 
     public List<CandidateDocuments.Document> list(long candidateId) {
         return jdbc.query(
-                "SELECT \"ID\",\"ORIGINAL_FILENAME\",\"CREATED_AT\" FROM \"CV_DOCUMENTS\" WHERE \"CANDIDATE_ID\"=? ORDER BY \"ID\" DESC",
+                "SELECT \"ID\",\"ORIGINAL_FILENAME\",\"CREATED_AT\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"CANDIDATE_ID\"=? ORDER BY \"ID\" DESC",
                 (rs, n) ->
                         new CandidateDocuments.Document(
                                 rs.getLong(1),
@@ -70,7 +71,7 @@ public class CandidateDocumentRepository {
         String placeholders =
                 String.join(",", java.util.Collections.nCopies(candidateIds.size(), "?"));
         jdbc.query(
-                "SELECT DISTINCT ON (\"CANDIDATE_ID\") \"CANDIDATE_ID\",\"ORIGINAL_FILENAME\" FROM \"CV_DOCUMENTS\" WHERE \"CANDIDATE_ID\" IN ("
+                "SELECT DISTINCT ON (\"CANDIDATE_ID\") \"CANDIDATE_ID\",\"ORIGINAL_FILENAME\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"CANDIDATE_ID\" IN ("
                         + placeholders
                         + ") ORDER BY \"CANDIDATE_ID\",\"ID\"",
                 rs -> {
@@ -82,7 +83,7 @@ public class CandidateDocumentRepository {
 
     public void lock(long documentId) {
         jdbc.queryForObject(
-                "SELECT \"ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=? FOR UPDATE",
+                "SELECT \"ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=? FOR UPDATE",
                 Long.class,
                 documentId);
     }

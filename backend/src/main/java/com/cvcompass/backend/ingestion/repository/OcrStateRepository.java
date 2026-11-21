@@ -43,7 +43,7 @@ public class OcrStateRepository {
     public Optional<OcrJobState> lockJob(long id) {
         return jdbc
                 .query(
-                        "SELECT * FROM \"CV_PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
+                        "SELECT * FROM \"INGESTION\".\"PROCESSING_JOBS\" WHERE \"ID\"=? FOR UPDATE",
                         (rs, n) -> job(rs),
                         id)
                 .stream()
@@ -54,7 +54,7 @@ public class OcrStateRepository {
         return jdbc
                 .query(
                         """
-                SELECT * FROM "CV_PROCESSING_JOBS" WHERE "PROFILE_REVISION"=? AND "STATUS"='PENDING'
+                SELECT * FROM "INGESTION"."PROCESSING_JOBS" WHERE "PROFILE_REVISION"=? AND "STATUS"='PENDING'
                 AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS_STARTED"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
@@ -67,7 +67,7 @@ public class OcrStateRepository {
     public Optional<OcrAttemptState> findClaim(String worker, UUID key) {
         return jdbc
                 .query(
-                        "SELECT * FROM \"CV_OCR_ATTEMPTS\" WHERE \"WORKER_ID\"=? AND \"CLAIM_REQUEST_ID\"=?",
+                        "SELECT * FROM \"INGESTION\".\"OCR_ATTEMPTS\" WHERE \"WORKER_ID\"=? AND \"CLAIM_REQUEST_ID\"=?",
                         (rs, n) -> attempt(rs),
                         worker,
                         key)
@@ -78,7 +78,7 @@ public class OcrStateRepository {
     public Optional<OcrAttemptState> findAttempt(UUID publicId) {
         return jdbc
                 .query(
-                        "SELECT * FROM \"CV_OCR_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                        "SELECT * FROM \"INGESTION\".\"OCR_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                         (rs, n) -> attempt(rs),
                         publicId)
                 .stream()
@@ -87,7 +87,7 @@ public class OcrStateRepository {
 
     public OcrAttemptState lockAttempt(long id) {
         return jdbc.queryForObject(
-                "SELECT * FROM \"CV_OCR_ATTEMPTS\" WHERE \"ID\"=? FOR UPDATE",
+                "SELECT * FROM \"INGESTION\".\"OCR_ATTEMPTS\" WHERE \"ID\"=? FOR UPDATE",
                 (rs, n) -> attempt(rs),
                 id);
     }
@@ -104,7 +104,7 @@ public class OcrStateRepository {
                 java.util.Objects.requireNonNull(
                         jdbc.queryForObject(
                                 """
-                INSERT INTO "CV_OCR_ATTEMPTS" ("PUBLIC_ID","JOB_ID","ATTEMPT_NO","WORKER_ID",
+                INSERT INTO "INGESTION"."OCR_ATTEMPTS" ("PUBLIC_ID","JOB_ID","ATTEMPT_NO","WORKER_ID",
                 "CLAIM_REQUEST_ID","CLAIM_BODY_SHA256","LEASE_TOKEN_HASH","LEASE_EXPIRES_AT",
                 "HARD_DEADLINE_AT","RECLAIM_AFTER","STATUS","STARTED_AT")
                 VALUES (?,?,?,?,?,?,?,?,?,?,'ACTIVE',?) RETURNING "ID"
@@ -128,7 +128,7 @@ public class OcrStateRepository {
         changed(
                 jdbc.update(
                         """
-                UPDATE "CV_PROCESSING_JOBS" SET "STATUS"='PROCESSING',"CURRENT_ATTEMPT_ID"=?,
+                UPDATE "INGESTION"."PROCESSING_JOBS" SET "STATUS"='PROCESSING',"CURRENT_ATTEMPT_ID"=?,
                 "ATTEMPTS_STARTED"=?,"RETRY_COUNT"=?,"STARTED_AT"=COALESCE("STARTED_AT",?),
                 "COMPLETED_AT"=NULL,"END_REASON"=NULL,"ERROR_CODE"=NULL WHERE "ID"=?
                 """,
@@ -143,7 +143,7 @@ public class OcrStateRepository {
     public void renewed(long attemptId, Instant expiry) {
         changed(
                 jdbc.update(
-                        "UPDATE \"CV_OCR_ATTEMPTS\" SET \"LEASE_EXPIRES_AT\"=? WHERE \"ID\"=? AND \"STATUS\"='ACTIVE'",
+                        "UPDATE \"INGESTION\".\"OCR_ATTEMPTS\" SET \"LEASE_EXPIRES_AT\"=? WHERE \"ID\"=? AND \"STATUS\"='ACTIVE'",
                         ts(expiry),
                         attemptId));
     }
@@ -158,7 +158,7 @@ public class OcrStateRepository {
         changed(
                 jdbc.update(
                         """
-                UPDATE "CV_OCR_ATTEMPTS" SET "STATUS"=?,"END_REASON"=?,"ERROR_CODE"=?,
+                UPDATE "INGESTION"."OCR_ATTEMPTS" SET "STATUS"=?,"END_REASON"=?,"ERROR_CODE"=?,
                 "OUTCOME_SHA256"=?,"FINISHED_AT"=? WHERE "ID"=? AND "STATUS"='ACTIVE'
                 """,
                         status.name(),
@@ -174,7 +174,7 @@ public class OcrStateRepository {
         changed(
                 jdbc.update(
                         """
-                UPDATE "CV_PROCESSING_JOBS" SET "STATUS"=?,"END_REASON"=?,"ERROR_CODE"=?,"COMPLETED_AT"=? WHERE "ID"=?
+                UPDATE "INGESTION"."PROCESSING_JOBS" SET "STATUS"=?,"END_REASON"=?,"ERROR_CODE"=?,"COMPLETED_AT"=? WHERE "ID"=?
                 """,
                         status.name(),
                         reason.name(),
@@ -188,7 +188,7 @@ public class OcrStateRepository {
         changed(
                 jdbc.update(
                         """
-                UPDATE "CV_PROCESSING_JOBS" SET "STATUS"='PENDING',"ERROR_CODE"=?,"END_REASON"=NULL,
+                UPDATE "INGESTION"."PROCESSING_JOBS" SET "STATUS"='PENDING',"ERROR_CODE"=?,"END_REASON"=NULL,
                 "NEXT_ATTEMPT_AT"=?,"COMPLETED_AT"=NULL WHERE "ID"=?
                 """,
                         code,
@@ -201,7 +201,7 @@ public class OcrStateRepository {
         return java.util.Objects.requireNonNull(
                 jdbc.queryForObject(
                         """
-                INSERT INTO "CV_EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID",
+                INSERT INTO "INGESTION"."EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","ATTEMPT_ID",
                 "EXTRACTION_METHOD","OCR_RESULT","OCR_STATUS","PROFILE_REVISION","PROVENANCE")
                 VALUES (?,?,?,?,?::jsonb,?,?,?::jsonb) RETURNING "ID"
                 """,
@@ -219,7 +219,7 @@ public class OcrStateRepository {
     public Long extractionId(long attemptId) {
         return jdbc
                 .query(
-                        "SELECT \"ID\" FROM \"CV_EXTRACTIONS\" WHERE \"ATTEMPT_ID\"=?",
+                        "SELECT \"ID\" FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ATTEMPT_ID\"=?",
                         (rs, n) -> rs.getLong(1),
                         attemptId)
                 .stream()
@@ -230,7 +230,7 @@ public class OcrStateRepository {
     public List<Long> lockExpiredJobs(int limit) {
         return jdbc.query(
                 """
-                SELECT j."ID" FROM "CV_PROCESSING_JOBS" j JOIN "CV_OCR_ATTEMPTS" a
+                SELECT j."ID" FROM "INGESTION"."PROCESSING_JOBS" j JOIN "INGESTION"."OCR_ATTEMPTS" a
                 ON j."CURRENT_ATTEMPT_ID"=a."ID" AND j."ID"=a."JOB_ID"
                 WHERE j."PROFILE_REVISION" IS NOT NULL AND j."STATUS"='PROCESSING' AND a."STATUS"='ACTIVE'
                 AND a."LEASE_EXPIRES_AT"<=clock_timestamp()
@@ -243,7 +243,7 @@ public class OcrStateRepository {
     private void document(long id, JobStatus status) {
         changed(
                 jdbc.update(
-                        "UPDATE \"CV_DOCUMENTS\" SET \"STATUS\"=? WHERE \"ID\"=?",
+                        "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"STATUS\"=? WHERE \"ID\"=?",
                         status.name(),
                         id));
     }

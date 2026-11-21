@@ -11,7 +11,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "\"CANDIDATES\"")
+@Table(schema = "\"CANDIDATE\"", name = "\"CANDIDATES\"")
 public class Candidate extends UpdatableEntity {
 
     @Column(name = "\"FULL_NAME\"", length = 255)

@@ -149,21 +149,21 @@ class PersonalInfoPublicationIntegrationTests {
                         tree, com.cvcompass.backend.mapping.dto.PersonalInfoDefinition.class);
         long config = mapping.register(parsed.revision(), parsed);
         jdbc.update(
-                "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
+                "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
                 extraction,
                 config,
                 engine);
         var mappingClaim = mapping.claim().orElseThrow();
         mapping.complete(mappingClaim, mapping.process(mappingClaim));
         return jdbc.queryForObject(
-                "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                 Long.class,
                 mappingClaim.jobId());
     }
 
     Long candidate(CvDocument d) {
         return jdbc.queryForObject(
-                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                 Long.class,
                 d.getId());
     }
@@ -446,13 +446,13 @@ class PersonalInfoPublicationIntegrationTests {
         assertThat(publication.publish(r)).isTrue();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                                 Long.class,
                                 d.getId()))
                 .isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 r))
                 .isEqualTo("SKIPPED");
@@ -550,32 +550,34 @@ class PersonalInfoPublicationIntegrationTests {
                         "Full name: Synthetic Mixed\nGender: Female\nExperience\nCompany: Synthetic Workshop\nTitle: Engineer\nPeriod: 2020 - 2022",
                         false);
         long profilesBefore =
-                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE_PROFILES\"", Long.class);
+                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE\".\"PROFILES\"", Long.class);
         long experiencesBefore =
-                jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\"", Long.class);
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM \"CANDIDATE\".\"EXPERIENCES\"", Long.class);
         jdbc.execute(
-                "ALTER TABLE \"CANDIDATE_HISTORY\" ADD CONSTRAINT \"TEST_FAIL_PERSONAL_HISTORY\" CHECK (\"ACTION\"<>'PUBLISH_MAPPING') NOT VALID");
+                "ALTER TABLE \"CANDIDATE\".\"HISTORY\" ADD CONSTRAINT \"TEST_FAIL_PERSONAL_HISTORY\" CHECK (\"ACTION\"<>'PUBLISH_MAPPING') NOT VALID");
         try {
             assertThatThrownBy(() -> publication.publish(r))
                     .isInstanceOf(org.springframework.dao.DataAccessException.class);
             assertThat(candidate(d)).isNull();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                     Long.class,
                                     r))
                     .isZero();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CANDIDATE_PROFILES\"", Long.class))
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"PROFILES\"", Long.class))
                     .isEqualTo(profilesBefore);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CANDIDATE_EXPERIENCES\"", Long.class))
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"EXPERIENCES\"",
+                                    Long.class))
                     .isEqualTo(experiencesBefore);
         } finally {
             jdbc.execute(
-                    "ALTER TABLE \"CANDIDATE_HISTORY\" DROP CONSTRAINT \"TEST_FAIL_PERSONAL_HISTORY\"");
+                    "ALTER TABLE \"CANDIDATE\".\"HISTORY\" DROP CONSTRAINT \"TEST_FAIL_PERSONAL_HISTORY\"");
         }
         assertThat(publication.publish(r)).isTrue();
         var profile = queries.detail(candidate(d));
@@ -583,7 +585,7 @@ class PersonalInfoPublicationIntegrationTests {
         assertThat(profile.basic().path("gender").asString()).isEqualTo("FEMALE");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"FULL_NAME\" FROM \"CANDIDATE_PROFILES\" WHERE \"CANDIDATE_ID\"=?",
+                                "SELECT \"FULL_NAME\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?",
                                 String.class,
                                 profile.id()))
                 .isEqualTo(profile.basic().path("fullName").asString());
@@ -601,7 +603,7 @@ class PersonalInfoPublicationIntegrationTests {
         publication.publish(result(d, "Full name: First Person\nGender: Male", false));
         var p = queries.detail(candidate(d));
         jdbc.update(
-                "UPDATE \"CANDIDATE_PROFILES\" SET \"EXTENSIONS\"=\"EXTENSIONS\" || '{\"syntheticOther\":{\"retained\":true}}'::jsonb WHERE \"CANDIDATE_ID\"=?",
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"EXTENSIONS\"=\"EXTENSIONS\" || '{\"syntheticOther\":{\"retained\":true}}'::jsonb WHERE \"CANDIDATE_ID\"=?",
                 p.id());
         p = candidates.basic(p.id(), p.version(), null, true, "reviewer");
         publication.publish(result(d, "Full name: Second Person\nGender: Female", false));
@@ -694,7 +696,7 @@ class PersonalInfoPublicationIntegrationTests {
                 (ObjectNode)
                         json.readTree(
                                 jdbc.queryForObject(
-                                        "SELECT \"DEFINITION\"::text FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                                        "SELECT \"DEFINITION\"::text FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?",
                                         String.class,
                                         source.configId()));
         definition.put("revision", "personal-" + UUID.randomUUID());
@@ -707,7 +709,7 @@ class PersonalInfoPublicationIntegrationTests {
         body.put("experiences", "invalid array");
         long job =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\",\"STATUS\",\"INPUT_SHA256\",\"COMPLETED_AT\",\"ATTEMPTS\") VALUES (?,?,?,'COMPLETED',?,CURRENT_TIMESTAMP,1) RETURNING \"ID\"",
+                        "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\",\"STATUS\",\"INPUT_SHA256\",\"COMPLETED_AT\",\"ATTEMPTS\") VALUES (?,?,?,'COMPLETED',?,CURRENT_TIMESTAMP,1) RETURNING \"ID\"",
                         Long.class,
                         source.extractionId(),
                         config,
@@ -716,7 +718,7 @@ class PersonalInfoPublicationIntegrationTests {
         String resultBody = json.writeValueAsString(body);
         long r =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_MAPPING_RESULTS\" (\"JOB_ID\",\"SCHEMA_VERSION\",\"QUALITY\",\"DIGEST\",\"RESULT\") VALUES (?,3,'NEEDS_REVIEW',?,?::jsonb) RETURNING \"ID\"",
+                        "INSERT INTO \"MAPPING\".\"RESULTS\" (\"JOB_ID\",\"SCHEMA_VERSION\",\"QUALITY\",\"DIGEST\",\"RESULT\") VALUES (?,3,'NEEDS_REVIEW',?,?::jsonb) RETURNING \"ID\"",
                         Long.class,
                         job,
                         com.cvcompass.backend.mapping.service.MappingDigests.sha256(resultBody),
@@ -725,13 +727,13 @@ class PersonalInfoPublicationIntegrationTests {
         assertThat(candidate(d)).isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 r))
                 .isEqualTo("SKIPPED");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 r))
                 .isEqualTo("INVALID_MAPPING_ENVELOPE");
@@ -746,7 +748,7 @@ class PersonalInfoPublicationIntegrationTests {
         assertThat(candidate(d)).isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 r))
                 .isEqualTo("NO_USABLE_FIELDS");
@@ -754,13 +756,13 @@ class PersonalInfoPublicationIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CANDIDATE_PUBLICATIONS\" SET \"REASON_CODE\"='FREE_FORM' WHERE \"RESULT_ID\"=?",
+                                        "UPDATE \"CANDIDATE\".\"PUBLICATIONS\" SET \"REASON_CODE\"='FREE_FORM' WHERE \"RESULT_ID\"=?",
                                         r))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CANDIDATE_PUBLICATIONS\" SET \"STATUS\"='SUPERSEDED' WHERE \"RESULT_ID\"=?",
+                                        "UPDATE \"CANDIDATE\".\"PUBLICATIONS\" SET \"STATUS\"='SUPERSEDED' WHERE \"RESULT_ID\"=?",
                                         r))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
@@ -775,7 +777,7 @@ class PersonalInfoPublicationIntegrationTests {
                         .orElseThrow();
         // A pre-V12 ledger row has no diagnostic; replay must not invent its historical reason.
         jdbc.update(
-                "INSERT INTO \"CANDIDATE_PUBLICATIONS\" (\"RESULT_ID\",\"DOCUMENT_ID\",\"EXTRACTION_ID\",\"CONFIG_ID\",\"STATUS\") VALUES (?,?,?,?,'SKIPPED')",
+                "INSERT INTO \"CANDIDATE\".\"PUBLICATIONS\" (\"RESULT_ID\",\"DOCUMENT_ID\",\"EXTRACTION_ID\",\"CONFIG_ID\",\"STATUS\") VALUES (?,?,?,?,'SKIPPED')",
                 r,
                 source.documentId(),
                 source.extractionId(),
@@ -784,13 +786,13 @@ class PersonalInfoPublicationIntegrationTests {
         assertThat(candidate(d)).isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 r))
                 .isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 Integer.class,
                                 r))
                 .isEqualTo(1);
@@ -819,7 +821,7 @@ class PersonalInfoPublicationIntegrationTests {
         assertThat(publication.publish(r)).isFalse();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE_PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                "SELECT \"REASON_CODE\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 String.class,
                                 r))
                 .isEqualTo("NO_USABLE_FIELDS");

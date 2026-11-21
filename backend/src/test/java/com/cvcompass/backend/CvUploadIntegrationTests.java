@@ -60,8 +60,8 @@ class CvUploadIntegrationTests {
 
     @BeforeEach
     void assertIsolation() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         assertThat(DATABASE.storageRoot().getFileName().toString()).startsWith("cv-storage-test-");
     }
 
@@ -118,9 +118,9 @@ class CvUploadIntegrationTests {
         try (var content = storage.read(new StorageKey(entity.getStoragePath()))) {
             assertThat(content.readAllBytes()).isEqualTo(pdf);
         }
-        assertThat(count("CV_IMPORT_BATCHES")).isZero();
-        assertThat(count("CV_PROCESSING_JOBS")).isZero();
-        assertThat(count("CANDIDATES")).isZero();
+        assertThat(count("INGESTION.IMPORT_BATCHES")).isZero();
+        assertThat(count("INGESTION.PROCESSING_JOBS")).isZero();
+        assertThat(count("CANDIDATE.CANDIDATES")).isZero();
 
         var queried = get("/api/documents/" + id);
         assertThat(queried.statusCode()).isEqualTo(200);
@@ -282,7 +282,7 @@ class CvUploadIntegrationTests {
                 "CREATE FUNCTION reject_upload_commit() RETURNS trigger LANGUAGE plpgsql AS "
                         + "'BEGIN RAISE EXCEPTION ''synthetic deferred commit failure''; END'");
         jdbc.execute(
-                "CREATE CONSTRAINT TRIGGER reject_upload_commit AFTER INSERT ON \"CV_DOCUMENTS\" "
+                "CREATE CONSTRAINT TRIGGER reject_upload_commit AFTER INSERT ON \"INGESTION\".\"DOCUMENTS\" "
                         + "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_upload_commit()");
         try {
             var response =
@@ -296,7 +296,7 @@ class CvUploadIntegrationTests {
                             "synthetic deferred commit failure", DATABASE.storageRoot().toString());
             assertNoFilesOrMetadata();
         } finally {
-            jdbc.execute("DROP TRIGGER reject_upload_commit ON \"CV_DOCUMENTS\"");
+            jdbc.execute("DROP TRIGGER reject_upload_commit ON \"INGESTION\".\"DOCUMENTS\"");
             jdbc.execute("DROP FUNCTION reject_upload_commit()");
         }
     }
@@ -306,13 +306,13 @@ class CvUploadIntegrationTests {
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT is_nullable FROM information_schema.columns "
-                                        + "WHERE table_schema = current_schema() AND table_name = 'CV_DOCUMENTS' AND column_name = 'BATCH_ID'",
+                                        + "WHERE table_schema = 'INGESTION' AND table_name = 'DOCUMENTS' AND column_name = 'BATCH_ID'",
                                 String.class))
                 .isEqualTo("YES");
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT count(*) FROM information_schema.table_constraints "
-                                        + "WHERE table_schema = current_schema() AND constraint_name = 'FK_DOCUMENT_BATCH'",
+                                        + "WHERE table_schema = 'INGESTION' AND constraint_name = 'FK_DOCUMENT_BATCH'",
                                 Long.class))
                 .isEqualTo(1);
     }
@@ -351,7 +351,8 @@ class CvUploadIntegrationTests {
     }
 
     private long count(String table) {
-        return jdbc.queryForObject("SELECT count(*) FROM \"" + table + "\"", Long.class);
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM \"" + table.replace(".", "\".\"") + "\"", Long.class);
     }
 
     private HttpResponse<String> upload(String filename, String mime, Supplier<InputStream> content)

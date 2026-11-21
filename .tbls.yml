@@ -1,0 +1,11 @@
+# DSN comes from the environment; never commit credentials.
+dsn: ${TBLS_DSN}
+# Fixed title so docs do not depend on the throwaway database name.
+name: CV Compass
+docPath: docs/db
+# Mermaid ER diagrams are embedded in markdown and need no graphviz.
+er:
+  format: mermaid
+# Postgres introspection covers every non-system schema: INGESTION, MAPPING, CANDIDATE, IDENTITY
+# and public (event_publication). flyway_schema_history is absent because the documentation
+# database is built with psql, not Flyway (see docs/VERIFICATION.md).

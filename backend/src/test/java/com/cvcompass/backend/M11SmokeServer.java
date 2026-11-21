@@ -62,11 +62,11 @@ public final class M11SmokeServer {
                 var doc = fixture.document();
                 publication.publish(fixture.result(doc, fixture.raw(), false));
                 fixture.jdbc.update(
-                        "INSERT INTO \"CV_USERS\"(\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES ('synthetic-smoke',?,'USER')",
+                        "INSERT INTO \"IDENTITY\".\"USERS\"(\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES ('synthetic-smoke',?,'USER')",
                         new BCryptPasswordEncoder(4).encode("synthetic-smoke-only"));
                 long candidate =
                         fixture.jdbc.queryForObject(
-                                "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                                 Long.class,
                                 doc.getId());
                 int port = ((WebServerApplicationContext) context).getWebServer().getPort();

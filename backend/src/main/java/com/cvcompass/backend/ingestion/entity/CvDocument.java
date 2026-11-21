@@ -19,7 +19,7 @@ import org.hibernate.type.SqlTypes;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "\"CV_DOCUMENTS\"")
+@Table(schema = "\"INGESTION\"", name = "\"DOCUMENTS\"")
 public class CvDocument extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = true)

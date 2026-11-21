@@ -83,12 +83,12 @@ class MappingIntegrationTests {
         mappingProperties.setLeaseDuration(java.time.Duration.ofSeconds(120));
         mappingProperties.setHardDeadline(java.time.Duration.ofSeconds(120));
         mappingProperties.setRetryBackoff(java.time.Duration.ofSeconds(30));
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         jdbc.execute(
-                "TRUNCATE \"CANDIDATE_PROPOSALS\",\"CANDIDATE_PUBLICATIONS\",\"CANDIDATE_EXPERIENCES\",\"CV_MAPPING_RESULTS\",\"CV_MAPPING_ATTEMPTS\",\"CV_MAPPING_JOBS\"");
+                "TRUNCATE \"CANDIDATE\".\"PROPOSALS\",\"CANDIDATE\".\"PUBLICATIONS\",\"CANDIDATE\".\"EXPERIENCES\",\"MAPPING\".\"RESULTS\",\"MAPPING\".\"ATTEMPTS\",\"MAPPING\".\"JOBS\"");
         jdbc.update(
-                "UPDATE \"CV_MAPPING_SETTINGS\" SET \"ACTIVE_CONFIG_ID\"=NULL,\"SCAN_AFTER_ID\"=0");
+                "UPDATE \"MAPPING\".\"SETTINGS\" SET \"ACTIVE_CONFIG_ID\"=NULL,\"SCAN_AFTER_ID\"=0");
     }
 
     private MappingDefinition definition() {
@@ -172,7 +172,7 @@ class MappingIntegrationTests {
     private MappingClaim queued(long extraction, long config) {
         jdbc.update(
                 """
-                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") VALUES (?,?,'literal-mapping/1.0')
+                INSERT INTO "MAPPING"."JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") VALUES (?,?,'literal-mapping/1.0')
                 """,
                 extraction,
                 config);
@@ -182,7 +182,7 @@ class MappingIntegrationTests {
     private void expire(MappingClaim claim) {
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_JOBS" SET "LEASE_EXPIRES_AT"=clock_timestamp()-interval '1 second' WHERE "ID"=?
+                UPDATE "MAPPING"."JOBS" SET "LEASE_EXPIRES_AT"=clock_timestamp()-interval '1 second' WHERE "ID"=?
                 """,
                 claim.jobId());
     }
@@ -190,7 +190,7 @@ class MappingIntegrationTests {
     private void ready(MappingClaim claim) {
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_JOBS" SET "NEXT_ATTEMPT_AT"=clock_timestamp()-interval '1 second' WHERE "ID"=?
+                UPDATE "MAPPING"."JOBS" SET "NEXT_ATTEMPT_AT"=clock_timestamp()-interval '1 second' WHERE "ID"=?
                 """,
                 claim.jobId());
     }
@@ -200,13 +200,15 @@ class MappingIntegrationTests {
         long extraction = seed();
         String before =
                 jdbc.queryForObject(
-                        "SELECT row_to_json(e)::text FROM \"CV_EXTRACTIONS\" e WHERE \"ID\"=?",
+                        "SELECT row_to_json(e)::text FROM \"INGESTION\".\"EXTRACTIONS\" e WHERE \"ID\"=?",
                         String.class,
                         extraction);
         var statuses =
                 jdbc.queryForList(
-                        "SELECT \"ID\",\"STATUS\" FROM \"CV_PROCESSING_JOBS\" ORDER BY \"ID\"");
-        int candidates = jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATES\"", Integer.class);
+                        "SELECT \"ID\",\"STATUS\" FROM \"INGESTION\".\"PROCESSING_JOBS\" ORDER BY \"ID\"");
+        int candidates =
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM \"CANDIDATE\".\"CANDIDATES\"", Integer.class);
         activate();
         mapping.scan(100);
         assertThat(worker.runOne()).isTrue();
@@ -216,7 +218,7 @@ class MappingIntegrationTests {
         }
         long id =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=?",
+                        "SELECT \"ID\" FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=?",
                         Long.class,
                         extraction);
         var result = mapping.result(id).orElseThrow();
@@ -226,20 +228,22 @@ class MappingIntegrationTests {
         assertThat(result.values().getFirst().evidence().end()).isEqualTo(14);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT row_to_json(e)::text FROM \"CV_EXTRACTIONS\" e WHERE \"ID\"=?",
+                                "SELECT row_to_json(e)::text FROM \"INGESTION\".\"EXTRACTIONS\" e WHERE \"ID\"=?",
                                 String.class,
                                 extraction))
                 .isEqualTo(before);
         assertThat(
                         jdbc.queryForList(
-                                "SELECT \"ID\",\"STATUS\" FROM \"CV_PROCESSING_JOBS\" ORDER BY \"ID\""))
+                                "SELECT \"ID\",\"STATUS\" FROM \"INGESTION\".\"PROCESSING_JOBS\" ORDER BY \"ID\""))
                 .isEqualTo(statuses);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATES\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CANDIDATE\".\"CANDIDATES\"", Integer.class))
                 .isEqualTo(candidates);
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_EXTRACTIONS\" SET \"STRUCTURED_DATA\"='{}'::jsonb WHERE \"ID\"=?",
+                                        "UPDATE \"INGESTION\".\"EXTRACTIONS\" SET \"STRUCTURED_DATA\"='{}'::jsonb WHERE \"ID\"=?",
                                         extraction))
                 .isInstanceOf(DataAccessException.class);
     }
@@ -249,7 +253,7 @@ class MappingIntegrationTests {
         long bad =
                 jdbc.queryForObject(
                         """
-                INSERT INTO "CV_MAPPING_CONFIGS" ("REVISION","DEFINITION") VALUES (?, '{"schemaVersion":99,"fields":[]}') RETURNING "ID"
+                INSERT INTO "MAPPING"."CONFIGS" ("REVISION","DEFINITION") VALUES (?, '{"schemaVersion":99,"fields":[]}') RETURNING "ID"
                 """,
                         Long.class,
                         "bad-" + UUID.randomUUID());
@@ -257,13 +261,13 @@ class MappingIntegrationTests {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ACTIVE_CONFIG_ID\" FROM \"CV_MAPPING_SETTINGS\"",
+                                "SELECT \"ACTIVE_CONFIG_ID\" FROM \"MAPPING\".\"SETTINGS\"",
                                 Long.class))
                 .isNull();
         long config = activate();
         String revision =
                 jdbc.queryForObject(
-                        "SELECT \"REVISION\" FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                        "SELECT \"REVISION\" FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?",
                         String.class,
                         config);
         assertThat(mapping.register(revision, definition())).isEqualTo(config);
@@ -284,13 +288,13 @@ class MappingIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_MAPPING_CONFIGS\" SET \"DEFINITION\"='{}' WHERE \"ID\"=?",
+                                        "UPDATE \"MAPPING\".\"CONFIGS\" SET \"DEFINITION\"='{}' WHERE \"ID\"=?",
                                         config))
                 .isInstanceOf(DataAccessException.class);
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "DELETE FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                                        "DELETE FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?",
                                         config))
                 .isInstanceOf(DataAccessException.class);
         assertThatThrownBy(() -> mapping.register("invalid", new MappingDefinition(9, List.of())))
@@ -302,7 +306,7 @@ class MappingIntegrationTests {
         seed();
         activate();
         while (mapping.scan(2) == 2) {}
-        int count = jdbc.queryForObject("SELECT count(*) FROM \"CV_MAPPING_JOBS\"", Integer.class);
+        int count = jdbc.queryForObject("SELECT count(*) FROM \"MAPPING\".\"JOBS\"", Integer.class);
         // A new service has no in-memory cursor, exercising durable settings after restart.
         var restarted =
                 new MappingService(
@@ -315,7 +319,7 @@ class MappingIntegrationTests {
                         new com.cvcompass.backend.mapping.service.ExperienceEngine(
                                 new com.cvcompass.backend.mapping.service.MappingEngine()));
         while (restarted.scan(2) == 2) {}
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_MAPPING_JOBS\"", Integer.class))
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"MAPPING\".\"JOBS\"", Integer.class))
                 .isEqualTo(count);
     }
 
@@ -323,9 +327,7 @@ class MappingIntegrationTests {
     void reconciliationFindsLowerIdCommittedAfterHigherId() throws Exception {
         long source = seed();
         activate();
-        String url =
-                System.getenv()
-                        .getOrDefault("TEST_DB_URL", "jdbc:postgresql://localhost:5432/cv_compass");
+        String url = DATABASE.jdbcUrl();
         try (var connection =
                 DriverManager.getConnection(
                         url,
@@ -334,13 +336,12 @@ class MappingIntegrationTests {
             connection.setAutoCommit(false);
             long low;
             try (var statement = connection.createStatement()) {
-                statement.execute("SET search_path TO " + DATABASE.schemaName());
                 try (var rows =
                         statement.executeQuery(
                                 """
-                        INSERT INTO "CV_EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","RAW_TEXT","EXTRACTION_METHOD")
+                        INSERT INTO "INGESTION"."EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","RAW_TEXT","EXTRACTION_METHOD")
                         SELECT "CV_DOCUMENT_ID","PROCESSING_JOB_ID",'Synthetic delayed','TEXT_EXTRACTION'
-                        FROM "CV_EXTRACTIONS" WHERE "ID"=%d RETURNING "ID"
+                        FROM "INGESTION"."EXTRACTIONS" WHERE "ID"=%d RETURNING "ID"
                         """
                                         .formatted(source))) {
                     rows.next();
@@ -350,9 +351,9 @@ class MappingIntegrationTests {
             long high =
                     jdbc.queryForObject(
                             """
-                    INSERT INTO "CV_EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","RAW_TEXT","EXTRACTION_METHOD")
+                    INSERT INTO "INGESTION"."EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","RAW_TEXT","EXTRACTION_METHOD")
                     SELECT "CV_DOCUMENT_ID","PROCESSING_JOB_ID",'Synthetic later','TEXT_EXTRACTION'
-                    FROM "CV_EXTRACTIONS" WHERE "ID"=? RETURNING "ID"
+                    FROM "INGESTION"."EXTRACTIONS" WHERE "ID"=? RETURNING "ID"
                     """,
                             Long.class,
                             source);
@@ -360,7 +361,7 @@ class MappingIntegrationTests {
             while (mapping.scan(1) == 1) {}
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=?",
+                                    "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=?",
                                     Integer.class,
                                     low))
                     .isZero();
@@ -368,7 +369,7 @@ class MappingIntegrationTests {
             while (mapping.scan(1) == 1) {}
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=?",
+                                    "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=?",
                                     Integer.class,
                                     low))
                     .isEqualTo(1);
@@ -426,7 +427,7 @@ class MappingIntegrationTests {
         assertThat(mapping.claim()).isEmpty();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 third.jobId()))
                 .isEqualTo("FAILED");
@@ -456,7 +457,7 @@ class MappingIntegrationTests {
                 .hasMessage("MAPPING_RESULT_CONFLICT");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT count(*) FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 Integer.class,
                                 claim.jobId()))
                 .isEqualTo(1);
@@ -473,7 +474,7 @@ class MappingIntegrationTests {
                 """);
         jdbc.execute(
                 """
-                CREATE TRIGGER "TR_TEST_MAPPING_FAIL" BEFORE UPDATE ON "CV_MAPPING_JOBS"
+                CREATE TRIGGER "TR_TEST_MAPPING_FAIL" BEFORE UPDATE ON "MAPPING"."JOBS"
                 FOR EACH ROW EXECUTE FUNCTION reject_mapping_completion()
                 """);
         try {
@@ -482,19 +483,19 @@ class MappingIntegrationTests {
             assertThat(mapping.result(claim.jobId())).isEmpty();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                    "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                     String.class,
                                     claim.jobId()))
                     .isEqualTo("PROCESSING");
         } finally {
-            jdbc.execute("DROP TRIGGER \"TR_TEST_MAPPING_FAIL\" ON \"CV_MAPPING_JOBS\"");
+            jdbc.execute("DROP TRIGGER \"TR_TEST_MAPPING_FAIL\" ON \"MAPPING\".\"JOBS\"");
             jdbc.execute("DROP FUNCTION reject_mapping_completion()");
         }
         mapping.complete(claim, result);
         assertThat(mapping.result(claim.jobId())).contains(result);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 claim.jobId()))
                 .isEqualTo("COMPLETED");
@@ -544,7 +545,7 @@ class MappingIntegrationTests {
         var result = mapping.process(claim);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"INPUT_SHA256\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"INPUT_SHA256\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 claim.jobId()))
                 .isEqualTo(result.inputSha256());
@@ -552,14 +553,14 @@ class MappingIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_MAPPING_RESULTS\" SET \"QUALITY\"='UNSUPPORTED_INPUT' WHERE \"JOB_ID\"=?",
+                                        "UPDATE \"MAPPING\".\"RESULTS\" SET \"QUALITY\"='UNSUPPORTED_INPUT' WHERE \"JOB_ID\"=?",
                                         claim.jobId()))
                 .isInstanceOf(DataAccessException.class);
         var changing = queued(seed(), claim.configId());
         var original = mapping.process(changing);
         jdbc.update(
                 """
-                UPDATE "CV_EXTRACTIONS" SET "OCR_RESULT"=jsonb_set("OCR_RESULT",'{pages,0,raw_text}','"Changed synthetic"')
+                UPDATE "INGESTION"."EXTRACTIONS" SET "OCR_RESULT"=jsonb_set("OCR_RESULT",'{pages,0,raw_text}','"Changed synthetic"')
                 WHERE "ID"=?
                 """,
                 changing.extractionId());
@@ -568,7 +569,7 @@ class MappingIntegrationTests {
         mapping.fail(changing, false);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 changing.jobId()))
                 .isEqualTo("FAILED");
@@ -582,20 +583,20 @@ class MappingIntegrationTests {
         assertThat(mapping.scan(1)).isEqualTo(1);
         long upper =
                 jdbc.queryForObject(
-                        "SELECT \"SCAN_UPPER_ID\" FROM \"CV_MAPPING_SETTINGS\"", Long.class);
+                        "SELECT \"SCAN_UPPER_ID\" FROM \"MAPPING\".\"SETTINGS\"", Long.class);
         long newer = seed();
         assertThat(newer).isGreaterThan(upper);
         while (mapping.scan(1) == 1) {}
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=?",
+                                "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=?",
                                 Integer.class,
                                 newer))
                 .isZero();
         mapping.scan(100);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=?",
+                                "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=?",
                                 Integer.class,
                                 newer))
                 .isEqualTo(1);
@@ -635,14 +636,14 @@ class MappingIntegrationTests {
                 """
                 CREATE FUNCTION delay_mapping_result() RETURNS trigger LANGUAGE plpgsql AS $$
                 BEGIN
-                    UPDATE "CV_MAPPING_JOBS" SET "LEASE_EXPIRES_AT"=clock_timestamp()-interval '1 second'
+                    UPDATE "MAPPING"."JOBS" SET "LEASE_EXPIRES_AT"=clock_timestamp()-interval '1 second'
                     WHERE "ID"=NEW."JOB_ID";
                     RETURN NEW;
                 END; $$
                 """);
         jdbc.execute(
                 """
-                CREATE TRIGGER "TR_TEST_MAPPING_DELAY" BEFORE INSERT ON "CV_MAPPING_RESULTS"
+                CREATE TRIGGER "TR_TEST_MAPPING_DELAY" BEFORE INSERT ON "MAPPING"."RESULTS"
                 FOR EACH ROW EXECUTE FUNCTION delay_mapping_result()
                 """);
         try {
@@ -653,7 +654,7 @@ class MappingIntegrationTests {
                     .hasMessage("MAPPING_STALE_ATTEMPT");
             assertThat(mapping.result(claim.jobId())).isEmpty();
         } finally {
-            jdbc.execute("DROP TRIGGER \"TR_TEST_MAPPING_DELAY\" ON \"CV_MAPPING_RESULTS\"");
+            jdbc.execute("DROP TRIGGER \"TR_TEST_MAPPING_DELAY\" ON \"MAPPING\".\"RESULTS\"");
             jdbc.execute("DROP FUNCTION delay_mapping_result()");
         }
     }
@@ -705,9 +706,9 @@ class MappingIntegrationTests {
         long legacy =
                 jdbc.queryForObject(
                         """
-                INSERT INTO "CV_EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","RAW_TEXT","EXTRACTION_METHOD")
+                INSERT INTO "INGESTION"."EXTRACTIONS" ("CV_DOCUMENT_ID","PROCESSING_JOB_ID","RAW_TEXT","EXTRACTION_METHOD")
                 SELECT "CV_DOCUMENT_ID","PROCESSING_JOB_ID",'Synthetic legacy','TEXT_EXTRACTION'
-                FROM "CV_EXTRACTIONS" WHERE "ID"=? RETURNING "ID"
+                FROM "INGESTION"."EXTRACTIONS" WHERE "ID"=? RETURNING "ID"
                 """,
                         Long.class,
                         extraction);
@@ -724,32 +725,33 @@ class MappingIntegrationTests {
         seed();
         long config = activate();
         mapping.scan(1);
-        var before = jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\"");
+        var before = jdbc.queryForMap("SELECT * FROM \"MAPPING\".\"SETTINGS\"");
         assertThat(before.get("SCAN_AFTER_ID")).isNotEqualTo(0L);
         mapping.activate(config);
-        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\"")).isEqualTo(before);
+        assertThat(jdbc.queryForMap("SELECT * FROM \"MAPPING\".\"SETTINGS\"")).isEqualTo(before);
         var file = java.nio.file.Files.createTempFile("synthetic-mapping-config-", ".json");
         try {
             String revision =
                     jdbc.queryForObject(
-                            "SELECT \"REVISION\" FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                            "SELECT \"REVISION\" FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?",
                             String.class,
                             config);
             String definition =
                     jdbc.queryForObject(
-                            "SELECT \"DEFINITION\"::text FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                            "SELECT \"DEFINITION\"::text FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?",
                             String.class,
                             config);
             java.nio.file.Files.writeString(file, definition);
             new com.cvcompass.backend.mapping.config.MappingBootstrap(
                             mapping, json, file.toString(), revision)
                     .run(new org.springframework.boot.DefaultApplicationArguments());
-            assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\"")).isEqualTo(before);
+            assertThat(jdbc.queryForMap("SELECT * FROM \"MAPPING\".\"SETTINGS\""))
+                    .isEqualTo(before);
         } finally {
             java.nio.file.Files.delete(file);
         }
         activate();
-        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_SETTINGS\""))
+        assertThat(jdbc.queryForMap("SELECT * FROM \"MAPPING\".\"SETTINGS\""))
                 .containsEntry("SCAN_AFTER_ID", 0L)
                 .containsEntry("SCAN_UPPER_ID", null);
     }
@@ -761,31 +763,39 @@ class MappingIntegrationTests {
         long batch =
                 jdbc.queryForObject(
                         """
-                INSERT INTO "CV_IMPORT_BATCHES" ("TOTAL_FILES","SUCCESS_COUNT","FAILED_COUNT","STATUS")
+                INSERT INTO "INGESTION"."IMPORT_BATCHES" ("TOTAL_FILES","SUCCESS_COUNT","FAILED_COUNT","STATUS")
                 VALUES (1,1,0,'COMPLETED') RETURNING "ID"
                 """,
                         Long.class);
-        jdbc.update("UPDATE \"CV_DOCUMENTS\" SET \"BATCH_ID\"=? WHERE \"ID\"=?", batch, document);
+        jdbc.update(
+                "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"BATCH_ID\"=? WHERE \"ID\"=?",
+                batch,
+                document);
         long second = seed("success", document);
         assertThat(second).isNotEqualTo(first);
-        var before = jdbc.queryForMap("SELECT * FROM \"CV_IMPORT_BATCHES\" WHERE \"ID\"=?", batch);
+        var before =
+                jdbc.queryForMap(
+                        "SELECT * FROM \"INGESTION\".\"IMPORT_BATCHES\" WHERE \"ID\"=?", batch);
         activate();
         while (mapping.scan(1) == 1) {}
         while (mapping.scan(1) == 1) {}
         assertThat(
                         jdbc.queryForObject(
                                 """
-                SELECT count(*) FROM "CV_MAPPING_JOBS" j JOIN "CV_EXTRACTIONS" e ON e."ID"=j."EXTRACTION_ID"
+                SELECT count(*) FROM "MAPPING"."JOBS" j JOIN "INGESTION"."EXTRACTIONS" e ON e."ID"=j."EXTRACTION_ID"
                 WHERE e."CV_DOCUMENT_ID"=?
                 """,
                                 Integer.class,
                                 document))
                 .isEqualTo(2);
-        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_IMPORT_BATCHES\" WHERE \"ID\"=?", batch))
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM \"INGESTION\".\"IMPORT_BATCHES\" WHERE \"ID\"=?",
+                                batch))
                 .isEqualTo(before);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_DOCUMENTS\" WHERE \"BATCH_ID\"=?",
+                                "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"BATCH_ID\"=?",
                                 Integer.class,
                                 batch))
                 .isEqualTo(1);
@@ -802,11 +812,11 @@ class MappingIntegrationTests {
         mapping.scan(101);
         assertThat(
                         jdbc.queryForList(
-                                "SELECT DISTINCT \"MAX_ATTEMPTS\" FROM \"CV_MAPPING_JOBS\"",
+                                "SELECT DISTINCT \"MAX_ATTEMPTS\" FROM \"MAPPING\".\"JOBS\"",
                                 Integer.class))
                 .containsExactly(5);
         // Retain just this synthetic job, leaving OCR/document rows untouched.
-        jdbc.update("DELETE FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"<>?", extraction);
+        jdbc.update("DELETE FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"<>?", extraction);
         var claim = mapping.claim().orElseThrow();
         for (int attempt = 1; attempt <= 5; attempt++) {
             assertThat(claim.attempt()).isEqualTo(attempt);
@@ -814,7 +824,7 @@ class MappingIntegrationTests {
                     jdbc.queryForObject(
                             """
                     SELECT extract(epoch FROM ("HARD_DEADLINE_AT"-"LEASE_EXPIRES_AT"))::int
-                    FROM "CV_MAPPING_JOBS" WHERE "ID"=?
+                    FROM "MAPPING"."JOBS" WHERE "ID"=?
                     """,
                             Integer.class,
                             claim.jobId());
@@ -823,7 +833,7 @@ class MappingIntegrationTests {
             var backoff =
                     jdbc.queryForObject(
                             """
-                    SELECT extract(epoch FROM ("NEXT_ATTEMPT_AT"-clock_timestamp())) FROM "CV_MAPPING_JOBS" WHERE "ID"=?
+                    SELECT extract(epoch FROM ("NEXT_ATTEMPT_AT"-clock_timestamp())) FROM "MAPPING"."JOBS" WHERE "ID"=?
                     """,
                             Double.class,
                             claim.jobId());
@@ -836,7 +846,7 @@ class MappingIntegrationTests {
         assertThat(mapping.claim()).isEmpty();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 claim.jobId()))
                 .isEqualTo("FAILED");
@@ -850,7 +860,7 @@ class MappingIntegrationTests {
         mapping.complete(legacyClaim, legacyResult);
         var legacyRow =
                 jdbc.queryForMap(
-                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         legacyClaim.jobId());
         com.cvcompass.backend.mapping.dto.ExperienceDefinition config;
         try (var stream = getClass().getResourceAsStream("/mapping/experience-config-v2.json")) {
@@ -872,13 +882,14 @@ class MappingIntegrationTests {
                 Partner: Synthetic Client
                 """);
         var ocrBefore =
-                jdbc.queryForMap("SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"ID\"=?", extraction);
+                jdbc.queryForMap(
+                        "SELECT * FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?", extraction);
         mapping.scan();
         while (worker.runOne()) {}
         long job =
                 jdbc.queryForObject(
                         """
-                SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "EXTRACTION_ID"=? AND "CONFIG_ID"=?
+                SELECT "ID" FROM "MAPPING"."JOBS" WHERE "EXTRACTION_ID"=? AND "CONFIG_ID"=?
                 """,
                         Long.class,
                         extraction,
@@ -897,17 +908,20 @@ class MappingIntegrationTests {
                 .containsExactly("MANUFACTURING");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"SCHEMA_VERSION\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT \"SCHEMA_VERSION\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 Integer.class,
                                 job))
                 .isEqualTo(2);
-        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"ID\"=?", extraction))
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?",
+                                extraction))
                 .isEqualTo(ocrBefore);
         mapping.complete(legacyClaim, legacyResult);
         assertThat(mapping.result(legacyClaim.jobId())).contains(legacyResult);
         assertThat(
                         jdbc.queryForMap(
-                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 legacyClaim.jobId()))
                 .isEqualTo(legacyRow);
         var v2Claim =
@@ -934,7 +948,7 @@ class MappingIntegrationTests {
                         "Employer: Meadow Labs\nTitle: HR Manager\nDates: 2010 - 2012");
         jdbc.update(
                 """
-                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION")
+                INSERT INTO "MAPPING"."JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION")
                 VALUES (?,?,'experience-mapping/2.0')
                 """,
                 retryInput,
@@ -966,7 +980,8 @@ class MappingIntegrationTests {
                         null,
                         "Full name: Ada Example\nEmail: ada@example.test\nGender: F\nExperience\nCompany: Example Workshop\nTitle: Engineer\nPeriod: 2019 - 2021");
         var source =
-                jdbc.queryForMap("SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"ID\"=?", extraction);
+                jdbc.queryForMap(
+                        "SELECT * FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?", extraction);
         mapping.activate(id);
         new com.cvcompass.backend.mapping.repository.MappingRepository(jdbc, json)
                 .enqueue(
@@ -1001,19 +1016,23 @@ class MappingIntegrationTests {
         mapping.complete(claim, result);
         var row =
                 jdbc.queryForMap(
-                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?", claim.jobId());
+                        "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?", claim.jobId());
         mapping.complete(claim, result);
         assertThat(mapping.result(claim.jobId())).contains(result);
         assertThat(
                         jdbc.queryForMap(
-                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 claim.jobId()))
                 .isEqualTo(row);
-        assertThat(jdbc.queryForMap("SELECT * FROM \"CV_EXTRACTIONS\" WHERE \"ID\"=?", extraction))
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?",
+                                extraction))
                 .isEqualTo(source);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CANDIDATE_PUBLICATIONS\"", Integer.class))
+                                "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\"",
+                                Integer.class))
                 .isZero();
     }
 
@@ -1053,7 +1072,7 @@ class MappingIntegrationTests {
         mapping.complete(oldClaim, oldResult);
         var oldRow =
                 jdbc.queryForMap(
-                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         oldClaim.jobId());
         long second = seed("success", null, "Full name: Grammar Example\nGender: F");
         assertThatThrownBy(() -> repository.enqueue(second, nextId, "personal-info-mapping/3.0", 3))
@@ -1072,18 +1091,18 @@ class MappingIntegrationTests {
         mapping.complete(nextClaim, result);
         var row =
                 jdbc.queryForMap(
-                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         nextClaim.jobId());
         mapping.complete(nextClaim, result);
         assertThat(mapping.result(nextClaim.jobId())).contains(result);
         assertThat(
                         jdbc.queryForMap(
-                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 nextClaim.jobId()))
                 .isEqualTo(row);
         assertThat(
                         jdbc.queryForMap(
-                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 oldClaim.jobId()))
                 .isEqualTo(oldRow);
         assertThat(mapping.claim()).isEmpty();
@@ -1226,7 +1245,7 @@ class MappingIntegrationTests {
         long configId = mapping.register(v34.revision(), v34);
         long extraction = seed("success", null, "Work Experience\n2020 – 2025 Sample Tea House");
         jdbc.update(
-                "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
+                "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?)",
                 extraction,
                 configId,
                 PersonalInfoDefinition.GRAMMAR_V35_ENGINE_VERSION);
@@ -1274,21 +1293,21 @@ class MappingIntegrationTests {
                 .hasMessage("MAPPING_ENGINE_CONFIG_MISMATCH");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=?",
+                                "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=?",
                                 Integer.class,
                                 extraction,
                                 id))
                 .isEqualTo(1);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"VALIDATION_STATE\" FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?",
+                                "SELECT \"VALIDATION_STATE\" FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?",
                                 String.class,
                                 id))
                 .isEqualTo("ACTIVE");
         assertThat(mapping.scan(100)).isPositive();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=?",
+                                "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=?",
                                 Integer.class,
                                 extraction,
                                 id))
@@ -1302,7 +1321,7 @@ class MappingIntegrationTests {
                     .run(new org.springframework.boot.DefaultApplicationArguments());
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"ACTIVE_CONFIG_ID\" FROM \"CV_MAPPING_SETTINGS\" WHERE \"ID\"=1",
+                                    "SELECT \"ACTIVE_CONFIG_ID\" FROM \"MAPPING\".\"SETTINGS\" WHERE \"ID\"=1",
                                     Long.class))
                     .isEqualTo(id);
         } finally {
@@ -1322,7 +1341,8 @@ class MappingIntegrationTests {
                                 json.writeValueAsString(node), json);
         long originalId = mapping.register(original.revision(), original);
         var originalRow =
-                jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?", originalId);
+                jdbc.queryForMap(
+                        "SELECT * FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?", originalId);
         var restarted =
                 new MappingService(
                         new com.cvcompass.backend.mapping.repository.MappingRepository(jdbc, json),
@@ -1352,15 +1372,15 @@ class MappingIntegrationTests {
         assertThat(restarted.register(newRevision, next)).isEqualTo(nextId);
         assertThat(
                         jdbc.queryForMap(
-                                "SELECT * FROM \"CV_MAPPING_CONFIGS\" WHERE \"ID\"=?", originalId))
+                                "SELECT * FROM \"MAPPING\".\"CONFIGS\" WHERE \"ID\"=?", originalId))
                 .isEqualTo(originalRow);
         restarted.activate(nextId);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ACTIVE_CONFIG_ID\" FROM \"CV_MAPPING_SETTINGS\" WHERE \"ID\"=1",
+                                "SELECT \"ACTIVE_CONFIG_ID\" FROM \"MAPPING\".\"SETTINGS\" WHERE \"ID\"=1",
                                 Long.class))
                 .isEqualTo(nextId);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_MAPPING_JOBS\"", Integer.class))
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"MAPPING\".\"JOBS\"", Integer.class))
                 .isZero();
     }
 
@@ -1372,11 +1392,11 @@ class MappingIntegrationTests {
         mapping.complete(claim, before);
         var oldRow =
                 jdbc.queryForMap(
-                        "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?", claim.jobId());
+                        "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?", claim.jobId());
         long anotherExtraction = seed();
         long otherJob =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,'personal-info-mapping/3.0') RETURNING \"ID\"",
+                        "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,'personal-info-mapping/3.0') RETURNING \"ID\"",
                         Long.class,
                         anotherExtraction,
                         claim.configId());
@@ -1402,7 +1422,7 @@ class MappingIntegrationTests {
         }
         String body = json.writeValueAsString(node);
         jdbc.update(
-                "INSERT INTO \"CV_MAPPING_RESULTS\" (\"JOB_ID\",\"SCHEMA_VERSION\",\"QUALITY\",\"DIGEST\",\"RESULT\") VALUES (?,3,'NEEDS_REVIEW',?,?::jsonb)",
+                "INSERT INTO \"MAPPING\".\"RESULTS\" (\"JOB_ID\",\"SCHEMA_VERSION\",\"QUALITY\",\"DIGEST\",\"RESULT\") VALUES (?,3,'NEEDS_REVIEW',?,?::jsonb)",
                 otherJob,
                 com.cvcompass.backend.mapping.service.MappingDigests.sha256(body),
                 body);
@@ -1411,19 +1431,19 @@ class MappingIntegrationTests {
         assertThat(mapping.claim()).isEmpty();
         assertThat(
                         jdbc.queryForMap(
-                                "SELECT * FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT * FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 claim.jobId()))
                 .isEqualTo(oldRow);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ENGINE_VERSION\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"ENGINE_VERSION\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 claim.jobId()))
                 .isEqualTo("literal-mapping/1.0");
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "UPDATE \"CV_MAPPING_RESULTS\" SET \"SCHEMA_VERSION\"=4 WHERE \"JOB_ID\"=?",
+                                        "UPDATE \"MAPPING\".\"RESULTS\" SET \"SCHEMA_VERSION\"=4 WHERE \"JOB_ID\"=?",
                                         otherJob))
                 .isInstanceOf(DataAccessException.class);
     }

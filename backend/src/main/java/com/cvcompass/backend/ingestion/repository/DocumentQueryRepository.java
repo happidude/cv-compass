@@ -29,10 +29,10 @@ public class DocumentQueryRepository {
     // to an older successful generation when the newest job is pending/failed.
     private static final String JOINS =
             """
-            FROM "CV_DOCUMENTS" d
-            LEFT JOIN LATERAL (SELECT * FROM "CV_PROCESSING_JOBS"
+            FROM "INGESTION"."DOCUMENTS" d
+            LEFT JOIN LATERAL (SELECT * FROM "INGESTION"."PROCESSING_JOBS"
                 WHERE "CV_DOCUMENT_ID" = d."ID" ORDER BY "ID" DESC LIMIT 1) j ON true
-            LEFT JOIN LATERAL (SELECT "ID", "OCR_RESULT", "RAW_TEXT" FROM "CV_EXTRACTIONS"
+            LEFT JOIN LATERAL (SELECT "ID", "OCR_RESULT", "RAW_TEXT" FROM "INGESTION"."EXTRACTIONS"
                 WHERE "PROCESSING_JOB_ID" = j."ID" AND "CV_DOCUMENT_ID" = d."ID"
                 ORDER BY "ID" DESC LIMIT 1) x ON true
             """;

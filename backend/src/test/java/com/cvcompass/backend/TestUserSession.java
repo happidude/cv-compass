@@ -20,7 +20,7 @@ final class TestUserSession {
     static TestUserSession login(HttpClient client, int port, JdbcTemplate jdbc, ObjectMapper json)
             throws Exception {
         jdbc.update(
-                "INSERT INTO \"CV_USERS\"(\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES ('synthetic-http',?,'USER') ON CONFLICT DO NOTHING",
+                "INSERT INTO \"IDENTITY\".\"USERS\"(\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES ('synthetic-http',?,'USER') ON CONFLICT DO NOTHING",
                 new BCryptPasswordEncoder(4).encode("synthetic-http-test-only"));
         var cookies = new LinkedHashMap<String, String>();
         String base = "http://localhost:" + port;

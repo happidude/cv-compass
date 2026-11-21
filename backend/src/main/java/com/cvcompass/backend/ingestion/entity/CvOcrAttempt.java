@@ -22,7 +22,7 @@ import org.hibernate.type.SqlTypes;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "\"CV_OCR_ATTEMPTS\"")
+@Table(schema = "\"INGESTION\"", name = "\"OCR_ATTEMPTS\"")
 public class CvOcrAttempt extends BaseEntity {
     @Column(name = "\"PUBLIC_ID\"", nullable = false)
     private UUID publicId;
