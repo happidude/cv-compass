@@ -54,6 +54,7 @@ CLI_ERRORS = {
     'INVALID_NUM_CTX',
     'INVALID_MODE',
     'INVALID_NAME_STYLE',
+    'INVALID_DATES',
     'INVALID_WHOLE_TIMEOUT',
     'INVALID_PROMPT_SCHEMA_TEXT',
     'INVALID_WHOLE_PERSONAL',
@@ -244,6 +245,7 @@ def run_batch(
         'provider': provider.name,
         'prompt_version': prompt_version(mode, config),
         'mode': mode,
+        'dates': config.dates if config is not None else 'v1',
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
         'llm_calls': len(calls),
         'llm_metrics': metric_summary(calls),
@@ -287,6 +289,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--only-fallback-candidates')
     for name in (
         'name_style',
+        'dates',
         'prompt_schema_text',
         'whole_personal',
         'max_output_tokens',
@@ -311,6 +314,7 @@ def parser() -> argparse.ArgumentParser:
     pull.add_argument('--log-level')
     for name in (
         'name_style',
+        'dates',
         'prompt_schema_text',
         'whole_personal',
         'max_output_tokens',
