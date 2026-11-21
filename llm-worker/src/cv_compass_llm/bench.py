@@ -111,13 +111,14 @@ def _aggregate(runs: list[dict], comparisons: list[dict], seconds: list[float]) 
             }
         )
     for kind in ('positions', 'companies', 'titles', 'companyPeriods'):
-        prefix = f'experiences.{kind}.'
-        for metric, denominator in (('precision', 'predicted'), ('recall', 'gold')):
-            counts[prefix + metric] = (
-                counts[prefix + 'matched'] / counts[prefix + denominator]
-                if counts[prefix + denominator]
-                else 0.0
-            )
+        for level in ('', 'loose.'):
+            prefix = f'experiences.{kind}.' + level
+            for metric, denominator in (('precision', 'predicted'), ('recall', 'gold')):
+                counts[prefix + metric] = (
+                    counts[prefix + 'matched'] / counts[prefix + denominator]
+                    if counts[prefix + denominator]
+                    else 0.0
+                )
     for summary in runs:
         counts.update({key: summary[key] for key in ('files', 'ok', 'llm_calls')})
         counts['ctx_retry'] += summary.get('ctx_retry', 0)
@@ -241,10 +242,19 @@ def run_bench(
 def print_bench(report: dict) -> None:
     """Render the same numeric cells as JSON; missing measurements use a dash."""
     rows = report['configurations']
-    print('metric\t' + '\t'.join(f'{row["name"]}\tΔ' for row in rows))
+    print('metric\t' + '\t'.join(f'{row["name"]}\tΔ\t{row["name"]} loose\tΔ' for row in rows))
     for key in rows[0]['metrics']:
+        if '.loose.' in key:
+            continue
+        prefix, separator, metric = key.rpartition('.')
+        loose = prefix + separator + 'loose.' + metric
         cells = [key]
         for row in rows:
-            for value in (row['metrics'][key], row['delta'][key]):
+            for value in (
+                row['metrics'][key],
+                row['delta'][key],
+                row['metrics'].get(loose),
+                row['delta'].get(loose),
+            ):
                 cells.append('-' if value is None else format(value, '.8g'))
         print('\t'.join(cells))

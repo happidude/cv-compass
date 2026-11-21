@@ -537,15 +537,15 @@ class CompareTests(DirectoryTests):
         self.assertEqual(metrics['invalid_results'], 0)
         self.assertEqual(metrics['unpaired_results'], 0)
         self.assertEqual(metrics['average_seconds'], 3)
-        self.assertEqual(
-            metrics['personal'],
-            {
-                'fullName': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
-                'gender': {'correct': 1, 'wrong': 1, 'missing': 0, 'extra': 0},
-                'location': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
-                'dateOfBirth': {'correct': 0, 'wrong': 1, 'missing': 0, 'extra': 1},
-            },
-        )
+        expected_personal = {
+            'fullName': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
+            'gender': {'correct': 1, 'wrong': 1, 'missing': 0, 'extra': 0},
+            'location': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
+            'dateOfBirth': {'correct': 0, 'wrong': 1, 'missing': 0, 'extra': 1},
+        }
+        for counts in expected_personal.values():
+            counts['loose'] = dict(counts)
+        self.assertEqual(metrics['personal'], expected_personal)
         for kind in ('companies', 'companyPeriods', 'titles', 'positions'):
             self.assertEqual(
                 metrics['experiences'][kind],
@@ -555,6 +555,13 @@ class CompareTests(DirectoryTests):
                     'gold': 3,
                     'precision': 1 / 3,
                     'recall': 1 / 3,
+                    'loose': {
+                        'matched': 1,
+                        'predicted': 3,
+                        'gold': 3,
+                        'precision': 1 / 3,
+                        'recall': 1 / 3,
+                    },
                 },
             )
 
@@ -682,6 +689,13 @@ class CompareTests(DirectoryTests):
                     'gold': 0,
                     'precision': 0.0,
                     'recall': 0.0,
+                    'loose': {
+                        'matched': 0,
+                        'predicted': 0,
+                        'gold': 0,
+                        'precision': 0.0,
+                        'recall': 0.0,
+                    },
                 },
             )
 

@@ -175,8 +175,12 @@ class BenchTests(unittest.TestCase):
         self.assertIn('Δ', text)
         self.assertIn('personal.fullName.missing', text)
         cells = {line.split('\t')[0]: line.split('\t')[1:] for line in text.splitlines()[1:]}
-        self.assertEqual(cells['personal.fullName.correct'], ['1', '0', '0', '-1'])
-        self.assertEqual(cells['personal.fullName.missing'], ['0', '0', '1', '1'])
+        self.assertEqual(
+            cells['personal.fullName.correct'], ['1', '0', '1', '0', '0', '-1', '0', '-1']
+        )
+        self.assertEqual(
+            cells['personal.fullName.missing'], ['0', '0', '0', '0', '1', '1', '1', '1']
+        )
         for text in (text, json.dumps(report)):
             for private in (self.secret, self.filename, str(self.root), 'ollama', 'prompt_version'):
                 self.assertNotIn(private, text)

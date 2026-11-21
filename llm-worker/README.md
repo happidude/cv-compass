@@ -244,6 +244,21 @@ So sánh dùng NFC, casefold và gộp/strip khoảng trắng; null khác chuỗ
 Personal có `correct`, `wrong`, `missing`, `extra`; hai phía cùng null tính là
 `correct`.
 
+Mức **strict** trên giữ nguyên để so lịch sử. Mức **loose** chấm song song bằng
+NFC, casefold, gộp khoảng trắng; đổi gạch `‐`, `‑`, `‒`, `–`, `—`, `−` thành `-`,
+nháy `‘`, `’`, `‚`, `‛`, `′` thành `'` và `“`, `”`, `„`, `″` thành `"`.
+Loose bỏ khoảng trắng quanh `-`, `|`, `/` và bỏ liên tiếp dấu `.,;:` cùng khoảng
+trắng ở hai đầu; kết quả rỗng thành null. Không bỏ từ hay so khớp chuỗi con:
+gold `Acme Co` và dự đoán `Acme Co, Hanoi` vẫn sai ở cả hai mức.
+Grouping và kỳ kinh nghiệm dùng cùng quy tắc ở cả hai mức.
+
+`experiences.<kind>.loose` chứa `matched`, `predicted`, `gold`, `precision`,
+`recall`; `personal.<field>.loose` chứa `correct`, `wrong`, `missing`, `extra`.
+`compare` và `bench --json` xuất đủ hai mức; bench cộng số đếm loose qua các
+lượt đo rồi tính lại tỷ lệ. Bảng bench đặt cột loose ngay cạnh cột strict của
+từng cấu hình, mỗi mức có delta riêng. Chỉ số không có mức loose hiển thị `-`
+trong cột loose.
+
 Kỳ công ty dùng nguyên bộ `(start, end, ongoing)` đã ghi trong gold nếu có start,
 end hoặc ongoing; nếu chưa có thì suy từ vị trí: start sớm nhất, end muộn nhất,
 ongoing nếu bất kỳ vị trí nào ongoing (khi đó end=null). Kết quả trích xuất luôn

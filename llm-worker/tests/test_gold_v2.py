@@ -378,6 +378,13 @@ class GroupedCompareTests(DirectoryTests):
                     'gold': count,
                     'precision': matched / count,
                     'recall': matched / count,
+                    'loose': {
+                        'matched': matched,
+                        'predicted': count,
+                        'gold': count,
+                        'precision': matched / count,
+                        'recall': matched / count,
+                    },
                 },
             )
         for flag in ([], ['--json']):
@@ -456,6 +463,13 @@ class GroupedCompareTests(DirectoryTests):
                     'gold': matched,
                     'precision': matched / count,
                     'recall': 1,
+                    'loose': {
+                        'matched': matched,
+                        'predicted': count,
+                        'gold': matched,
+                        'precision': matched / count,
+                        'recall': 1,
+                    },
                 },
             )
 

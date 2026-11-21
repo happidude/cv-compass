@@ -14,6 +14,11 @@ EXPERIENCE_FIELDS = ('title', 'company', 'start', 'end', 'ongoing')
 POSITION_FIELDS = ('title', 'start', 'end', 'ongoing')
 COMPANY_FIELDS = ('company', 'companyLocation', 'start', 'end', 'ongoing', 'positions')
 SCHEMA_VERSION = 'experience-gold/2'
+_LOOSE_TRANSLATION = str.maketrans(
+    {char: '-' for char in '‐‑‒–—−-'}
+    | {char: "'" for char in '‘’‚‛′'}
+    | {char: '"' for char in '“”„″'}
+)
 
 
 def normalize(value: str | None) -> str | None:
@@ -21,6 +26,15 @@ def normalize(value: str | None) -> str | None:
     if value is None:
         return None
     return ' '.join(unicodedata.normalize('NFC', value).casefold().split())
+
+
+def normalize_loose(value: str | None) -> str | None:
+    """Normalize typography and boundary punctuation without removing words."""
+    if value is None:
+        return None
+    value = unicodedata.normalize('NFC', value).casefold().translate(_LOOSE_TRANSLATION)
+    value = ' '.join(value.split())
+    return re.sub(r'\s*([|/-])\s*', r'\1', value).strip('.,;: ') or None
 
 
 def group_experiences(items: list[dict]) -> list[dict]:
