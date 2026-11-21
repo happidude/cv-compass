@@ -97,6 +97,7 @@ def extract(
     fallback_provider: LlmProvider | None = None,
     on_fallback: Callable[[tuple[str, ...]], None] | None = None,
     on_context: Callable[[dict], None] | None = None,
+    on_raw: Callable[[dict], None] | None = None,
 ) -> ExtractionResult:
     """Extract supported CV values while isolating provider block failures."""
     if config is not None and config.fallback_model:
@@ -111,6 +112,8 @@ def extract(
             'on_trim': on_trim,
             'on_context': on_context,
         }
+        if on_raw is not None:
+            options['on_raw'] = on_raw
         result = extract(document, provider, config=primary_config, **options)
         reasons = fallback_reasons(
             result, document, drop_ratio=config.fallback_drop_ratio, ctx_guard=config.ctx_guard
@@ -118,6 +121,10 @@ def extract(
         if on_fallback is not None:
             on_fallback(reasons)
         if reasons:
+            if on_raw is not None:
+                options['on_raw'] = lambda row: on_raw(
+                    {**row, 'call': 'fallback', 'stage': row['call']}
+                )
             return extract(
                 document,
                 fallback_provider,
@@ -159,20 +166,53 @@ def extract(
         else (8192, 16384, 24576, 32768)
     )
 
-    def generate(prompt: str, schema: dict, **options) -> str:
+    def generate(call: str, prompt: str, schema: dict, **options) -> str:
         effective = options.get('num_ctx', config.num_ctx if config is not None else None)
         telemetry = {'discarded': []}
+
+        def invoke() -> str:
+            if on_raw is not None:
+                sent_ctx = options.get('num_ctx', getattr(provider, 'num_ctx', effective))
+            try:
+                response = provider.generate(prompt, schema, **options)
+            except ProviderError:
+                if on_raw is not None:
+                    on_raw(
+                        {
+                            'call': call,
+                            'num_ctx': sent_ctx,
+                            'prompt_version': prompt_version(mode, config),
+                            'response': None,
+                            'done_reason': None,
+                        }
+                    )
+                raise
+            if on_raw is not None:
+                metrics = getattr(provider, 'last_metrics', None)
+                on_raw(
+                    {
+                        'call': call,
+                        'num_ctx': sent_ctx,
+                        'prompt_version': prompt_version(mode, config),
+                        'response': response,
+                        'done_reason': metrics.get('done_reason')
+                        if isinstance(metrics, dict)
+                        else None,
+                    }
+                )
+            return response
+
         try:
             if not guard:
                 if effective is not None:
                     telemetry['num_ctx'] = effective
-                return provider.generate(prompt, schema, **options)
+                return invoke()
             for attempt in range(2):
                 if effective is not None:
                     telemetry['num_ctx'] = effective
                 started = perf_counter()
                 try:
-                    response = provider.generate(prompt, schema, **options)
+                    response = invoke()
                 except ProviderError as error:
                     if str(error) != 'OLLAMA_CONTEXT_OVERFLOW':
                         raise
@@ -281,6 +321,7 @@ def extract(
             report_chars(chars_before, len(block_text))
             try:
                 response = generate(
+                    'whole',
                     prompt,
                     LINES_EXPERIENCE_SCHEMA
                     if use_lines
@@ -328,6 +369,7 @@ def extract(
             header_text, header_table = block_lines(header, line_table)
         try:
             response = generate(
+                'header',
                 build_lines_prompt(header_text, personal=True, schema_text=schema_text)
                 if use_lines
                 else build_personal_prompt(header.text, schema_text=schema_text),
@@ -352,6 +394,7 @@ def extract(
         completed(started)
     if len(blocks) > max_blocks:
         issues.append(Issue('BLOCK_LIMIT_REACHED'))
+    block_number = 0
     for block in blocks[:max_blocks]:
         started = perf_counter() if on_block is not None else 0
         block, block_text, block_table, chars_before = experience_input(block)
@@ -361,8 +404,10 @@ def extract(
             completed(started)
             continue
         report_chars(chars_before, len(block_text))
+        block_number += 1
         try:
             response = generate(
+                f'block-{block_number}',
                 build_lines_prompt(block_text, schema_text=schema_text, name_style=name_style)
                 if use_lines
                 else build_experience_prompt(

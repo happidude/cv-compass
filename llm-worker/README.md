@@ -204,6 +204,24 @@ giá trị trích xuất. Mã thoát 0 khi hoàn tất (kể cả từng file l�
 an toàn đường dẫn hoặc I/O của lệnh không hợp lệ. Lỗi ngoài dự kiến chỉ in
 `INTERNAL_ERROR`, không traceback hay message exception. Không ghi/xóa trong input.
 
+### Giữ response thô để chẩn đoán offline
+
+`run --keep-raw` và `bench --keep-raw` ghi thêm `<stem>.raw.json` cạnh mỗi
+`<stem>.result.json`, kể cả trong warmup và mọi lượt đo của bench. Mặc định tắt;
+không có biến môi trường/config key tương ứng, `pull` không nhận cờ này.
+File raw được tạo mới, không ghi đè; lỗi input không tạo file raw.
+
+File có dạng `{"calls": [...]}` theo thứ tự gọi provider. Mỗi phần tử gồm
+`call`, `num_ctx`, `prompt_version`, `response`, `done_reason`. Nhãn `call` là
+`whole`, `header`, `block-N` (N từ 1 theo thứ tự block thực gọi); model dự phòng
+dùng `fallback` và thêm `stage` chỉ nhãn gốc. Mỗi lần retry context vẫn giữ một
+phần tử riêng; lỗi provider có `response` và `done_reason` là null. Không lưu
+prompt, schema hoặc văn bản OCR riêng trong file raw. `compare`, bench,
+`draft-gold` và `--only-fallback-candidates` bỏ qua các file `.raw.json`.
+
+**File raw chứa dữ liệu CV do model trả về. Chỉ dùng trên máy chủ dự án trong
+thư mục output riêng tư, xóa sau khi chẩn đoán. Không log nội dung response.**
+
 ## Gold v2 và so khớp
 
 Gold v2 gồm đúng `schemaVersion: "experience-gold/2"`, `status`, `personal`,

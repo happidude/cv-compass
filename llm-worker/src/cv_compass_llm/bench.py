@@ -158,6 +158,7 @@ def run_bench(
     repeat: int = 1,
     warmup: int = 0,
     parallel: int = 1,
+    keep_raw: bool = False,
     environ: Mapping[str, str] | None = None,
     repo_root: Path | None | Literal['auto'] = 'auto',
 ) -> dict:
@@ -196,6 +197,8 @@ def run_bench(
         }
         if parallel > 1:
             options['_providers'] = providers
+        if keep_raw:
+            options['keep_raw'] = True
         if warmup:
             run_batch(source, target / name / 'warmup', provider, limit=warmup, **options)
         runs, comparisons, seconds = [], [], []
