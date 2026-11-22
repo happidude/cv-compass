@@ -15,9 +15,19 @@ from .batch_io import input_directory, load_json, prepare_output, write_json
 from .bench import BENCH_ERRORS, print_bench, run_bench
 from .check import run_check
 from .compare import compare
-from .config import ENV_KEYS, LlmConfig, PullConfigError, load_config, load_pull_config
+from .config import (
+    ENV_KEYS,
+    LlmConfig,
+    PullConfigError,
+    load_config,
+    load_norm_config,
+    load_pull_config,
+)
 from .gold import draft_gold
 from .lifecycle import call_metrics, lifecycle_report, metric_summary, print_report
+from .norm_bench import BENCH_ERRORS as NORM_BENCH_ERRORS
+from .norm_bench import run_norm_bench
+from .normalize import run_normalize
 from .ocr_input import load_document
 from .pipeline import FALLBACK_REASONS, extract, fallback_reasons
 from .prompts import prompt_version
@@ -36,38 +46,43 @@ INPUT_ERRORS = {
     'INVALID_PAGE_STATUS',
     'INVALID_PAGE_TEXT',
 }
-CLI_ERRORS = {
-    'UNSAFE_OUTPUT',
-    'OUTPUT_NOT_EMPTY',
-    'INVALID_INPUT_DIRECTORY',
-    'INVALID_MAX_BLOCKS',
-    'INVALID_LIMIT',
-    'OLLAMA_HOST_NOT_LOCAL',
-    'INVALID_MODEL',
-    'INVALID_TIMEOUT',
-    'MISSING_CONFIG',
-    'INVALID_PROVIDER',
-    'ENV_FILE_NOT_FOUND',
-    'INVALID_ENV_FILE',
-    'INVALID_TEMPERATURE',
-    'INVALID_THINK',
-    'INVALID_NUM_CTX',
-    'INVALID_MODE',
-    'INVALID_NAME_STYLE',
-    'INVALID_NAME_TRIM',
-    'INVALID_DATES',
-    'INVALID_WHOLE_TIMEOUT',
-    'INVALID_PROMPT_SCHEMA_TEXT',
-    'INVALID_WHOLE_PERSONAL',
-    'INVALID_MAX_OUTPUT_TOKENS',
-    'INVALID_KEEP_ALIVE',
-    'INVALID_CTX_CHARS_PER_TOKEN',
-    'INVALID_CTX_FINE_TIERS',
-    'INVALID_CTX_GUARD',
-    'INVALID_FALLBACK_MODEL',
-    'INVALID_FALLBACK_DROP_RATIO',
-    'INVALID_FALLBACK_CANDIDATES',
-} | BENCH_ERRORS
+CLI_ERRORS = (
+    {
+        'UNSAFE_OUTPUT',
+        'OUTPUT_NOT_EMPTY',
+        'INVALID_INPUT_DIRECTORY',
+        'INVALID_MAX_BLOCKS',
+        'INVALID_LIMIT',
+        'OLLAMA_HOST_NOT_LOCAL',
+        'INVALID_MODEL',
+        'INVALID_TIMEOUT',
+        'MISSING_CONFIG',
+        'INVALID_PROVIDER',
+        'ENV_FILE_NOT_FOUND',
+        'INVALID_ENV_FILE',
+        'INVALID_TEMPERATURE',
+        'INVALID_THINK',
+        'INVALID_NUM_CTX',
+        'INVALID_MODE',
+        'INVALID_NAME_STYLE',
+        'INVALID_NAME_TRIM',
+        'INVALID_DATES',
+        'INVALID_WHOLE_TIMEOUT',
+        'INVALID_PROMPT_SCHEMA_TEXT',
+        'INVALID_WHOLE_PERSONAL',
+        'INVALID_MAX_OUTPUT_TOKENS',
+        'INVALID_KEEP_ALIVE',
+        'INVALID_CTX_CHARS_PER_TOKEN',
+        'INVALID_CTX_FINE_TIERS',
+        'INVALID_CTX_GUARD',
+        'INVALID_FALLBACK_MODEL',
+        'INVALID_FALLBACK_DROP_RATIO',
+        'INVALID_FALLBACK_CANDIDATES',
+        'INVALID_NORM_BATCH',
+    }
+    | BENCH_ERRORS
+    | NORM_BENCH_ERRORS
+)
 
 
 class _MetricsProvider:
@@ -341,6 +356,18 @@ def parser() -> argparse.ArgumentParser:
     bench.add_argument('--parallel', type=int, default=1)
     bench.add_argument('--json', action='store_true')
     bench.add_argument('--keep-raw', action='store_true')
+    norm_bench = commands.add_parser('bench-norm')
+    norm_bench.add_argument('--gold', required=True)
+    norm_bench.add_argument('--config', action='append')
+    norm_bench.add_argument('--repeat', type=int, default=1)
+    norm_bench.add_argument('--taxonomy')
+    norm_bench.add_argument('--output')
+    norm_bench.add_argument('--keep-raw', action='store_true')
+    norm_bench.add_argument('--json', action='store_true')
+    normalize = commands.add_parser('normalize')
+    normalize.add_argument('--env-file')
+    normalize.add_argument('--once', action='store_true')
+    normalize.add_argument('--log-level')
     pull = commands.add_parser('pull')
     pull.add_argument('--env-file')
     pull.add_argument('--once', action='store_true')
@@ -417,6 +444,31 @@ def main(argv: list[str] | None = None) -> int:
     """Execute a command while keeping paths and source values out of diagnostics."""
     args = parser().parse_args(argv)
     try:
+        if args.command == 'normalize':
+            config = load_norm_config(
+                os.environ,
+                Path(args.env_file) if args.env_file is not None else None,
+                env_file_explicit=args.env_file is not None,
+                cli=vars(args),
+            )
+            return run_normalize(config, create_provider(config.transport.llm), once=args.once)
+        if args.command == 'bench-norm':
+            report = run_norm_bench(
+                args.gold,
+                args.config,
+                provider_factory=create_provider,
+                repeat=args.repeat,
+                taxonomy_path=args.taxonomy,
+                output_dir=args.output,
+                keep_raw=args.keep_raw,
+            )
+            if args.json:
+                print(json.dumps(report, allow_nan=False, sort_keys=True))
+            else:
+                for index, configuration in enumerate(report['configurations'], 1):
+                    for iteration, metrics in enumerate(configuration['runs'], 1):
+                        print_metrics(metrics, f'config.{index}.run.{iteration}.')
+            return 0
         if args.command == 'bench':
             report = run_bench(
                 args.input,

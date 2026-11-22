@@ -1084,3 +1084,63 @@ Hành vi Ollama **0.40.x chưa được kiểm chứng (NOT VERIFIED)**: đầu 
 context có thể trả lỗi hoặc bị cắt âm thầm. Guard xử lý cả lỗi nhận diện được
 và tín hiệu metrics; triển khai/test O9 chỉ dùng fixture tổng hợp và mock,
 không gọi Ollama thật.
+
+## Chuẩn hóa tên công ty/chức danh
+
+Chạy `python -m cv_compass_llm normalize --env-file <file.env> [--once] [--log-level INFO]`.
+Lệnh dùng `CVC_LLM_BACKEND_URL`, Bearer `CVC_LLM_WORKER_TOKEN` chỉ từ môi trường tiến trình,
+cùng cấu hình provider, `CVC_LLM_POLL_S`, `CVC_LLM_HTTP_TIMEOUT_S`,
+`CVC_LLM_MAX_HTTP_ATTEMPTS`, `CVC_LLM_LOG_LEVEL` của `pull`. Backend phải bật normalization
+và cấp quyền riêng cho token; chỉ dùng HTTP ở loopback, ngoài loopback cần HTTPS.
+Không đọc OCR/CV đầy đủ. `CVC_NORM_BATCH` mặc định 50, chỉ nhận số nguyên từ 1 đến 50;
+biến môi trường ưu tiên hơn dotenv. Claim `204` là chờ việc, `--once` kết thúc thành công.
+
+Prompt `norm-1` chỉ chứa `id`, `kind`, `raw`, `contextCompany` nếu có, bảng mã/nhãn từ claim
+và quy tắc ADR-0001. Tên giữ chính tả/dấu gốc, bỏ hậu tố; không dịch/thêm dấu/suy luận.
+Parent phải có trong chuỗi gốc. Mỗi công ty một ngành; chức danh 1–2 nhóm nghề khác nhau,
+một cấp bậc, scope chỉ khi nói rõ phạm vi; `OTHER` cần nhãn đề xuất tiếng Việt.
+Worker kiểm tra schema chặt (khóa thừa làm hỏng cả lô), mã trong taxonomy và tên/parent
+là chuỗi con phân biệt hoa thường sau chuẩn hóa Unicode NFC và gom khoảng trắng. Parent trùng
+tên sau fold bị từ chối với `PARENT_SAME_AS_NAME`. `name`, `parent`, `proposedLabel` dài hơn
+255 code point thành `LLM_FIELD_TOO_LONG`. Item thiếu/sai thành error theo mã cố định,
+không bịa giá trị. Body `{token, results}` gửi tới `/internal/normalization/v1/results`
+được giới hạn 65536 byte UTF-8; thay item dài nhất bằng `RESULT_TOO_LARGE` cho tới khi vừa.
+`409 LEASE_LOST` bỏ lô và tăng bộ đếm, không làm lệnh thất bại; `503` retry cùng payload
+với backoff khi lease còn hiệu lực. Submit `400`/`413` bỏ lô, tăng `dropped_batches` rồi
+tiếp tục polling trong loop mode; `401`/`403` vẫn dừng. Không có heartbeat/gia hạn lease.
+
+Thông thường mỗi lô chỉ gọi provider một lần. Khi `CVC_LLM_CTX_GUARD=true`, guard ước lượng
+`ceil(ký tự prompt / CVC_LLM_CTX_CHARS_PER_TOKEN) + token dự trữ` so với `CVC_LLM_NUM_CTX`.
+Token dự trữ dùng `CVC_LLM_MAX_OUTPUT_TOKENS`, mặc định 4096. Chỉ tách lô thành hai khi
+ước lượng vượt context; nếu nửa lô vẫn quá lớn thì bỏ lô với lỗi provider, không submit.
+Không dùng cascade model của extraction. Log chỉ gồm mã lỗi, số đếm và thời gian;
+không chứa tên công ty/chức danh, raw, prompt hay response.
+
+Đo offline (không kết nối backend, provider vẫn là Ollama local):
+
+```text
+python -m cv_compass_llm bench-norm --gold <gold-dir> --config local=<file.env> --repeat 2 --json
+python -m cv_compass_llm bench-norm --gold <gold-dir> --taxonomy <taxonomy.json> --output <private-dir> --keep-raw
+```
+
+Chỉ đọc `*.norm.json` với `schemaVersion=normalization-gold/0-draft`, các mảng `companies`
+(`raw`, `name`, `parent`, `industry`) và `titles` (`raw`, `contextCompany` tùy chọn,
+`functions`, `seniority`, `scope`). Loại phiên bản khác; khử trùng chuỗi raw chính xác
+theo kind, từ chối gold mâu thuẫn. Chỉ dùng dữ liệu tổng hợp khi phát triển/test.
+Taxonomy mặc định đọc bản sao `backend/src/main/resources/catalog/taxonomy-v0.json`
+theo vị trí repo, không phụ thuộc thư mục chạy; `--taxonomy` nhận cùng định dạng.
+Đây chỉ là nguồn cho benchmark; `normalize` luôn lấy taxonomy từ claim.
+
+`--config name=env` lặp được, cho phép khóa provider/extraction và `CVC_NORM_BATCH`,
+không cho credential/backend; bỏ `--config` thì dùng môi trường tiến trình, không đọc dotenv.
+`--repeat` mặc định 1. Mỗi run xuất các số tổng hợp: tên strict (exact) và loose
+(không phân biệt hoa thường/khoảng trắng/dấu, kể cả đ), parent exact, ngành, chức năng
+micro precision/recall, cấp bậc, scope, mã lỗi item, số call và thời gian giây.
+Item lỗi vẫn nằm trong mẫu số accuracy/recall. Không in raw hay tên/chức danh.
+Lỗi provider (kể cả tràn context) làm các item của lô thành `PROVIDER_ERROR`, vẫn giữ mẫu số
+và tiếp tục đo các lô sau. Dùng timing `bench-norm` để điều chỉnh `CVC_NORM_BATCH` và
+`cv.catalog.normalization.lease-duration` của backend sao cho đủ thời gian gọi provider
+và submit/retry trước khi lease hết hạn.
+`--output` tùy chọn ghi summary, phải ở thư mục rỗng ngoài repo và ngoài nguồn gold.
+`--keep-raw` mặc định tắt, bắt buộc `--output`, ghi response provider vào `*.raw.json`
+như bench extraction; file này chứa chuỗi nguồn, chỉ giữ trong vùng dữ liệu riêng.
