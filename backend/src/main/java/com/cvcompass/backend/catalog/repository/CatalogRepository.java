@@ -131,8 +131,12 @@ public class CatalogRepository {
         return jdbc.queryForList(
                 """
                 INSERT INTO "CATALOG"."ALIASES" ("KIND","ALIAS_FOLDED","ENTRY_ID","ALIAS_RAW","ORIGIN") VALUES (?,?,?,?,'SEED')
-                ON CONFLICT ("KIND","ALIAS_FOLDED") DO UPDATE SET "ALIAS_RAW"=EXCLUDED."ALIAS_RAW", "ORIGIN"='SEED'
-                WHERE "ALIASES"."ENTRY_ID"=EXCLUDED."ENTRY_ID" AND "ALIASES"."ORIGIN"<>'USER' AND
+                ON CONFLICT ("KIND","ALIAS_FOLDED") DO UPDATE
+                SET "ENTRY_ID"=EXCLUDED."ENTRY_ID", "ALIAS_RAW"=EXCLUDED."ALIAS_RAW", "ORIGIN"='SEED',
+                  "STATE"='DONE', "TOKEN"=NULL, "LEASE_EXPIRES_AT"=NULL, "ERROR_CODE"=NULL,
+                  "COMPLETED_AT"=CASE WHEN "ALIASES"."ENTRY_ID" IS NULL THEN now() ELSE "ALIASES"."COMPLETED_AT" END
+                WHERE ("ALIASES"."ENTRY_ID" IS NULL OR "ALIASES"."ENTRY_ID"=EXCLUDED."ENTRY_ID")
+                  AND "ALIASES"."ORIGIN" IS DISTINCT FROM 'USER' AND
                   ("ALIASES"."ENTRY_ID","ALIASES"."ALIAS_RAW","ALIASES"."ORIGIN")
                   IS DISTINCT FROM (EXCLUDED."ENTRY_ID",EXCLUDED."ALIAS_RAW",'SEED'::varchar)
                 RETURNING (xmax=0)
@@ -189,7 +193,7 @@ public class CatalogRepository {
     private Optional<Long> aliasOwner(String kind, String raw) {
         return jdbc
                 .queryForList(
-                        "SELECT \"ENTRY_ID\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"=? AND \"ALIAS_FOLDED\"=?",
+                        "SELECT \"ENTRY_ID\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"=? AND \"ALIAS_FOLDED\"=? AND \"ENTRY_ID\" IS NOT NULL",
                         Long.class,
                         kind,
                         Fold.fold(raw))

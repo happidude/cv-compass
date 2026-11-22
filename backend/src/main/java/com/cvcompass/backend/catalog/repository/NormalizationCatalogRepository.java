@@ -41,12 +41,9 @@ public class NormalizationCatalogRepository {
     public Long alias(String kind, String folded) {
         return jdbc
                 .queryForList(
-                        "SELECT \""
-                                + kind
-                                + "_ID\" FROM \"CATALOG\".\""
-                                + kind
-                                + "_ALIASES\" WHERE \"ALIAS_FOLDED\"=?",
+                        "SELECT \"ENTRY_ID\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"=? AND \"ALIAS_FOLDED\"=? AND \"STATE\"='DONE'",
                         Long.class,
+                        kind,
                         folded)
                 .stream()
                 .findFirst()
@@ -56,16 +53,16 @@ public class NormalizationCatalogRepository {
     public long company(String name, String industry, String proposedLabel) {
         jdbc.update(
                 """
-                INSERT INTO "CATALOG"."COMPANIES"
-                  ("NAME","NAME_FOLDED","INDUSTRY_CODE","PROPOSED_LABEL","ORIGIN") VALUES (?,?,?,?,'AI')
-                ON CONFLICT ("NAME_FOLDED") DO NOTHING
+                INSERT INTO "CATALOG"."ENTRIES"
+                  ("KIND","NAME","NAME_FOLDED","INDUSTRY_CODE","PROPOSED_LABEL","ORIGIN") VALUES ('COMPANY',?,?,?,?,'AI')
+                ON CONFLICT ("KIND","NAME_FOLDED") DO NOTHING
                 """,
                 name.strip(),
                 Fold.fold(name),
                 industry,
                 proposedLabel);
         return jdbc.queryForObject(
-                "SELECT \"ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"=?",
+                "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"=?",
                 Long.class,
                 Fold.fold(name));
     }
@@ -75,9 +72,9 @@ public class NormalizationCatalogRepository {
                 jdbc.queryForObject(
                         """
                 WITH RECURSIVE ancestors AS (
-                  SELECT "ID","PARENT_ID","NAME_FOLDED" FROM "CATALOG"."COMPANIES" WHERE "NAME_FOLDED"=?
+                  SELECT "ID","PARENT_ID","NAME_FOLDED" FROM "CATALOG"."ENTRIES" WHERE "KIND"='COMPANY' AND "NAME_FOLDED"=?
                   UNION
-                  SELECT p."ID",p."PARENT_ID",p."NAME_FOLDED" FROM "CATALOG"."COMPANIES" p
+                  SELECT p."ID",p."PARENT_ID",p."NAME_FOLDED" FROM "CATALOG"."ENTRIES" p
                     JOIN ancestors a ON a."PARENT_ID"=p."ID"
                 ) SELECT EXISTS(SELECT 1 FROM ancestors WHERE "NAME_FOLDED"=?)
                 """,
@@ -92,11 +89,11 @@ public class NormalizationCatalogRepository {
         jdbc.queryForList(
                 """
                 WITH RECURSIVE ancestors AS (
-                  SELECT "ID","PARENT_ID" FROM "CATALOG"."COMPANIES" WHERE "ID"=?
+                  SELECT "ID","PARENT_ID" FROM "CATALOG"."ENTRIES" WHERE "KIND"='COMPANY' AND "ID"=?
                   UNION
-                  SELECT p."ID",p."PARENT_ID" FROM "CATALOG"."COMPANIES" p
+                  SELECT p."ID",p."PARENT_ID" FROM "CATALOG"."ENTRIES" p
                     JOIN ancestors a ON a."PARENT_ID"=p."ID"
-                ) SELECT c."ID" FROM "CATALOG"."COMPANIES" c
+                ) SELECT c."ID" FROM "CATALOG"."ENTRIES" c
                 WHERE c."ID"=? OR c."ID" IN (SELECT "ID" FROM ancestors)
                 ORDER BY c."ID" FOR NO KEY UPDATE
                 """,
@@ -107,9 +104,9 @@ public class NormalizationCatalogRepository {
                 jdbc.queryForObject(
                         """
                 WITH RECURSIVE ancestors AS (
-                  SELECT "ID","PARENT_ID" FROM "CATALOG"."COMPANIES" WHERE "ID"=?
+                  SELECT "ID","PARENT_ID" FROM "CATALOG"."ENTRIES" WHERE "KIND"='COMPANY' AND "ID"=?
                   UNION
-                  SELECT p."ID",p."PARENT_ID" FROM "CATALOG"."COMPANIES" p
+                  SELECT p."ID",p."PARENT_ID" FROM "CATALOG"."ENTRIES" p
                     JOIN ancestors a ON a."PARENT_ID"=p."ID"
                 ) SELECT EXISTS(SELECT 1 FROM ancestors WHERE "ID"=?)
                 """,
@@ -118,8 +115,8 @@ public class NormalizationCatalogRepository {
                         id))) return false;
         jdbc.update(
                 """
-                UPDATE "CATALOG"."COMPANIES" SET "PARENT_ID"=?,"UPDATED_AT"=now()
-                WHERE "ID"=? AND "ORIGIN"='AI' AND "PARENT_ID" IS NULL AND "ID"<>?
+                UPDATE "CATALOG"."ENTRIES" SET "PARENT_ID"=?,"UPDATED_AT"=now()
+                WHERE "ID"=? AND "KIND"='COMPANY' AND "ORIGIN"='AI' AND "PARENT_ID" IS NULL AND "ID"<>?
                 """,
                 parentId,
                 id,
@@ -135,9 +132,9 @@ public class NormalizationCatalogRepository {
             String proposedLabel) {
         jdbc.update(
                 """
-                INSERT INTO "CATALOG"."TITLES"
-                  ("NAME","NAME_FOLDED","FUNCTION_CODES","SENIORITY_CODE","SCOPE_CODE","PROPOSED_LABEL","ORIGIN")
-                VALUES (?,?,?::text[],?,?,?,'AI') ON CONFLICT ("NAME_FOLDED") DO NOTHING
+                INSERT INTO "CATALOG"."ENTRIES"
+                  ("KIND","NAME","NAME_FOLDED","FUNCTION_CODES","SENIORITY_CODE","SCOPE_CODE","PROPOSED_LABEL","ORIGIN")
+                VALUES ('TITLE',?,?,?::text[],?,?,?,'AI') ON CONFLICT ("KIND","NAME_FOLDED") DO NOTHING
                 """,
                 name.strip(),
                 Fold.fold(name),
@@ -146,24 +143,8 @@ public class NormalizationCatalogRepository {
                 scope,
                 proposedLabel);
         return jdbc.queryForObject(
-                "SELECT \"ID\" FROM \"CATALOG\".\"TITLES\" WHERE \"NAME_FOLDED\"=?",
+                "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='TITLE' AND \"NAME_FOLDED\"=?",
                 Long.class,
                 Fold.fold(name));
-    }
-
-    public long alias(String kind, String folded, String raw, long id) {
-        // kind is supplied by the checked task table, never by a request identifier.
-        jdbc.update(
-                "INSERT INTO \"CATALOG\".\""
-                        + kind
-                        + "_ALIASES\""
-                        + " (\"ALIAS_FOLDED\",\"ALIAS_RAW\",\""
-                        + kind
-                        + "_ID\",\"ORIGIN\")"
-                        + " VALUES (?,?,?,'AI') ON CONFLICT (\"ALIAS_FOLDED\") DO NOTHING",
-                folded,
-                raw,
-                id);
-        return alias(kind, folded);
     }
 }

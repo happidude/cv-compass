@@ -28,9 +28,8 @@
 | [MAPPING.ATTEMPTS](MAPPING.ATTEMPTS.md) | 19 | Lần thực hiện ánh xạ từ xa cùng thời hạn thuê và kết quả kết thúc. | BASE TABLE |
 | [CATALOG.TAXONOMY_CODES](CATALOG.TAXONOMY_CODES.md) | 5 | Bảng mã phân loại theo phiên bản đã duyệt. | BASE TABLE |
 | [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | 14 | Danh mục công ty và chức danh chuẩn hóa theo loại. | BASE TABLE |
-| [CATALOG.ALIASES](CATALOG.ALIASES.md) | 6 | Bí danh công ty và chức danh duy nhất theo loại và chuỗi đã bỏ dấu. | BASE TABLE |
+| [CATALOG.ALIASES](CATALOG.ALIASES.md) | 15 | Ánh xạ cách viết bí danh tới mục danh mục và hàng đợi chuẩn hóa; ENTRY_ID để trống khi bí danh đang chờ chuẩn hóa. | BASE TABLE |
 | [SEARCH.CANDIDATE_INDEX](SEARCH.CANDIDATE_INDEX.md) | 14 | Bản chỉ mục tìm kiếm tổng hợp theo ứng viên. | BASE TABLE |
-| [CATALOG.NORMALIZATION_TASKS](CATALOG.NORMALIZATION_TASKS.md) | 14 | Hàng đợi chuẩn hóa bí danh công ty và chức danh. | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -438,6 +437,15 @@ erDiagram
   bigint ENTRY_ID FK
   text ALIAS_RAW
   varchar_8_ ORIGIN
+  text CONTEXT_COMPANY
+  varchar_16_ STATE
+  integer ATTEMPTS
+  integer MAX_ATTEMPTS
+  uuid TOKEN
+  timestamp_with_time_zone LEASE_EXPIRES_AT
+  timestamp_with_time_zone NEXT_ATTEMPT_AT
+  varchar_40_ ERROR_CODE
+  timestamp_with_time_zone COMPLETED_AT
 }
 "SEARCH.CANDIDATE_INDEX" {
   bigint CANDIDATE_ID FK
@@ -454,22 +462,6 @@ erDiagram
   integer TOTAL_EXPERIENCE_MONTHS
   boolean HAS_AI_NORMALIZATION
   timestamp_with_time_zone UPDATED_AT
-}
-"CATALOG.NORMALIZATION_TASKS" {
-  bigint ID
-  varchar_8_ KIND
-  text ALIAS_FOLDED
-  text ALIAS_RAW
-  text CONTEXT_COMPANY
-  varchar_16_ STATE
-  integer ATTEMPTS
-  integer MAX_ATTEMPTS
-  uuid TOKEN
-  timestamp_with_time_zone LEASE_EXPIRES_AT
-  timestamp_with_time_zone NEXT_ATTEMPT_AT
-  varchar_40_ ERROR_CODE
-  timestamp_with_time_zone CREATED_AT
-  timestamp_with_time_zone COMPLETED_AT
 }
 ```
 

@@ -41,6 +41,10 @@ cv:
       backfill-delay: ${CV_CATALOG_NORMALIZATION_BACKFILL_DELAY:15m}
       batch-size: ${CV_CATALOG_NORMALIZATION_BATCH_SIZE:100}
       max-body-bytes: ${CV_CATALOG_NORMALIZATION_MAX_BODY_BYTES:65536}
+      claim-max-items: ${CV_CATALOG_NORMALIZATION_CLAIM_MAX_ITEMS:50}
+      max-field-code-points: ${CV_CATALOG_NORMALIZATION_MAX_FIELD_CODE_POINTS:255}
+      candidate-scan-page-size: ${CV_CATALOG_NORMALIZATION_CANDIDATE_SCAN_PAGE_SIZE:100}
+      max-attempts: ${CV_CATALOG_NORMALIZATION_MAX_ATTEMPTS:3}
       workers: {}
     import:
       max-entries: ${CV_CATALOG_IMPORT_MAX_ENTRIES:10000}

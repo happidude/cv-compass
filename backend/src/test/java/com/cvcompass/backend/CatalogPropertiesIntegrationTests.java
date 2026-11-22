@@ -3,6 +3,8 @@ package com.cvcompass.backend;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cvcompass.backend.catalog.TaxonomyCodes;
+import com.cvcompass.backend.catalog.repository.NormalizationTaskRepository;
+import com.cvcompass.backend.catalog.service.NormalizationService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,6 +20,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(
@@ -34,6 +37,8 @@ class CatalogPropertiesIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
     @Autowired TaxonomyCodes taxonomy;
+    @Autowired NormalizationTaskRepository tasks;
+    @Autowired NormalizationService normalization;
     @LocalServerPort int port;
     private final HttpClient client = HttpClient.newHttpClient();
 
@@ -63,6 +68,20 @@ class CatalogPropertiesIntegrationTests {
                 .containsExactly(taxonomy.version());
         taxonomy.load();
         assertThat(taxonomy.isActive("FUNCTION", "SYNTHETIC_FUNCTION")).isTrue();
+    }
+
+    @Test
+    @Transactional
+    void normalizationClaimUsesConfiguredTaxonomyVersionAndCodes() {
+        tasks.enqueue("COMPANY", "synthetic version", "Synthetic version", null);
+        var claim = normalization.claim(1);
+        assertThat(claim.taxonomyVersion()).isEqualTo("cv-taxonomy/synthetic");
+        assertThat(claim.taxonomy().get("FUNCTION"))
+                .extracting(code -> code.code())
+                .containsExactly("SYNTHETIC_FUNCTION");
+        assertThat(claim.items())
+                .singleElement()
+                .satisfies(item -> assertThat(item.raw()).isEqualTo("Synthetic version"));
     }
 
     @Test

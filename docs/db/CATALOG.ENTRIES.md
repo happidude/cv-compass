@@ -133,6 +133,15 @@ erDiagram
   bigint ENTRY_ID FK
   text ALIAS_RAW
   varchar_8_ ORIGIN
+  text CONTEXT_COMPANY
+  varchar_16_ STATE
+  integer ATTEMPTS
+  integer MAX_ATTEMPTS
+  uuid TOKEN
+  timestamp_with_time_zone LEASE_EXPIRES_AT
+  timestamp_with_time_zone NEXT_ATTEMPT_AT
+  varchar_40_ ERROR_CODE
+  timestamp_with_time_zone COMPLETED_AT
 }
 ```
 

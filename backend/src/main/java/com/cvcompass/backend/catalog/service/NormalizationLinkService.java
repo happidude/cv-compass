@@ -5,6 +5,7 @@ import com.cvcompass.backend.candidate.catalogapi.CatalogLinks.ExperienceLink;
 import com.cvcompass.backend.candidate.events.CandidateChanged;
 import com.cvcompass.backend.catalog.Fold;
 import com.cvcompass.backend.catalog.api.CatalogLookup;
+import com.cvcompass.backend.catalog.config.NormalizationProperties;
 import com.cvcompass.backend.catalog.repository.NormalizationCatalogRepository;
 import com.cvcompass.backend.catalog.repository.NormalizationTaskRepository;
 import java.util.List;
@@ -25,6 +26,7 @@ public class NormalizationLinkService {
     private final NormalizationTaskRepository tasks;
     private final ApplicationEventPublisher events;
     private final ObjectMapper json;
+    private final NormalizationProperties properties;
 
     public NormalizationLinkService(
             CatalogLinks candidates,
@@ -32,13 +34,15 @@ public class NormalizationLinkService {
             NormalizationCatalogRepository catalog,
             NormalizationTaskRepository tasks,
             ApplicationEventPublisher events,
-            ObjectMapper json) {
+            ObjectMapper json,
+            NormalizationProperties properties) {
         this.candidates = candidates;
         this.lookup = lookup;
         this.catalog = catalog;
         this.tasks = tasks;
         this.events = events;
         this.json = json;
+        this.properties = properties;
     }
 
     @Transactional
@@ -89,7 +93,9 @@ public class NormalizationLinkService {
         var affected = new TreeSet<Long>();
         long after = 0, through = candidates.lastCandidateId();
         while (after < through) {
-            var ids = candidates.indexCandidates(after, through, 100, false);
+            var ids =
+                    candidates.indexCandidates(
+                            after, through, properties.getCandidateScanPageSize(), false);
             if (ids.isEmpty()) break;
             for (long id : ids) {
                 var experiences = candidates.experiences(id);

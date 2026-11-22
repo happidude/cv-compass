@@ -16,9 +16,11 @@ import com.cvcompass.backend.catalog.Fold;
 import com.cvcompass.backend.catalog.config.NormalizationClock;
 import com.cvcompass.backend.catalog.config.NormalizationProperties;
 import com.cvcompass.backend.catalog.config.NormalizationWorkerAuthenticationFilter;
+import com.cvcompass.backend.catalog.dto.CatalogSeed;
 import com.cvcompass.backend.catalog.dto.NormalizationProtocol.Claim;
 import com.cvcompass.backend.catalog.exception.NormalizationFailure;
 import com.cvcompass.backend.catalog.repository.NormalizationTaskRepository;
+import com.cvcompass.backend.catalog.service.CatalogImportService;
 import com.cvcompass.backend.catalog.service.NormalizationLinkService;
 import com.cvcompass.backend.catalog.service.NormalizationService;
 import java.time.Clock;
@@ -80,6 +82,7 @@ class NormalizationIntegrationTests {
     @Autowired NormalizationTaskRepository tasks;
     @Autowired NormalizationLinkService linker;
     @Autowired NormalizationProperties properties;
+    @Autowired CatalogImportService imports;
     @Autowired PlatformTransactionManager transactions;
     @Autowired ApplicationEventPublisher events;
     @Autowired MockMvc mvc;
@@ -107,6 +110,9 @@ class NormalizationIntegrationTests {
         when(clock.clock()).thenReturn(Clock.fixed(NOW, ZoneOffset.UTC));
         properties.setEnabled(true);
         properties.setMaxBodyBytes(65536);
+        properties.setClaimMaxItems(50);
+        properties.setMaxFieldCodePoints(255);
+        properties.setMaxAttempts(3);
         var worker = new NormalizationProperties.Worker();
         worker.setCredentialSha256(Set.of(NormalizationWorkerAuthenticationFilter.hash(TOKEN)));
         properties.setWorkers(Map.of("synthetic-worker", worker));
@@ -131,6 +137,95 @@ class NormalizationIntegrationTests {
     }
 
     @Test
+    void seedImportCompletesAnExistingLeaseAndTheWorkerCannotOverwriteIt() {
+        String raw = "Synthetic queued seed alias";
+        tasks.enqueue("COMPANY", Fold.fold(raw), raw, null);
+        var claim = service.claim(1);
+        var item = claim.items().getFirst();
+        var seed =
+                json.readValue(
+                        "{\"schemaVersion\":\"catalog-seed/0\",\"companies\":[{\"name\":\"Synthetic queued seed company\",\"industry\":\"RETAIL\",\"aliases\":[\"Synthetic queued seed alias\"]}],\"titles\":[]}",
+                        CatalogSeed.class);
+        imports.importSeed(seed);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"ENTRY_ID\" IS NOT NULL AND \"STATE\"='DONE' AND \"ORIGIN\"='SEED' AND \"TOKEN\" IS NULL AND \"LEASE_EXPIRES_AT\" IS NULL AND \"COMPLETED_AT\" IS NOT NULL FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=?",
+                                Boolean.class,
+                                item.id()))
+                .isTrue();
+        var before = submitSnapshot(Fold.fold("Synthetic queued seed company"), item.id());
+        assertThatThrownBy(
+                        () ->
+                                service.submit(
+                                        claim.token(),
+                                        List.of(
+                                                companyResult(
+                                                        item.id(),
+                                                        "Synthetic replacement",
+                                                        null,
+                                                        "MANUFACTURING"))))
+                .isInstanceOf(NormalizationFailure.class)
+                .hasMessage("LEASE_LOST");
+        assertThat(submitSnapshot(Fold.fold("Synthetic queued seed company"), item.id()))
+                .isEqualTo(before);
+        assertThat(service.claim(1)).isNull();
+    }
+
+    @Test
+    void configuredClaimAndCodePointLimitsApplyAndSubmitLinksTheClaimedAliasInPlace() {
+        properties.setClaimMaxItems(2);
+        properties.setMaxFieldCodePoints(3);
+        properties.setMaxAttempts(2);
+        for (int i = 0; i < 3; i++)
+            tasks.enqueue(
+                    "COMPANY", "synthetic configured " + i, "Synthetic configured " + i, null);
+        assertThatThrownBy(() -> service.claim(3))
+                .isInstanceOf(NormalizationFailure.class)
+                .hasMessage("INVALID_RESULT");
+        var claim = service.claim(2);
+        assertThat(claim.items()).hasSize(2);
+        var first = claim.items().getFirst();
+        var second = claim.items().getLast();
+        var valid = companyResult(first.id(), "\uD83D\uDE00".repeat(3), null, "RETAIL");
+        var tooLong = companyResult(second.id(), "\uD83D\uDE00".repeat(4), null, "RETAIL");
+        assertThatThrownBy(() -> service.submit(claim.token(), List.of(valid, tooLong, valid)))
+                .isInstanceOf(NormalizationFailure.class)
+                .hasMessage("INVALID_RESULT");
+        var reply = service.submit(claim.token(), List.of(valid, tooLong));
+        assertThat(reply.accepted()).isEqualTo(1);
+        assertThat(reply.rejected())
+                .singleElement()
+                .satisfies(
+                        rejection -> {
+                            assertThat(rejection.id()).isEqualTo(second.id());
+                            assertThat(rejection.code()).isEqualTo("INVALID_RESULT");
+                        });
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CATALOG\".\"ALIASES\"", Integer.class))
+                .isEqualTo(3);
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT \"MAX_ATTEMPTS\" FROM \"CATALOG\".\"ALIASES\"",
+                                Integer.class))
+                .hasSize(3)
+                .containsOnly(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"ENTRY_ID\" IS NOT NULL AND \"ORIGIN\"='AI' AND \"STATE\"='DONE' AND \"TOKEN\" IS NULL AND \"LEASE_EXPIRES_AT\" IS NULL AND \"COMPLETED_AT\" IS NOT NULL AND \"ALIAS_RAW\"=? FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=?",
+                                Boolean.class,
+                                first.raw(),
+                                first.id()))
+                .isTrue();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=?",
+                                String.class,
+                                second.id()))
+                .isEqualTo("PENDING");
+    }
+
+    @Test
     void disabledWorkersStillLinkAliasesAndEnqueueMissesInTheDatabase() {
         properties.setEnabled(false);
         long company = company("Synthetic disabled employer", "SEED");
@@ -145,7 +240,7 @@ class NormalizationIntegrationTests {
         assertThat(countTasks()).isEqualTo(1);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"KIND\"='TITLE'",
+                                "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='TITLE'",
                                 String.class))
                 .isEqualTo("PENDING");
     }
@@ -213,7 +308,7 @@ class NormalizationIntegrationTests {
     @Test
     void databaseConstraintFailureRejectsOnlyThatResultAndRollsBackItsEntryAndParent() {
         jdbc.execute(
-                "ALTER TABLE \"CATALOG\".\"COMPANY_ALIASES\" ADD CONSTRAINT \"TEST_NORMALIZATION_ALIAS\" CHECK (\"ALIAS_FOLDED\" <> 'synthetic rejected alias')");
+                "ALTER TABLE \"CATALOG\".\"ALIASES\" ADD CONSTRAINT \"TEST_NORMALIZATION_ALIAS\" CHECK (\"ALIAS_FOLDED\" <> 'synthetic rejected alias' OR \"STATE\" <> 'DONE')");
         for (String raw :
                 List.of(
                         "Synthetic valid before",
@@ -240,22 +335,22 @@ class NormalizationIntegrationTests {
                 .satisfies(rejection -> assertThat(rejection.code()).isEqualTo("INVALID_RESULT"));
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\" IN ('synthetic rejected alias canonical','synthetic rejected parent')",
+                                "SELECT count(*) FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\" IN ('synthetic rejected alias canonical','synthetic rejected parent')",
                                 Integer.class))
                 .isZero();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CATALOG\".\"COMPANY_ALIASES\"",
+                                "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"ENTRY_ID\" IS NOT NULL AND \"ORIGIN\"='AI'",
                                 Integer.class))
                 .isEqualTo(2);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"STATE\"='DONE'",
+                                "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"STATE\"='DONE'",
                                 Integer.class))
                 .isEqualTo(2);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATE\" || ':' || \"ERROR_CODE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"ALIAS_FOLDED\"='synthetic rejected alias'",
+                                "SELECT \"STATE\" || ':' || \"ERROR_CODE\" FROM \"CATALOG\".\"ALIASES\" WHERE \"ALIAS_FOLDED\"='synthetic rejected alias'",
                                 String.class))
                 .isEqualTo("PENDING:INVALID_RESULT");
     }
@@ -300,10 +395,7 @@ class NormalizationIntegrationTests {
                 .extracting(r -> r.code())
                 .containsExactlyInAnyOrder(
                         "INVALID_RESULT", "PROPOSED_LABEL_REQUIRED", "PROPOSED_LABEL_REQUIRED");
-        assertThat(
-                        jdbc.queryForList(
-                                "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\"",
-                                String.class))
+        assertThat(jdbc.queryForList("SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\"", String.class))
                 .containsOnly("PENDING");
     }
 
@@ -396,19 +488,19 @@ class NormalizationIntegrationTests {
                     .containsExactlyInAnyOrder(200, 409);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"=?",
+                                    "SELECT count(*) FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"=?",
                                     Integer.class,
                                     Fold.fold(raw)))
                     .isEqualTo(1);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CATALOG\".\"COMPANY_ALIASES\" WHERE \"ALIAS_FOLDED\"=?",
+                                    "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='COMPANY' AND \"ALIAS_FOLDED\"=?",
                                     Integer.class,
                                     Fold.fold(raw)))
                     .isEqualTo(1);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"ID\"=?",
+                                    "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=?",
                                     String.class,
                                     id))
                     .isEqualTo("DONE");
@@ -420,23 +512,27 @@ class NormalizationIntegrationTests {
     private List<String> submitSnapshot(String folded, long task) {
         return List.of(
                 jdbc.queryForObject(
-                        "SELECT to_jsonb(c)::text FROM \"CATALOG\".\"COMPANIES\" c WHERE \"NAME_FOLDED\"=?",
+                        "SELECT to_jsonb(c)::text FROM \"CATALOG\".\"ENTRIES\" c WHERE c.\"KIND\"='COMPANY' AND \"NAME_FOLDED\"=?",
                         String.class,
                         folded),
                 jdbc.queryForObject(
-                        "SELECT to_jsonb(a)::text FROM \"CATALOG\".\"COMPANY_ALIASES\" a WHERE \"ALIAS_FOLDED\"=?",
+                        "SELECT to_jsonb(a)::text FROM \"CATALOG\".\"ALIASES\" a WHERE a.\"KIND\"='COMPANY' AND \"ALIAS_FOLDED\"=?",
                         String.class,
                         folded),
                 jdbc.queryForObject(
-                        "SELECT to_jsonb(t)::text FROM \"CATALOG\".\"NORMALIZATION_TASKS\" t WHERE \"ID\"=?",
+                        "SELECT to_jsonb(t)::text FROM \"CATALOG\".\"ALIASES\" t WHERE \"ID\"=?",
                         String.class,
                         task));
     }
 
     private void removeCommittedSubmit(String folded, long task) {
-        jdbc.update("DELETE FROM \"CATALOG\".\"COMPANY_ALIASES\" WHERE \"ALIAS_FOLDED\"=?", folded);
-        jdbc.update("DELETE FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"=?", folded);
-        jdbc.update("DELETE FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"ID\"=?", task);
+        jdbc.update(
+                "DELETE FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='COMPANY' AND \"ALIAS_FOLDED\"=?",
+                folded);
+        jdbc.update(
+                "DELETE FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"=?",
+                folded);
+        jdbc.update("DELETE FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=?", task);
     }
 
     @Test
@@ -496,12 +592,12 @@ class NormalizationIntegrationTests {
         assertThat(countTasks()).isEqualTo(2);
         assertThat(
                         jdbc.queryForList(
-                                "SELECT \"KIND\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" ORDER BY \"KIND\"",
+                                "SELECT \"KIND\" FROM \"CATALOG\".\"ALIASES\" WHERE \"ENTRY_ID\" IS NULL ORDER BY \"KIND\"",
                                 String.class))
                 .containsExactly("COMPANY", "TITLE");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"CONTEXT_COMPANY\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"KIND\"='TITLE'",
+                                "SELECT \"CONTEXT_COMPANY\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='TITLE'",
                                 String.class))
                 .isIn("  Synthetic Missing  ", "synthetic missing");
         linker.backfillBatch(0, second, 1);
@@ -541,8 +637,7 @@ class NormalizationIntegrationTests {
         assertThat(reclaimed.token().toString()).isNotEqualTo(payload.path("token").asString());
         assertThat(
                         jdbc.queryForList(
-                                "SELECT \"ATTEMPTS\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\"",
-                                Integer.class))
+                                "SELECT \"ATTEMPTS\" FROM \"CATALOG\".\"ALIASES\"", Integer.class))
                 .containsOnly(2);
     }
 
@@ -588,7 +683,7 @@ class NormalizationIntegrationTests {
             }
         } finally {
             jdbc.update(
-                    "DELETE FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"ALIAS_FOLDED\" IN (?,?)",
+                    "DELETE FROM \"CATALOG\".\"ALIASES\" WHERE \"ALIAS_FOLDED\" IN (?,?)",
                     suffix + "a",
                     suffix + "b");
         }
@@ -623,16 +718,16 @@ class NormalizationIntegrationTests {
         assertThat(reply.rejected()).isEmpty();
         long company =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME\"='Aster Works'",
+                        "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME\"='Aster Works'",
                         Long.class);
         long parent =
                 jdbc.queryForObject(
-                        "SELECT \"PARENT_ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"ID\"=?",
+                        "SELECT \"PARENT_ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                         Long.class,
                         company);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"INDUSTRY_CODE\" IS NULL AND \"ORIGIN\"='AI' FROM \"CATALOG\".\"COMPANIES\" WHERE \"ID\"=?",
+                                "SELECT \"INDUSTRY_CODE\" IS NULL AND \"ORIGIN\"='AI' FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                 Boolean.class,
                                 parent))
                 .isTrue();
@@ -658,10 +753,7 @@ class NormalizationIntegrationTests {
                                     id))
                     .isTrue();
         }
-        assertThat(
-                        jdbc.queryForList(
-                                "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\"",
-                                String.class))
+        assertThat(jdbc.queryForList("SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\"", String.class))
                 .containsOnly("DONE");
     }
 
@@ -718,13 +810,13 @@ class NormalizationIntegrationTests {
         for (long id : List.of(userCompany, seedCompany))
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"INDUSTRY_CODE\"='RETAIL' AND \"PARENT_ID\" IS NULL FROM \"CATALOG\".\"COMPANIES\" WHERE \"ID\"=?",
+                                    "SELECT \"INDUSTRY_CODE\"='RETAIL' AND \"PARENT_ID\" IS NULL FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                     Boolean.class,
                                     id))
                     .isTrue();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"FUNCTION_CODES\"=ARRAY['ENGINEERING']::text[] AND \"SENIORITY_CODE\"='SENIOR' AND \"ORIGIN\"='USER' FROM \"CATALOG\".\"TITLES\" WHERE \"ID\"=?",
+                                "SELECT \"FUNCTION_CODES\"=ARRAY['ENGINEERING']::text[] AND \"SENIORITY_CODE\"='SENIOR' AND \"ORIGIN\"='USER' FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='TITLE' AND \"ID\"=?",
                                 Boolean.class,
                                 userTitle))
                 .isTrue();
@@ -768,7 +860,7 @@ class NormalizationIntegrationTests {
                 .isEqualTo(1);
         long replacement =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='synthetic replacement'",
+                        "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='synthetic replacement'",
                         Long.class);
         assertThat(links.experiences(ids.get(0)).getFirst().companyId()).isEqualTo(replacement);
         assertThat(links.experiences(ids.get(1)).getFirst().companyId()).isEqualTo(oldSeed);
@@ -814,13 +906,12 @@ class NormalizationIntegrationTests {
                             .plus(properties.getRetryBackoff().multipliedBy(attempt));
             assertThat(
                             jdbc.queryForList(
-                                    "SELECT \"NEXT_ATTEMPT_AT\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\"",
+                                    "SELECT \"NEXT_ATTEMPT_AT\" FROM \"CATALOG\".\"ALIASES\"",
                                     java.sql.Timestamp.class))
                     .allSatisfy(next -> assertThat(next.toInstant()).isEqualTo(nextAttempt));
             assertThat(
                             jdbc.queryForList(
-                                    "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\"",
-                                    String.class))
+                                    "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\"", String.class))
                     .containsOnly(attempt == 3 ? "FAILED" : "PENDING");
             assertThat(service.claim(50)).isNull();
             when(clock.clock())
@@ -828,7 +919,7 @@ class NormalizationIntegrationTests {
         }
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"COMPLETED_AT\" IS NOT NULL AND \"TOKEN\" IS NULL",
+                                "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"COMPLETED_AT\" IS NOT NULL AND \"TOKEN\" IS NULL",
                                 Integer.class))
                 .isEqualTo(3);
     }
@@ -869,7 +960,7 @@ class NormalizationIntegrationTests {
         assertThat(reply.accepted()).isZero();
         assertThat(
                         jdbc.queryForList(
-                                "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"ID\"=ANY(?::bigint[])",
+                                "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=ANY(?::bigint[])",
                                 String.class,
                                 (Object) claimIds.toArray(Long[]::new)))
                 .containsOnly("PENDING");
@@ -899,14 +990,14 @@ class NormalizationIntegrationTests {
         assertThat(reply.rejected()).isEmpty();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"PROPOSED_LABEL\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='synthetic other'",
+                                "SELECT \"PROPOSED_LABEL\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='synthetic other'",
                                 String.class))
                 .isEqualTo("Synthetic industry");
 
         long root = company("Synthetic Root", "AI");
         long child = company("Synthetic Child", "AI");
         jdbc.update(
-                "UPDATE \"CATALOG\".\"COMPANIES\" SET \"PARENT_ID\"=? WHERE \"ID\"=?", root, child);
+                "UPDATE \"CATALOG\".\"ENTRIES\" SET \"PARENT_ID\"=? WHERE \"ID\"=?", root, child);
         var names =
                 List.of(
                         "",
@@ -932,7 +1023,7 @@ class NormalizationIntegrationTests {
                 .containsOnly("INVALID_RESULT");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"PARENT_ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"ID\"=?",
+                                "SELECT \"PARENT_ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                 Long.class,
                                 root))
                 .isNull();
@@ -956,7 +1047,7 @@ class NormalizationIntegrationTests {
                 .containsExactly("UNKNOWN_TASK", "LLM_INVALID_JSON");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ERROR_CODE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"ID\"=?",
+                                "SELECT \"ERROR_CODE\" FROM \"CATALOG\".\"ALIASES\" WHERE \"ID\"=?",
                                 String.class,
                                 id))
                 .isEqualTo("LLM_INVALID_JSON");
@@ -965,14 +1056,13 @@ class NormalizationIntegrationTests {
     @Test
     void expiredFinalAttemptBecomesFailedWithoutAnotherClaim() {
         tasks.enqueue("TITLE", "synthetic exhausted", "Synthetic Exhausted", null);
-        jdbc.update("UPDATE \"CATALOG\".\"NORMALIZATION_TASKS\" SET \"MAX_ATTEMPTS\"=1");
+        jdbc.update("UPDATE \"CATALOG\".\"ALIASES\" SET \"MAX_ATTEMPTS\"=1");
         service.claim(1);
         when(clock.clock()).thenReturn(Clock.fixed(NOW.plusSeconds(121), ZoneOffset.UTC));
         assertThat(service.claim(1)).isNull();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATE\" FROM \"CATALOG\".\"NORMALIZATION_TASKS\"",
-                                String.class))
+                                "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\"", String.class))
                 .isEqualTo("FAILED");
     }
 
@@ -1090,7 +1180,7 @@ class NormalizationIntegrationTests {
 
     private long company(String name, String origin) {
         return jdbc.queryForObject(
-                "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES (?,?,'RETAIL',?) RETURNING \"ID\"",
+                "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES ('COMPANY',?,?,'RETAIL',?) RETURNING \"ID\"",
                 Long.class,
                 name,
                 Fold.fold(name),
@@ -1099,18 +1189,15 @@ class NormalizationIntegrationTests {
 
     private long title(String origin) {
         return jdbc.queryForObject(
-                "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"SCOPE_CODE\",\"ORIGIN\") VALUES ('Synthetic raw title','synthetic raw title','{ENGINEERING}','SENIOR','COMPANY',?) RETURNING \"ID\"",
+                "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"SCOPE_CODE\",\"ORIGIN\") VALUES ('TITLE','Synthetic raw title','synthetic raw title','{ENGINEERING}','SENIOR','COMPANY',?) RETURNING \"ID\"",
                 Long.class,
                 origin);
     }
 
     private void alias(String kind, String raw, long entry) {
         jdbc.update(
-                "INSERT INTO \"CATALOG\".\""
-                        + kind
-                        + "_ALIASES\" (\"ALIAS_FOLDED\",\"ALIAS_RAW\",\""
-                        + kind
-                        + "_ID\",\"ORIGIN\") VALUES (?,?,?,'SEED')",
+                "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"ENTRY_ID\",\"ORIGIN\") VALUES (?,?,?,?,'SEED')",
+                kind,
                 Fold.fold(raw),
                 raw,
                 entry);
@@ -1118,7 +1205,8 @@ class NormalizationIntegrationTests {
 
     private int countTasks() {
         return jdbc.queryForObject(
-                "SELECT count(*) FROM \"CATALOG\".\"NORMALIZATION_TASKS\"", Integer.class);
+                "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"ENTRY_ID\" IS NULL",
+                Integer.class);
     }
 
     private String indexText(long id) {

@@ -13,8 +13,6 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class TaxonomyCodes {
-    public static final String VERSION = "cv-taxonomy/0";
-
     private final TaxonomyRepository repository;
     private final ObjectMapper json;
     private final CatalogTaxonomyProperties properties;

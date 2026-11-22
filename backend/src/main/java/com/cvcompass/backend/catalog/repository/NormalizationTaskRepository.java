@@ -1,5 +1,6 @@
 package com.cvcompass.backend.catalog.repository;
 
+import com.cvcompass.backend.catalog.config.NormalizationProperties;
 import com.cvcompass.backend.catalog.dto.NormalizationProtocol.Code;
 import com.cvcompass.backend.catalog.dto.NormalizationProtocol.Item;
 import java.sql.Timestamp;
@@ -14,9 +15,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class NormalizationTaskRepository {
     private final JdbcTemplate jdbc;
+    private final NormalizationProperties properties;
 
-    public NormalizationTaskRepository(JdbcTemplate jdbc) {
+    public NormalizationTaskRepository(JdbcTemplate jdbc, NormalizationProperties properties) {
         this.jdbc = jdbc;
+        this.properties = properties;
     }
 
     public record Task(long id, String kind, String folded, String raw, Instant expiresAt) {}
@@ -25,10 +28,10 @@ public class NormalizationTaskRepository {
         // Existing leases need no write lock while the caller holds a candidate profile lock.
         jdbc.update(
                 """
-                INSERT INTO "CATALOG"."NORMALIZATION_TASKS"
-                  ("KIND","ALIAS_FOLDED","ALIAS_RAW","CONTEXT_COMPANY")
-                SELECT ?,?,?,? WHERE NOT EXISTS (
-                  SELECT 1 FROM "CATALOG"."NORMALIZATION_TASKS" WHERE "KIND"=? AND "ALIAS_FOLDED"=?
+                INSERT INTO "CATALOG"."ALIASES"
+                  ("KIND","ALIAS_FOLDED","ALIAS_RAW","CONTEXT_COMPANY","STATE","MAX_ATTEMPTS")
+                SELECT ?,?,?,?,'PENDING',? WHERE NOT EXISTS (
+                  SELECT 1 FROM "CATALOG"."ALIASES" WHERE "KIND"=? AND "ALIAS_FOLDED"=?
                 )
                 ON CONFLICT ("KIND","ALIAS_FOLDED") DO NOTHING
                 """,
@@ -36,6 +39,7 @@ public class NormalizationTaskRepository {
                 folded,
                 raw,
                 company,
+                properties.getMaxAttempts(),
                 kind,
                 folded);
     }
@@ -45,10 +49,10 @@ public class NormalizationTaskRepository {
         jdbc.update(
                 """
                 WITH exhausted AS (
-                  SELECT "ID" FROM "CATALOG"."NORMALIZATION_TASKS"
+                  SELECT "ID" FROM "CATALOG"."ALIASES"
                   WHERE "STATE"='LEASED' AND "LEASE_EXPIRES_AT"<=? AND "ATTEMPTS">="MAX_ATTEMPTS"
                   FOR UPDATE SKIP LOCKED
-                ) UPDATE "CATALOG"."NORMALIZATION_TASKS" t
+                ) UPDATE "CATALOG"."ALIASES" t
                 SET "STATE"='FAILED',"TOKEN"=NULL,"LEASE_EXPIRES_AT"=NULL,
                   "COMPLETED_AT"=?,"ERROR_CODE"='LEASE_EXPIRED'
                 FROM exhausted e WHERE t."ID"=e."ID"
@@ -58,12 +62,12 @@ public class NormalizationTaskRepository {
         return jdbc.query(
                 """
                 WITH available AS (
-                  SELECT "ID" FROM "CATALOG"."NORMALIZATION_TASKS"
+                  SELECT "ID" FROM "CATALOG"."ALIASES"
                   WHERE "ATTEMPTS"<"MAX_ATTEMPTS" AND "NEXT_ATTEMPT_AT"<=?
                     AND ("STATE"='PENDING' OR ("STATE"='LEASED' AND "LEASE_EXPIRES_AT"<=?))
                   ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT ? FOR UPDATE SKIP LOCKED
                 ), claimed AS (
-                  UPDATE "CATALOG"."NORMALIZATION_TASKS" t
+                  UPDATE "CATALOG"."ALIASES" t
                   SET "STATE"='LEASED',"TOKEN"=?,"LEASE_EXPIRES_AT"=?,"ATTEMPTS"="ATTEMPTS"+1
                   FROM available a WHERE t."ID"=a."ID"
                   RETURNING t.*
@@ -83,7 +87,7 @@ public class NormalizationTaskRepository {
         return jdbc.query(
                 """
                 SELECT "ID","KIND","ALIAS_FOLDED","ALIAS_RAW","LEASE_EXPIRES_AT"
-                FROM "CATALOG"."NORMALIZATION_TASKS"
+                FROM "CATALOG"."ALIASES"
                 WHERE "TOKEN"=? AND "STATE"='LEASED' ORDER BY "ID" FOR UPDATE
                 """,
                 (rs, row) ->
@@ -96,12 +100,13 @@ public class NormalizationTaskRepository {
                 token);
     }
 
-    public void done(long id, Instant now) {
+    public void done(long id, long entryId, Instant now) {
         jdbc.update(
                 """
-                UPDATE "CATALOG"."NORMALIZATION_TASKS" SET "STATE"='DONE',"TOKEN"=NULL,
+                UPDATE "CATALOG"."ALIASES" SET "ENTRY_ID"=?,"ORIGIN"='AI',"STATE"='DONE',"TOKEN"=NULL,
                   "LEASE_EXPIRES_AT"=NULL,"ERROR_CODE"=NULL,"COMPLETED_AT"=? WHERE "ID"=?
                 """,
+                entryId,
                 Timestamp.from(now),
                 id);
     }
@@ -109,7 +114,7 @@ public class NormalizationTaskRepository {
     public void retry(long id, String code, Instant now, long backoffMillis) {
         jdbc.update(
                 """
-                UPDATE "CATALOG"."NORMALIZATION_TASKS"
+                UPDATE "CATALOG"."ALIASES"
                 SET "STATE"=CASE WHEN "ATTEMPTS">="MAX_ATTEMPTS" THEN 'FAILED' ELSE 'PENDING' END,
                   "TOKEN"=NULL,"LEASE_EXPIRES_AT"=NULL,"ERROR_CODE"=?,
                   "NEXT_ATTEMPT_AT"=CAST(? AS timestamptz) + (? * "ATTEMPTS") * interval '1 millisecond',
