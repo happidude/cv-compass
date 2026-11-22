@@ -54,6 +54,7 @@ CLI_ERRORS = {
     'INVALID_NUM_CTX',
     'INVALID_MODE',
     'INVALID_NAME_STYLE',
+    'INVALID_NAME_TRIM',
     'INVALID_DATES',
     'INVALID_WHOLE_TIMEOUT',
     'INVALID_PROMPT_SCHEMA_TEXT',
@@ -272,6 +273,7 @@ def run_batch(
         'prompt_version': prompt_version(mode, config),
         'mode': mode,
         'dates': config.dates if config is not None else 'v1',
+        'name_trim': config.name_trim if config is not None else 'off',
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
         'llm_calls': len(calls),
         'llm_metrics': metric_summary(calls),
@@ -318,6 +320,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--keep-raw', action='store_true')
     for name in (
         'name_style',
+        'name_trim',
         'dates',
         'prompt_schema_text',
         'whole_personal',
@@ -344,6 +347,7 @@ def parser() -> argparse.ArgumentParser:
     pull.add_argument('--log-level')
     for name in (
         'name_style',
+        'name_trim',
         'dates',
         'prompt_schema_text',
         'whole_personal',
