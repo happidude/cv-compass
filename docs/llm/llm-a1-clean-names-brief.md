@@ -2,7 +2,7 @@
 
 Mục tiêu/acceptance:
 (1) Cờ `CVC_LLM_NAME_STYLE=raw|clean` (mặc định `raw` = prompt/schema/request giữ nguyên từng byte, test sha256). `clean` → prompt kinh nghiệm (whole + blocks, cả `EVIDENCE=lines` nếu đã có) thêm hướng dẫn, giữ yêu cầu trích dẫn nguyên văn (giá trị vẫn PHẢI là chuỗi con của CV):
-   - `company` = tên pháp nhân/thương hiệu GỌN: bỏ khẩu hiệu/mô tả sau `|`, bỏ ngoặc mô tả kiểu `(Incl: …)`/`(2 PLANTS)`, bỏ địa điểm/tập đoàn mẹ đứng sau dấu phẩy hoặc gạch (`OKIN VIETNAM COMPANY LTD, PHOENIX MECANO AG., GERMANY` → `OKIN VIETNAM COMPANY LTD`; `USA, SIGNATURE HOME FURNISHINGS` → `SIGNATURE HOME FURNISHINGS`); GIỮ tập đoàn mẹ nếu CV viết trong ngoặc ngay sau tên (`PNJ CO., LTD (PHU NHUAN JEWELRY JOINT STOCK COMPANY)`); bỏ tiền tố nhãn `Company:`.
+   - `company` = tên pháp nhân/thương hiệu GỌN: bỏ khẩu hiệu/mô tả sau `|`, bỏ ngoặc mô tả kiểu `(Incl: …)`/`(2 PLANTS)`, bỏ địa điểm/tập đoàn mẹ đứng sau dấu phẩy hoặc gạch (`ORVEN VIETNAM COMPANY LTD, PHALANX MERIDO AG., GERMANY` → `ORVEN VIETNAM COMPANY LTD`; `USA, SILVERTON HOME FURNISHINGS` → `SILVERTON HOME FURNISHINGS`); GIỮ tập đoàn mẹ nếu CV viết trong ngoặc ngay sau tên (`TKG CO., LTD (TAN KHOI GEMSTONE JOINT STOCK COMPANY)`); bỏ tiền tố nhãn `Company:`.
    - `title` = chức danh GỌN: bỏ nhãn `Position:`, bỏ `Work as … in <nơi>` → phần chức danh, bỏ mô tả sau `for …`/`consults for …`, bỏ ngoặc mô tả dài (`(Managing apps & website's performance)`) nhưng GIỮ viết tắt/kênh ngắn trong ngoặc (`(CGOO)`, `(CE)`, `(MT channel)`); không dính tên công ty vào cuối.
    - `A → B` (thăng tiến trong cùng công ty) → 2 mục riêng; các vị trí con có năm riêng trong cùng công ty → mỗi vị trí một mục với thời gian của nó.
    - Ví dụ trong prompt chỉ dùng dữ liệu bịa (không lấy từ CV thật).

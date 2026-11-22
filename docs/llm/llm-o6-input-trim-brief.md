@@ -1,7 +1,7 @@
 # Brief O6 — Gọn đầu vào cho model (bớt token đọc), không đổi raw text
 
 Mục tiêu/acceptance: cờ `CVC_LLM_TRIM_INPUT=false|true` (mặc định false = giữ nguyên). Khi bật, **chỉ văn bản gửi model** được rút gọn, evidence vẫn tính trên raw text gốc (ánh xạ offset giữ nguyên):
-(1) bỏ dòng lặp lại ≥ 2 trang ở đầu/cuối trang (header/footer), dòng chỉ là số trang (`Page 2 of 3`, `2/5`), dòng chỉ ký hiệu/khung; danh sách cụm cố định cấu hình được (`© topcv.vn`, `Private and Confidential`).
+(1) bỏ dòng lặp lại ≥ 2 trang ở đầu/cuối trang (header/footer), dòng chỉ là số trang (`Page 2 of 3`, `2/5`), dòng chỉ ký hiệu/khung; danh sách cụm cố định cấu hình được (`© example.vn`, `Private and Confidential`).
 (2) gộp chuỗi khoảng trắng/tab dài trong dòng thành 1 khoảng; bỏ dòng trống liên tiếp.
 (3) Lời gọi kinh nghiệm (whole): bỏ dòng thuộc mục rõ ràng không phải kinh nghiệm **chỉ khi** heading nhận chắc chắn (`Skills`, `Languages`, `Hobbies`, `References`… theo `segmenter`) — mặc định tắt bằng cờ con `CVC_LLM_TRIM_SECTIONS=false` vì rủi ro CV 2 cột.
 Báo số ký tự trước/sau trong log (chỉ số). Hoạt động với cả `quote` và `lines` (O5); với `lines` giữ số dòng gốc để evidence đúng.
