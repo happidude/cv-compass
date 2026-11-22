@@ -1,0 +1,166 @@
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
+CREATE SCHEMA "CATALOG";
+CREATE SCHEMA "SEARCH";
+
+CREATE TABLE "CATALOG"."TAXONOMY_CODES" (
+    "KIND" varchar(16) NOT NULL CHECK ("KIND" IN ('FUNCTION', 'SENIORITY', 'INDUSTRY', 'SCOPE')),
+    "CODE" varchar(64) NOT NULL,
+    "LABEL_VI" text NOT NULL,
+    "TAXONOMY_VERSION" varchar(32) NOT NULL,
+    "ACTIVE" boolean NOT NULL DEFAULT true,
+    PRIMARY KEY ("KIND", "CODE")
+);
+
+CREATE TABLE "CATALOG"."COMPANIES" (
+    "ID" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    "NAME" text NOT NULL CHECK ("NAME" ~ '[^[:space:]]'),
+    "NAME_FOLDED" text NOT NULL UNIQUE,
+    "PARENT_ID" bigint REFERENCES "CATALOG"."COMPANIES" ("ID"),
+    "INDUSTRY_CODE" varchar(64),
+    "PROPOSED_LABEL" text,
+    "ORIGIN" varchar(8) NOT NULL CHECK ("ORIGIN" IN ('SEED', 'AI', 'USER')),
+    "CREATED_AT" timestamptz NOT NULL DEFAULT now(),
+    "UPDATED_AT" timestamptz NOT NULL DEFAULT now(),
+    CHECK ("PARENT_ID" <> "ID"),
+    CHECK ("INDUSTRY_CODE" <> 'OTHER' OR COALESCE("PROPOSED_LABEL" ~ '[^[:space:]]', false))
+);
+CREATE INDEX "IDX_COMPANIES_PARENT_ID" ON "CATALOG"."COMPANIES" ("PARENT_ID");
+
+CREATE TABLE "CATALOG"."COMPANY_ALIASES" (
+    "ALIAS_FOLDED" text PRIMARY KEY,
+    "COMPANY_ID" bigint NOT NULL REFERENCES "CATALOG"."COMPANIES" ("ID") ON DELETE CASCADE,
+    "ALIAS_RAW" text NOT NULL,
+    "ORIGIN" varchar(8) NOT NULL CHECK ("ORIGIN" IN ('SEED', 'AI', 'USER'))
+);
+CREATE INDEX "IDX_COMPANY_ALIASES_COMPANY_ID" ON "CATALOG"."COMPANY_ALIASES" ("COMPANY_ID");
+
+CREATE TABLE "CATALOG"."TITLES" (
+    "ID" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    "NAME" text NOT NULL CHECK ("NAME" ~ '[^[:space:]]'),
+    "NAME_FOLDED" text NOT NULL UNIQUE,
+    "FUNCTION_CODES" text[] NOT NULL CHECK (cardinality("FUNCTION_CODES") BETWEEN 1 AND 2),
+    "SENIORITY_CODE" varchar(64) NOT NULL,
+    "SCOPE_CODE" varchar(64),
+    "PROPOSED_LABEL" text,
+    "ORIGIN" varchar(8) NOT NULL CHECK ("ORIGIN" IN ('SEED', 'AI', 'USER')),
+    "CREATED_AT" timestamptz NOT NULL DEFAULT now(),
+    "UPDATED_AT" timestamptz NOT NULL DEFAULT now(),
+    CHECK (NOT ('OTHER' = ANY("FUNCTION_CODES")) OR COALESCE("PROPOSED_LABEL" ~ '[^[:space:]]', false))
+);
+
+CREATE TABLE "CATALOG"."TITLE_ALIASES" (
+    "ALIAS_FOLDED" text PRIMARY KEY,
+    "TITLE_ID" bigint NOT NULL REFERENCES "CATALOG"."TITLES" ("ID") ON DELETE CASCADE,
+    "ALIAS_RAW" text NOT NULL,
+    "ORIGIN" varchar(8) NOT NULL CHECK ("ORIGIN" IN ('SEED', 'AI', 'USER'))
+);
+CREATE INDEX "IDX_TITLE_ALIASES_TITLE_ID" ON "CATALOG"."TITLE_ALIASES" ("TITLE_ID");
+
+ALTER TABLE "CANDIDATE"."EXPERIENCES"
+    ADD "COMPANY_ID" bigint REFERENCES "CATALOG"."COMPANIES" ("ID"),
+    ADD "TITLE_ID" bigint REFERENCES "CATALOG"."TITLES" ("ID"),
+    ADD "SCOPE_CODE" varchar(64),
+    ADD "NORMALIZATION_ORIGIN" varchar(8) CHECK ("NORMALIZATION_ORIGIN" IN ('AI', 'USER'));
+CREATE INDEX "IDX_EXPERIENCES_COMPANY_ID" ON "CANDIDATE"."EXPERIENCES" ("COMPANY_ID");
+CREATE INDEX "IDX_EXPERIENCES_TITLE_ID" ON "CANDIDATE"."EXPERIENCES" ("TITLE_ID");
+
+ALTER TABLE "CANDIDATE"."PROFILES"
+    ADD "LOCATION_PROVINCE" varchar(64),
+    ADD "TOTAL_EXPERIENCE_MONTHS" integer CHECK ("TOTAL_EXPERIENCE_MONTHS" >= 0),
+    ADD "CURRENT_COMPANY_ID" bigint REFERENCES "CATALOG"."COMPANIES" ("ID"),
+    ADD "CURRENT_TITLE_ID" bigint REFERENCES "CATALOG"."TITLES" ("ID");
+
+CREATE TABLE "SEARCH"."CANDIDATE_INDEX" (
+    "CANDIDATE_ID" bigint PRIMARY KEY REFERENCES "CANDIDATE"."CANDIDATES" ("ID") ON DELETE CASCADE,
+    "SEARCH_TEXT" text NOT NULL,
+    "SEARCH_TSV" tsvector NOT NULL,
+    "COMPANY_IDS" bigint[] NOT NULL DEFAULT '{}',
+    "PARENT_COMPANY_IDS" bigint[] NOT NULL DEFAULT '{}',
+    "TITLE_IDS" bigint[] NOT NULL DEFAULT '{}',
+    "FUNCTION_CODES" text[] NOT NULL DEFAULT '{}',
+    "SENIORITY_CODES" text[] NOT NULL DEFAULT '{}',
+    "INDUSTRY_CODES" text[] NOT NULL DEFAULT '{}',
+    "SCOPE_CODES" text[] NOT NULL DEFAULT '{}',
+    "LOCATION_PROVINCE" varchar(64),
+    "TOTAL_EXPERIENCE_MONTHS" integer,
+    "HAS_AI_NORMALIZATION" boolean NOT NULL DEFAULT false,
+    "UPDATED_AT" timestamptz NOT NULL
+);
+CREATE INDEX "IDX_CANDIDATE_INDEX_SEARCH_TSV" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("SEARCH_TSV");
+CREATE INDEX "IDX_CANDIDATE_INDEX_SEARCH_TEXT" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("SEARCH_TEXT" public.gin_trgm_ops);
+CREATE INDEX "IDX_CANDIDATE_INDEX_COMPANY_IDS" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("COMPANY_IDS");
+CREATE INDEX "IDX_CANDIDATE_INDEX_PARENT_COMPANY_IDS" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("PARENT_COMPANY_IDS");
+CREATE INDEX "IDX_CANDIDATE_INDEX_TITLE_IDS" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("TITLE_IDS");
+CREATE INDEX "IDX_CANDIDATE_INDEX_FUNCTION_CODES" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("FUNCTION_CODES");
+CREATE INDEX "IDX_CANDIDATE_INDEX_SENIORITY_CODES" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("SENIORITY_CODES");
+CREATE INDEX "IDX_CANDIDATE_INDEX_INDUSTRY_CODES" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("INDUSTRY_CODES");
+CREATE INDEX "IDX_CANDIDATE_INDEX_SCOPE_CODES" ON "SEARCH"."CANDIDATE_INDEX" USING gin ("SCOPE_CODES");
+
+COMMENT ON TABLE "CATALOG"."TAXONOMY_CODES" IS 'Bảng mã phân loại theo phiên bản đã duyệt.';
+COMMENT ON COLUMN "CATALOG"."TAXONOMY_CODES"."KIND" IS 'Loại mã nhóm nghề, cấp bậc, ngành hoặc phạm vi.';
+COMMENT ON COLUMN "CATALOG"."TAXONOMY_CODES"."CODE" IS 'Mã chuẩn trong từng loại phân loại.';
+COMMENT ON COLUMN "CATALOG"."TAXONOMY_CODES"."LABEL_VI" IS 'Mô tả tiếng Việt của mã phân loại.';
+COMMENT ON COLUMN "CATALOG"."TAXONOMY_CODES"."TAXONOMY_VERSION" IS 'Phiên bản bảng mã được chủ dự án duyệt.';
+COMMENT ON COLUMN "CATALOG"."TAXONOMY_CODES"."ACTIVE" IS 'Mã còn được phép sử dụng trong phiên bản hiện tại.';
+
+COMMENT ON TABLE "CATALOG"."COMPANIES" IS 'Danh mục công ty chuẩn hóa và liên kết tập đoàn mẹ.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."ID" IS 'Khóa chính của công ty.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."NAME" IS 'Tên chuẩn hiển thị của công ty.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."NAME_FOLDED" IS 'Tên bỏ dấu, chữ thường và gộp khoảng trắng để đối chiếu.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."PARENT_ID" IS 'Khóa ngoại tới tập đoàn mẹ khi có thông tin.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."INDUSTRY_CODE" IS 'Mã ngành chính, để trống cho mục chỉ là tập đoàn mẹ.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."PROPOSED_LABEL" IS 'Nhãn đề xuất bắt buộc khi ngành là OTHER.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."ORIGIN" IS 'Nguồn tạo hoặc chỉnh sửa mục danh mục.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."CREATED_AT" IS 'Thời điểm tạo công ty trong danh mục.';
+COMMENT ON COLUMN "CATALOG"."COMPANIES"."UPDATED_AT" IS 'Thời điểm cập nhật công ty trong danh mục.';
+
+COMMENT ON TABLE "CATALOG"."COMPANY_ALIASES" IS 'Bí danh công ty duy nhất theo chuỗi đã bỏ dấu.';
+COMMENT ON COLUMN "CATALOG"."COMPANY_ALIASES"."ALIAS_FOLDED" IS 'Bí danh bỏ dấu dùng làm khóa đối chiếu.';
+COMMENT ON COLUMN "CATALOG"."COMPANY_ALIASES"."COMPANY_ID" IS 'Khóa ngoại tới công ty của bí danh.';
+COMMENT ON COLUMN "CATALOG"."COMPANY_ALIASES"."ALIAS_RAW" IS 'Bí danh hiển thị được giữ nguyên từ dữ liệu nhập.';
+COMMENT ON COLUMN "CATALOG"."COMPANY_ALIASES"."ORIGIN" IS 'Nguồn tạo hoặc chỉnh sửa bí danh công ty.';
+
+COMMENT ON TABLE "CATALOG"."TITLES" IS 'Danh mục chức danh chuẩn hóa cùng nhóm nghề và cấp bậc.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."ID" IS 'Khóa chính của chức danh.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."NAME" IS 'Tên chuẩn hiển thị của chức danh.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."NAME_FOLDED" IS 'Tên bỏ dấu, chữ thường và gộp khoảng trắng để đối chiếu.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."FUNCTION_CODES" IS 'Một hoặc hai mã nhóm nghề của chức danh.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."SENIORITY_CODE" IS 'Mã cấp bậc duy nhất của chức danh.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."SCOPE_CODE" IS 'Mã phạm vi công việc khi xác định được.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."PROPOSED_LABEL" IS 'Nhãn đề xuất bắt buộc khi có nhóm nghề OTHER.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."ORIGIN" IS 'Nguồn tạo hoặc chỉnh sửa chức danh.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."CREATED_AT" IS 'Thời điểm tạo chức danh trong danh mục.';
+COMMENT ON COLUMN "CATALOG"."TITLES"."UPDATED_AT" IS 'Thời điểm cập nhật chức danh trong danh mục.';
+
+COMMENT ON TABLE "CATALOG"."TITLE_ALIASES" IS 'Bí danh chức danh duy nhất theo chuỗi đã bỏ dấu.';
+COMMENT ON COLUMN "CATALOG"."TITLE_ALIASES"."ALIAS_FOLDED" IS 'Bí danh bỏ dấu dùng làm khóa đối chiếu.';
+COMMENT ON COLUMN "CATALOG"."TITLE_ALIASES"."TITLE_ID" IS 'Khóa ngoại tới chức danh của bí danh.';
+COMMENT ON COLUMN "CATALOG"."TITLE_ALIASES"."ALIAS_RAW" IS 'Bí danh hiển thị được giữ nguyên từ dữ liệu nhập.';
+COMMENT ON COLUMN "CATALOG"."TITLE_ALIASES"."ORIGIN" IS 'Nguồn tạo hoặc chỉnh sửa bí danh chức danh.';
+
+COMMENT ON COLUMN "CANDIDATE"."EXPERIENCES"."COMPANY_ID" IS 'Khóa ngoại tới công ty chuẩn hóa, không thay đổi giá trị gốc.';
+COMMENT ON COLUMN "CANDIDATE"."EXPERIENCES"."TITLE_ID" IS 'Khóa ngoại tới chức danh chuẩn hóa, không thay đổi giá trị gốc.';
+COMMENT ON COLUMN "CANDIDATE"."EXPERIENCES"."SCOPE_CODE" IS 'Mã phạm vi công việc đã chuẩn hóa.';
+COMMENT ON COLUMN "CANDIDATE"."EXPERIENCES"."NORMALIZATION_ORIGIN" IS 'Nguồn chuẩn hóa AI hoặc người dùng.';
+COMMENT ON COLUMN "CANDIDATE"."PROFILES"."LOCATION_PROVINCE" IS 'Tên tỉnh/thành chuẩn theo danh sách 63 tỉnh cũ';
+COMMENT ON COLUMN "CANDIDATE"."PROFILES"."TOTAL_EXPERIENCE_MONTHS" IS 'Tổng số tháng kinh nghiệm không âm khi đã tính được.';
+COMMENT ON COLUMN "CANDIDATE"."PROFILES"."CURRENT_COMPANY_ID" IS 'Khóa ngoại tới công ty hiện tại khi đã xác định.';
+COMMENT ON COLUMN "CANDIDATE"."PROFILES"."CURRENT_TITLE_ID" IS 'Khóa ngoại tới chức danh hiện tại khi đã xác định.';
+
+COMMENT ON TABLE "SEARCH"."CANDIDATE_INDEX" IS 'Bản chỉ mục tìm kiếm tổng hợp theo ứng viên.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."CANDIDATE_ID" IS 'Khóa chính chỉ mục và khóa ngoại tới ứng viên.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."SEARCH_TEXT" IS 'Văn bản tìm kiếm đã bỏ dấu và chuyển chữ thường.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."SEARCH_TSV" IS 'Vector từ vựng phục vụ tìm kiếm toàn văn.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."COMPANY_IDS" IS 'Các công ty liên kết trực tiếp với kinh nghiệm ứng viên.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."PARENT_COMPANY_IDS" IS 'Các tập đoàn mẹ của công ty trong kinh nghiệm.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."TITLE_IDS" IS 'Các chức danh chuẩn hóa trong kinh nghiệm.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."FUNCTION_CODES" IS 'Các mã nhóm nghề phục vụ bộ lọc.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."SENIORITY_CODES" IS 'Các mã cấp bậc phục vụ bộ lọc.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."INDUSTRY_CODES" IS 'Các mã ngành phục vụ bộ lọc.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."SCOPE_CODES" IS 'Các mã phạm vi phục vụ bộ lọc.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."LOCATION_PROVINCE" IS 'Tên tỉnh thành chuẩn theo danh sách 63 tỉnh cũ.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."TOTAL_EXPERIENCE_MONTHS" IS 'Tổng số tháng kinh nghiệm đã tổng hợp.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."HAS_AI_NORMALIZATION" IS 'Chỉ dấu ứng viên có dữ liệu chuẩn hóa do AI đề xuất.';
+COMMENT ON COLUMN "SEARCH"."CANDIDATE_INDEX"."UPDATED_AT" IS 'Thời điểm cập nhật bản chỉ mục tìm kiếm.';

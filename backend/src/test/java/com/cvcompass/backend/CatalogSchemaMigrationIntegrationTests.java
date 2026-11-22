@@ -1,0 +1,334 @@
+package com.cvcompass.backend;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
+import com.cvcompass.backend.candidate.repository.CatalogLinkRepository;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+
+class CatalogSchemaMigrationIntegrationTests {
+    @Test
+    void v15PreservesV14ProfilesAndExperiencesAndAddsNullableLinks() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).target("14").load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long candidate = candidate(jdbc);
+            UUID experience = experience(jdbc, candidate);
+            String profileBefore =
+                    jdbc.queryForObject(
+                            "SELECT to_jsonb(p)::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",
+                            String.class,
+                            candidate);
+            String experienceBefore =
+                    jdbc.queryForObject(
+                            "SELECT to_jsonb(e)::text FROM \"CANDIDATE\".\"EXPERIENCES\" e WHERE \"ID\"=?",
+                            String.class,
+                            experience);
+            var flyway = Flyway.configure().dataSource(source).load();
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            flyway.validate();
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("15");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT (to_jsonb(p)-ARRAY['LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID'])::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",
+                                    String.class,
+                                    candidate))
+                    .isEqualTo(profileBefore);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT (to_jsonb(e)-ARRAY['COMPANY_ID','TITLE_ID','SCOPE_CODE','NORMALIZATION_ORIGIN'])::text FROM \"CANDIDATE\".\"EXPERIENCES\" e WHERE \"ID\"=?",
+                                    String.class,
+                                    experience))
+                    .isEqualTo(experienceBefore);
+            var links = new CatalogLinkRepository(jdbc, new ObjectMapper());
+            var profile = links.profile(candidate).orElseThrow();
+            assertThat(profile.locationProvince()).isNull();
+            assertThat(profile.totalExperienceMonths()).isNull();
+            assertThat(profile.currentCompanyId()).isNull();
+            assertThat(profile.currentTitleId()).isNull();
+            var row = links.experiences(candidate).getFirst();
+            assertThat(row.companyId()).isNull();
+            assertThat(row.titleId()).isNull();
+            assertThat(row.scopeCode()).isNull();
+            assertThat(row.normalizationOrigin()).isNull();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\"",
+                                    Integer.class))
+                    .isZero();
+        }
+    }
+
+    @Test
+    void constraintsCommentsExtensionsAndSearchIndexesMatchTheApprovedSchema() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            for (String table :
+                    List.of(
+                            "TAXONOMY_CODES",
+                            "COMPANIES",
+                            "COMPANY_ALIASES",
+                            "TITLES",
+                            "TITLE_ALIASES")) comments(jdbc, "CATALOG", table);
+            comments(jdbc, "SEARCH", "CANDIDATE_INDEX");
+            assertThat(
+                            jdbc.queryForList(
+                                    """
+                    SELECT a.attname FROM pg_attribute a
+                    WHERE a.attrelid IN ('"CANDIDATE"."PROFILES"'::regclass,'"CANDIDATE"."EXPERIENCES"'::regclass)
+                      AND a.attname IN ('COMPANY_ID','TITLE_ID','SCOPE_CODE','NORMALIZATION_ORIGIN','LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID')
+                      AND NULLIF(btrim(col_description(a.attrelid,a.attnum)),'') IS NULL
+                    """,
+                                    String.class))
+                    .isEmpty();
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT e.extname FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE n.nspname='public' AND e.extname IN ('unaccent','pg_trgm') ORDER BY e.extname",
+                                    String.class))
+                    .containsExactly("pg_trgm", "unaccent");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM pg_indexes WHERE schemaname='SEARCH' AND tablename='CANDIDATE_INDEX' AND indexdef LIKE '%USING gin%'",
+                                    Integer.class))
+                    .isEqualTo(9);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT pg_get_indexdef(i.indexrelid) FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='SEARCH' AND c.relname='IDX_CANDIDATE_INDEX_SEARCH_TEXT'",
+                                    String.class))
+                    .contains("gin_trgm_ops");
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES ('Aster Constraint','aster constraint','OTHER','SEED')"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('Aster Constraint','aster constraint','OTHER','   ','SEED')"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES (E' \\t\\n','blank','SEED')"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            for (String functions : List.of("{OTHER}", "{IT,SALES,HR}", "{}"))
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('Orbit Constraint','orbit constraint',?::text[],'STAFF','SEED')",
+                                                functions))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            long company =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('Aster Constraint','aster constraint','OTHER','Nhãn tổng hợp','SEED') RETURNING \"ID\"",
+                            Long.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"COMPANIES\" SET \"PARENT_ID\"=\"ID\" WHERE \"ID\"=?",
+                                            company))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"COMPANIES\" SET \"PARENT_ID\"=? WHERE \"ID\"=?",
+                                            Long.MAX_VALUE,
+                                            company))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            jdbc.update(
+                    "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('Orbit Constraint','orbit constraint','{OTHER}','STAFF','Nhãn tổng hợp','SEED')");
+            long candidate = candidate(jdbc);
+            UUID experience = experience(jdbc, candidate);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"TOTAL_EXPERIENCE_MONTHS\"=-1 WHERE \"CANDIDATE_ID\"=?",
+                                            candidate))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"NORMALIZATION_ORIGIN\"='SEED' WHERE \"ID\"=?",
+                                            experience))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"COMPANY_ID\"=? WHERE \"ID\"=?",
+                                            Long.MAX_VALUE,
+                                            experience))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            long indexed =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CANDIDATE\".\"CANDIDATES\" DEFAULT VALUES RETURNING \"ID\"",
+                            Long.class);
+            jdbc.update(
+                    "INSERT INTO \"SEARCH\".\"CANDIDATE_INDEX\" (\"CANDIDATE_ID\",\"SEARCH_TEXT\",\"SEARCH_TSV\",\"UPDATED_AT\") VALUES (?,'synthetic','synthetic'::tsvector,now())",
+                    indexed);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT cardinality(\"COMPANY_IDS\")+cardinality(\"PARENT_COMPANY_IDS\")+cardinality(\"TITLE_IDS\")+cardinality(\"FUNCTION_CODES\")+cardinality(\"SENIORITY_CODES\")+cardinality(\"INDUSTRY_CODES\")+cardinality(\"SCOPE_CODES\") FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                    Integer.class,
+                                    indexed))
+                    .isZero();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"HAS_AI_NORMALIZATION\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                    Boolean.class,
+                                    indexed))
+                    .isFalse();
+            jdbc.update("DELETE FROM \"CANDIDATE\".\"CANDIDATES\" WHERE \"ID\"=?", indexed);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\"",
+                                    Integer.class))
+                    .isZero();
+        }
+    }
+
+    @Test
+    void
+            candidateLinksMapProfileFieldsAndNormalizeOnlyMatchingLiveExperienceWithoutChangingSources()
+                    throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            var json = new ObjectMapper();
+            var links = new CatalogLinkRepository(jdbc, json);
+            var tx = new TransactionTemplate(new DataSourceTransactionManager(source));
+            long candidate = candidate(jdbc);
+            UUID experience = experience(jdbc, candidate);
+            UUID deleted = experience(jdbc, candidate);
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"DELETED\"=true WHERE \"ID\"=?",
+                    deleted);
+            long company =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('Aster Links','aster links','SEED') RETURNING \"ID\"",
+                            Long.class);
+            long title =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('Orbit Links','orbit links','{IT}','MANAGER','SEED') RETURNING \"ID\"",
+                            Long.class);
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"LOCATION_PROVINCE\"='Hà Nội',\"TOTAL_EXPERIENCE_MONTHS\"=24,\"CURRENT_COMPANY_ID\"=?,\"CURRENT_TITLE_ID\"=? WHERE \"CANDIDATE_ID\"=?",
+                    company,
+                    title,
+                    candidate);
+            var expected =
+                    new CatalogLinks.Normalization(
+                            company,
+                            title,
+                            "COMPANY",
+                            "AI",
+                            "Aster Links",
+                            List.of("IT"),
+                            List.of("RETAIL"),
+                            "MANAGER");
+            tx.executeWithoutResult(
+                    status -> {
+                        assertThat(links.normalize(candidate + 1, experience, expected)).isFalse();
+                        assertThat(links.normalize(candidate, deleted, expected)).isFalse();
+                        assertThat(links.normalize(candidate, experience, expected)).isTrue();
+                    });
+            var row = links.experiences(candidate).getFirst();
+            assertThat(links.experiences(candidate)).hasSize(1);
+            assertThat(row.companyId()).isEqualTo(company);
+            assertThat(row.titleId()).isEqualTo(title);
+            assertThat(row.scopeCode()).isEqualTo("COMPANY");
+            assertThat(row.normalizationOrigin()).isEqualTo("AI");
+            assertThat(row.companyNormalized()).isEqualTo("Aster Links");
+            assertThat(json.readTree(row.functionCodes())).isEqualTo(json.readTree("[\"IT\"]"));
+            assertThat(json.readTree(row.industryCodes())).isEqualTo(json.readTree("[\"RETAIL\"]"));
+            assertThat(row.seniorityCode()).isEqualTo("MANAGER");
+            assertThat(row.companyRaw()).isEqualTo("Aster Original");
+            assertThat(row.titleRaw()).isEqualTo("Orbit Original");
+            assertThat(json.readTree(row.data())).isEqualTo(json.readTree("{\"synthetic\":true}"));
+            assertThat(row.startDate()).isEqualTo(java.time.LocalDate.of(2020, 1, 1));
+            assertThat(links.profile(candidate).orElseThrow())
+                    .isEqualTo(
+                            new CatalogLinks.ProfileLink(candidate, "Hà Nội", 24, company, title));
+            assertThat(links.profile(Long.MAX_VALUE)).isEmpty();
+            tx.executeWithoutResult(
+                    status -> {
+                        links.normalize(
+                                candidate,
+                                experience,
+                                new CatalogLinks.Normalization(
+                                        null,
+                                        null,
+                                        null,
+                                        "USER",
+                                        "Synthetic rollback",
+                                        List.of(),
+                                        List.of(),
+                                        null));
+                        status.setRollbackOnly();
+                    });
+            assertThat(links.experiences(candidate).getFirst()).isEqualTo(row);
+        }
+    }
+
+    private static void comments(JdbcTemplate jdbc, String schema, String table) {
+        String qualified = "\"" + schema + "\".\"" + table + "\"";
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT obj_description(?::regclass,'pg_class')",
+                                String.class,
+                                qualified))
+                .isNotBlank();
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT attname FROM pg_attribute WHERE attrelid=?::regclass AND attnum>0 AND NOT attisdropped AND NULLIF(btrim(col_description(attrelid,attnum)),'') IS NULL",
+                                String.class,
+                                qualified))
+                .as(qualified)
+                .isEmpty();
+    }
+
+    private static long candidate(JdbcTemplate jdbc) {
+        long id =
+                jdbc.queryForObject(
+                        "INSERT INTO \"CANDIDATE\".\"CANDIDATES\" (\"FULL_NAME\") VALUES ('Synthetic catalog profile') RETURNING \"ID\"",
+                        Long.class);
+        jdbc.update(
+                "INSERT INTO \"CANDIDATE\".\"PROFILES\" (\"CANDIDATE_ID\",\"FULL_NAME\",\"BASIC\") VALUES (?,'Synthetic catalog profile','{\"synthetic\":true}')",
+                id);
+        return id;
+    }
+
+    private static UUID experience(JdbcTemplate jdbc, long candidate) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO \"CANDIDATE\".\"EXPERIENCES\" (\"ID\",\"CANDIDATE_ID\",\"COMPANY_RAW\",\"COMPANY_NORMALIZED\",\"TITLE_RAW\",\"FUNCTION_CODES\",\"INDUSTRY_CODES\",\"SENIORITY_CODE\",\"START_DATE\",\"START_PRECISION\",\"DATA\",\"STATE\",\"ORIGIN\") VALUES (?,?,'Aster Original','Aster Legacy','Orbit Original','[\"HR\"]','[\"LOGISTICS\"]','STAFF','2020-01-01','DAY','{\"synthetic\":true}','UNVERIFIED','MAPPING')",
+                id,
+                candidate);
+        return id;
+    }
+
+    private static DriverManagerDataSource source(IsolatedPostgresSchema database)
+            throws Exception {
+        Map<String, Object> properties = new HashMap<>();
+        database.configure((name, supplier) -> properties.put(name, supplier.get()));
+        return new DriverManagerDataSource(
+                database.jdbcUrl(),
+                properties.get("spring.datasource.username").toString(),
+                properties.get("spring.datasource.password").toString());
+    }
+}

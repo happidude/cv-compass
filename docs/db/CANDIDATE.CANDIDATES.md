@@ -8,7 +8,7 @@
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| ID | bigint |  | false | [INGESTION.DOCUMENTS](INGESTION.DOCUMENTS.md) [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) |  | Khóa chính định danh ứng viên. |
+| ID | bigint |  | false | [INGESTION.DOCUMENTS](INGESTION.DOCUMENTS.md) [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) [SEARCH.CANDIDATE_INDEX](SEARCH.CANDIDATE_INDEX.md) |  | Khóa chính định danh ứng viên. |
 | FULL_NAME | varchar(255) |  | true |  |  |  |
 | EMAIL | varchar(255) |  | true |  |  |  |
 | PHONE | varchar(50) |  | true |  |  |  |
@@ -36,6 +36,7 @@ erDiagram
 
 "INGESTION.DOCUMENTS" }o--o| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;)"
 "CANDIDATE.PROFILES" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;)"
+"SEARCH.CANDIDATE_INDEX" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;) ON DELETE CASCADE"
 
 "CANDIDATE.CANDIDATES" {
   bigint ID
@@ -72,6 +73,26 @@ erDiagram
   varchar_8_ BASIC_ORIGIN
   jsonb EXTENSIONS
   timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
+  varchar_64_ LOCATION_PROVINCE
+  integer TOTAL_EXPERIENCE_MONTHS
+  bigint CURRENT_COMPANY_ID FK
+  bigint CURRENT_TITLE_ID FK
+}
+"SEARCH.CANDIDATE_INDEX" {
+  bigint CANDIDATE_ID FK
+  text SEARCH_TEXT
+  tsvector SEARCH_TSV
+  bigint__ COMPANY_IDS
+  bigint__ PARENT_COMPANY_IDS
+  bigint__ TITLE_IDS
+  text__ FUNCTION_CODES
+  text__ SENIORITY_CODES
+  text__ INDUSTRY_CODES
+  text__ SCOPE_CODES
+  varchar_64_ LOCATION_PROVINCE
+  integer TOTAL_EXPERIENCE_MONTHS
+  boolean HAS_AI_NORMALIZATION
   timestamp_with_time_zone UPDATED_AT
 }
 ```

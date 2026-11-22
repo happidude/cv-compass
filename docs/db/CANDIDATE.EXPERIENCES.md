@@ -29,6 +29,10 @@ Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nh
 | DOCUMENT_ID | bigint |  | true |  | [INGESTION.DOCUMENTS](INGESTION.DOCUMENTS.md) | Khóa ngoại tới tài liệu làm bằng chứng. |
 | RESULT_ID | bigint |  | true |  | [MAPPING.RESULTS](MAPPING.RESULTS.md) | Khóa ngoại tới kết quả ánh xạ nguồn. |
 | DELETED | boolean | false | false |  |  | Trạng thái xóa mềm của kinh nghiệm ứng viên. |
+| COMPANY_ID | bigint |  | true |  | [CATALOG.COMPANIES](CATALOG.COMPANIES.md) | Khóa ngoại tới công ty chuẩn hóa, không thay đổi giá trị gốc. |
+| TITLE_ID | bigint |  | true |  | [CATALOG.TITLES](CATALOG.TITLES.md) | Khóa ngoại tới chức danh chuẩn hóa, không thay đổi giá trị gốc. |
+| SCOPE_CODE | varchar(64) |  | true |  |  | Mã phạm vi công việc đã chuẩn hóa. |
+| NORMALIZATION_ORIGIN | varchar(8) |  | true |  |  | Nguồn chuẩn hóa AI hoặc người dùng. |
 
 ## Constraints
 
@@ -40,10 +44,13 @@ Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nh
 | CANDIDATE_EXPERIENCES_ORIGIN_check | CHECK | CHECK ((("ORIGIN")::text = ANY ((ARRAY['MAPPING'::character varying, 'USER'::character varying])::text[]))) |
 | CANDIDATE_EXPERIENCES_START_PRECISION_check | CHECK | CHECK ((("START_PRECISION" IS NULL) OR (("START_PRECISION")::text = ANY ((ARRAY['YEAR'::character varying, 'MONTH'::character varying, 'DAY'::character varying])::text[])))) |
 | CANDIDATE_EXPERIENCES_STATE_check | CHECK | CHECK ((("STATE")::text = ANY ((ARRAY['UNVERIFIED'::character varying, 'CONFIRMED'::character varying, 'EDITED'::character varying])::text[]))) |
+| EXPERIENCES_NORMALIZATION_ORIGIN_check | CHECK | CHECK ((("NORMALIZATION_ORIGIN")::text = ANY ((ARRAY['AI'::character varying, 'USER'::character varying])::text[]))) |
 | CANDIDATE_EXPERIENCES_DOCUMENT_ID_fkey | FOREIGN KEY | FOREIGN KEY ("DOCUMENT_ID") REFERENCES "INGESTION"."DOCUMENTS"("ID") |
 | CANDIDATE_EXPERIENCES_RESULT_ID_fkey | FOREIGN KEY | FOREIGN KEY ("RESULT_ID") REFERENCES "MAPPING"."RESULTS"("ID") |
 | CANDIDATE_EXPERIENCES_CANDIDATE_ID_fkey | FOREIGN KEY | FOREIGN KEY ("CANDIDATE_ID") REFERENCES "CANDIDATE"."PROFILES"("CANDIDATE_ID") |
 | CANDIDATE_EXPERIENCES_pkey | PRIMARY KEY | PRIMARY KEY ("ID") |
+| EXPERIENCES_COMPANY_ID_fkey | FOREIGN KEY | FOREIGN KEY ("COMPANY_ID") REFERENCES "CATALOG"."COMPANIES"("ID") |
+| EXPERIENCES_TITLE_ID_fkey | FOREIGN KEY | FOREIGN KEY ("TITLE_ID") REFERENCES "CATALOG"."TITLES"("ID") |
 
 ## Indexes
 
@@ -51,6 +58,8 @@ Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nh
 | ---- | ---------- |
 | CANDIDATE_EXPERIENCES_pkey | CREATE UNIQUE INDEX "CANDIDATE_EXPERIENCES_pkey" ON "CANDIDATE"."EXPERIENCES" USING btree ("ID") |
 | IX_CANDIDATE_EXPERIENCES | CREATE INDEX "IX_CANDIDATE_EXPERIENCES" ON "CANDIDATE"."EXPERIENCES" USING btree ("CANDIDATE_ID") |
+| IDX_EXPERIENCES_COMPANY_ID | CREATE INDEX "IDX_EXPERIENCES_COMPANY_ID" ON "CANDIDATE"."EXPERIENCES" USING btree ("COMPANY_ID") |
+| IDX_EXPERIENCES_TITLE_ID | CREATE INDEX "IDX_EXPERIENCES_TITLE_ID" ON "CANDIDATE"."EXPERIENCES" USING btree ("TITLE_ID") |
 
 ## Relations
 
@@ -60,6 +69,8 @@ erDiagram
 "CANDIDATE.EXPERIENCES" }o--|| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "INGESTION.DOCUMENTS" : "FOREIGN KEY (#quot;DOCUMENT_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;DOCUMENTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "MAPPING.RESULTS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;RESULTS#quot;(#quot;ID#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.COMPANIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;COMPANIES#quot;(#quot;ID#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.TITLES" : "FOREIGN KEY (#quot;TITLE_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;TITLES#quot;(#quot;ID#quot;)"
 
 "CANDIDATE.EXPERIENCES" {
   uuid ID
@@ -83,6 +94,10 @@ erDiagram
   bigint DOCUMENT_ID FK
   bigint RESULT_ID FK
   boolean DELETED
+  bigint COMPANY_ID FK
+  bigint TITLE_ID FK
+  varchar_64_ SCOPE_CODE
+  varchar_8_ NORMALIZATION_ORIGIN
 }
 "CANDIDATE.PROFILES" {
   bigint CANDIDATE_ID FK
@@ -98,6 +113,10 @@ erDiagram
   jsonb EXTENSIONS
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone UPDATED_AT
+  varchar_64_ LOCATION_PROVINCE
+  integer TOTAL_EXPERIENCE_MONTHS
+  bigint CURRENT_COMPANY_ID FK
+  bigint CURRENT_TITLE_ID FK
 }
 "INGESTION.DOCUMENTS" {
   bigint ID
@@ -119,6 +138,29 @@ erDiagram
   character_64_ DIGEST
   jsonb RESULT
   timestamp_with_time_zone CREATED_AT
+}
+"CATALOG.COMPANIES" {
+  bigint ID
+  text NAME
+  text NAME_FOLDED
+  bigint PARENT_ID FK
+  varchar_64_ INDUSTRY_CODE
+  text PROPOSED_LABEL
+  varchar_8_ ORIGIN
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
+}
+"CATALOG.TITLES" {
+  bigint ID
+  text NAME
+  text NAME_FOLDED
+  text__ FUNCTION_CODES
+  varchar_64_ SENIORITY_CODE
+  varchar_64_ SCOPE_CODE
+  text PROPOSED_LABEL
+  varchar_8_ ORIGIN
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
 }
 ```
 
