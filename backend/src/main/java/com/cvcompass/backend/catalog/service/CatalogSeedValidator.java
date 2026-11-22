@@ -2,6 +2,7 @@ package com.cvcompass.backend.catalog.service;
 
 import com.cvcompass.backend.catalog.Fold;
 import com.cvcompass.backend.catalog.TaxonomyCodes;
+import com.cvcompass.backend.catalog.config.CatalogImportProperties;
 import com.cvcompass.backend.catalog.dto.CatalogSeed;
 import com.cvcompass.backend.catalog.exception.CatalogFailure;
 import com.cvcompass.backend.catalog.repository.CatalogRepository;
@@ -16,14 +17,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class CatalogSeedValidator {
-    private static final int MAX_ENTRIES = 10000;
-    private static final int MAX_ALIASES = 50;
+    private final CatalogImportProperties properties;
     private final TaxonomyCodes taxonomy;
     private final CatalogRepository repository;
 
-    public CatalogSeedValidator(TaxonomyCodes taxonomy, CatalogRepository repository) {
+    public CatalogSeedValidator(
+            TaxonomyCodes taxonomy,
+            CatalogRepository repository,
+            CatalogImportProperties properties) {
         this.taxonomy = taxonomy;
         this.repository = repository;
+        this.properties = properties;
     }
 
     public void validate(CatalogSeed seed) {
@@ -36,18 +40,20 @@ public class CatalogSeedValidator {
         if (seed.companies() == null) error(errors, "companies", "Array is required");
         if (seed.titles() == null) error(errors, "titles", "Array is required");
         if (!errors.isEmpty()) throw new CatalogFailure(errors);
-        if ((long) seed.companies().size() + seed.titles().size() > MAX_ENTRIES)
+        if ((long) seed.companies().size() + seed.titles().size() > properties.getMaxEntries())
             throw tooLarge("body");
         for (int i = 0; i < seed.companies().size(); i++) {
             var company = seed.companies().get(i);
             if (company != null
                     && company.aliases() != null
-                    && company.aliases().size() > MAX_ALIASES)
+                    && company.aliases().size() > properties.getMaxAliasesPerEntry())
                 throw tooLarge("companies[" + i + "].aliases");
         }
         for (int i = 0; i < seed.titles().size(); i++) {
             var title = seed.titles().get(i);
-            if (title != null && title.aliases() != null && title.aliases().size() > MAX_ALIASES)
+            if (title != null
+                    && title.aliases() != null
+                    && title.aliases().size() > properties.getMaxAliasesPerEntry())
                 throw tooLarge("titles[" + i + "].aliases");
         }
         var referencedParents = new HashSet<String>();

@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,7 +44,7 @@ public class NormalizationController {
     public ResponseEntity<Claim> claim(HttpServletRequest request) throws IOException {
         var body = body(request);
         if (!body.path("max").isIntegralNumber() || !body.path("max").canConvertToInt())
-            throw new NormalizationFailure(400, "INVALID_RESULT");
+            throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
         var claim = service.claim(body.path("max").asInt());
         return claim == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(claim);
     }
@@ -55,9 +56,10 @@ public class NormalizationController {
         try {
             token = UUID.fromString(body.path("token").asString(""));
         } catch (IllegalArgumentException invalid) {
-            throw new NormalizationFailure(409, "LEASE_LOST");
+            throw new NormalizationFailure(HttpStatus.CONFLICT, "LEASE_LOST");
         }
-        if (!body.path("results").isArray()) throw new NormalizationFailure(400, "INVALID_RESULT");
+        if (!body.path("results").isArray())
+            throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
         return service.submit(token, body.path("results").valueStream().toList());
     }
 
@@ -77,7 +79,7 @@ public class NormalizationController {
         org.springframework.dao.DataAccessResourceFailureException.class
     })
     public ResponseEntity<ApiError> unavailable() {
-        return ResponseEntity.status(503)
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(
                         new ApiError(
                                 "NORMALIZATION_UNAVAILABLE",
@@ -91,12 +93,14 @@ public class NormalizationController {
         if (type == null
                 || !type.toLowerCase(Locale.ROOT).matches("application/json(?:;\\s*charset=utf-8)?")
                 || (encoding != null && !encoding.equalsIgnoreCase("identity")))
-            throw new NormalizationFailure(415, "UNSUPPORTED_MEDIA_TYPE");
+            throw new NormalizationFailure(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE");
         int limit = properties.getMaxBodyBytes();
         if (request.getContentLengthLong() > limit)
-            throw new NormalizationFailure(413, "RESULT_TOO_LARGE");
+            throw new NormalizationFailure(HttpStatus.CONTENT_TOO_LARGE, "RESULT_TOO_LARGE");
         byte[] bytes = request.getInputStream().readNBytes(limit + 1);
-        if (bytes.length > limit) throw new NormalizationFailure(413, "RESULT_TOO_LARGE");
+        if (bytes.length > limit)
+            throw new NormalizationFailure(HttpStatus.CONTENT_TOO_LARGE, "RESULT_TOO_LARGE");
         try {
             String text =
                     StandardCharsets.UTF_8
@@ -114,10 +118,10 @@ public class NormalizationController {
                                             .FAIL_ON_TRAILING_TOKENS)
                             .readTree(text);
             if (value == null || !value.isObject())
-                throw new NormalizationFailure(400, "INVALID_RESULT");
+                throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
             return value;
         } catch (JacksonException | CharacterCodingException invalid) {
-            throw new NormalizationFailure(400, "INVALID_RESULT");
+            throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
         }
     }
 }

@@ -23,6 +23,7 @@ import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,29 +58,33 @@ public class NormalizationService {
 
     @Transactional
     public Claim claim(int max) {
-        if (max < 1 || max > 50) throw new NormalizationFailure(400, "INVALID_RESULT");
+        if (max < 1 || max > properties.getClaimMaxItems())
+            throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
         Instant now = clock.clock().instant(), expires = now.plus(properties.getLeaseDuration());
         UUID token = UUID.randomUUID();
         var items = tasks.claim(max, token, now, expires);
         return items.isEmpty()
                 ? null
-                : new Claim(token, expires, TaxonomyCodes.VERSION, tasks.taxonomy(), items);
+                : new Claim(token, expires, taxonomy.version(), tasks.taxonomy(), items);
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public Submission submit(UUID token, List<JsonNode> results) {
-        if (token == null || results == null || results.isEmpty() || results.size() > 50)
-            throw new NormalizationFailure(400, "INVALID_RESULT");
+        if (token == null
+                || results == null
+                || results.isEmpty()
+                || results.size() > properties.getClaimMaxItems())
+            throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
         List<Task> lease;
         try {
             lease = tasks.lockLease(token);
         } catch (ConcurrencyFailureException lost) {
             // A concurrent submit consumed these locked lease rows after our snapshot began.
-            throw new NormalizationFailure(409, "LEASE_LOST");
+            throw new NormalizationFailure(HttpStatus.CONFLICT, "LEASE_LOST");
         }
         Instant now = clock.clock().instant();
         if (lease.isEmpty() || lease.stream().anyMatch(t -> !t.expiresAt().isAfter(now)))
-            throw new NormalizationFailure(409, "LEASE_LOST");
+            throw new NormalizationFailure(HttpStatus.CONFLICT, "LEASE_LOST");
         var byId = new HashMap<Long, Task>();
         lease.forEach(t -> byId.put(t.id(), t));
         var rejected = new ArrayList<Rejection>();
@@ -106,14 +111,8 @@ public class NormalizationService {
                         catalog.withSavepoint(
                                 () -> {
                                     long created = createEntry(task, result);
-                                    long owner =
-                                            catalog.alias(
-                                                    task.kind(),
-                                                    task.folded(),
-                                                    task.raw(),
-                                                    created);
-                                    tasks.done(id, now);
-                                    return owner;
+                                    tasks.done(id, created, now);
+                                    return created;
                                 });
                 entries.put(new Alias(task.kind(), task.folded()), entry);
                 accepted++;
@@ -136,7 +135,7 @@ public class NormalizationService {
                             text(company, "proposedLabel"));
             String parent = text(company, "parent");
             if (parent != null && !catalog.parent(entry, catalog.company(parent, null, null)))
-                throw new NormalizationFailure(400, "INVALID_RESULT");
+                throw new NormalizationFailure(HttpStatus.BAD_REQUEST, "INVALID_RESULT");
             return entry;
         }
         var title = result.path("title");
@@ -197,7 +196,8 @@ public class NormalizationService {
     private boolean name(String name) {
         return !blank(name)
                 && name.indexOf('\0') < 0
-                && name.strip().codePointCount(0, name.strip().length()) <= 255
+                && name.strip().codePointCount(0, name.strip().length())
+                        <= properties.getMaxFieldCodePoints()
                 && !Fold.fold(name).isBlank();
     }
 

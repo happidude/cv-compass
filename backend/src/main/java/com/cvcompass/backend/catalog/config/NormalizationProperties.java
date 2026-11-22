@@ -22,6 +22,19 @@ public class NormalizationProperties {
     private Duration retryBackoff = Duration.ofSeconds(30);
 
     @Min(1)
+    @Max(50)
+    private int claimMaxItems = 50;
+
+    @Min(1)
+    private int maxFieldCodePoints = 255;
+
+    @Min(1)
+    private int candidateScanPageSize = 100;
+
+    @Min(1)
+    private int maxAttempts = 3;
+
+    @Min(1)
     @Max(1000)
     private int batchSize = 100;
 

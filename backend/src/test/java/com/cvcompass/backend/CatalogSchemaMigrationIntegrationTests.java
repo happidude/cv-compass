@@ -20,6 +20,104 @@ import tools.jackson.databind.ObjectMapper;
 
 class CatalogSchemaMigrationIntegrationTests {
     @Test
+    void v16KeepsExistingAliasesDoneWithoutChangingTheirIdentityOrOwnership() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).target("15").load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long entry =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic existing','synthetic existing','SEED') RETURNING \"ID\"",
+                            Long.class);
+            for (String origin : List.of("SEED", "AI", "USER")) {
+                jdbc.update(
+                        "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ENTRY_ID\",\"ALIAS_RAW\",\"ORIGIN\") VALUES ('COMPANY',?,?,?,?)",
+                        "synthetic " + origin,
+                        entry,
+                        "Synthetic " + origin,
+                        origin);
+            }
+            var before =
+                    jdbc.queryForList(
+                            "SELECT to_jsonb(a)::text FROM \"CATALOG\".\"ALIASES\" a ORDER BY \"ID\"",
+                            String.class);
+            var flyway = Flyway.configure().dataSource(source).load();
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            flyway.validate();
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT (to_jsonb(a)-ARRAY['CONTEXT_COMPANY','STATE','ATTEMPTS','MAX_ATTEMPTS','TOKEN','LEASE_EXPIRES_AT','NEXT_ATTEMPT_AT','ERROR_CODE','COMPLETED_AT'])::text FROM \"CATALOG\".\"ALIASES\" a ORDER BY \"ID\"",
+                                    String.class))
+                    .isEqualTo(before);
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\"", String.class))
+                    .hasSize(3)
+                    .containsOnly("DONE");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"STATE\" IN ('PENDING','LEASED')",
+                                    Integer.class))
+                    .isZero();
+        }
+    }
+
+    @Test
+    void aliasQueueChecksRequireDoneExactlyWhenLinkedAndAnOriginForEveryLink() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long entry =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic checks','synthetic checks','SEED') RETURNING \"ID\"",
+                            Long.class);
+            for (String state : List.of("PENDING", "LEASED", "FAILED")) {
+                jdbc.update(
+                        "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\") VALUES ('COMPANY',?,'Synthetic pending',?)",
+                        state,
+                        state);
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "UPDATE \"CATALOG\".\"ALIASES\" SET \"ENTRY_ID\"=?,\"ORIGIN\"='AI' WHERE \"STATE\"=?",
+                                                entry,
+                                                state))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='DONE'"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='DONE',\"ENTRY_ID\"=?",
+                                            entry))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            jdbc.update(
+                    "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='DONE',\"ENTRY_ID\"=?,\"ORIGIN\"='AI'",
+                    entry);
+            assertThatThrownBy(
+                            () -> jdbc.update("UPDATE \"CATALOG\".\"ALIASES\" SET \"ORIGIN\"=NULL"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"ENTRY_ID\"=NULL"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            jdbc.update(
+                    "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\",\"CONTEXT_COMPANY\") VALUES ('TITLE','synthetic context','Synthetic context','PENDING','Synthetic company')");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"CONTEXT_COMPANY\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='TITLE'",
+                                    String.class))
+                    .isEqualTo("Synthetic company");
+        }
+    }
+
+    @Test
     void v16PreservesV14ProfilesAndExperiencesAndAddsNullableLinks() throws Exception {
         try (var database = new IsolatedPostgresSchema()) {
             var source = source(database);
@@ -43,13 +141,13 @@ class CatalogSchemaMigrationIntegrationTests {
             assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT (to_jsonb(p)-ARRAY['LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID'])::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",
+                                    "SELECT (to_jsonb(p)-ARRAY['LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID','CURRENT_COMPANY_KIND','CURRENT_TITLE_KIND'])::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",
                                     String.class,
                                     candidate))
                     .isEqualTo(profileBefore);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT (to_jsonb(e)-ARRAY['COMPANY_ID','TITLE_ID','SCOPE_CODE','NORMALIZATION_ORIGIN'])::text FROM \"CANDIDATE\".\"EXPERIENCES\" e WHERE \"ID\"=?",
+                                    "SELECT (to_jsonb(e)-ARRAY['COMPANY_ID','TITLE_ID','COMPANY_KIND','TITLE_KIND','SCOPE_CODE','NORMALIZATION_ORIGIN'])::text FROM \"CANDIDATE\".\"EXPERIENCES\" e WHERE \"ID\"=?",
                                     String.class,
                                     experience))
                     .isEqualTo(experienceBefore);
@@ -78,35 +176,34 @@ class CatalogSchemaMigrationIntegrationTests {
             var source = source(database);
             Flyway.configure().dataSource(source).load().migrate();
             var jdbc = new JdbcTemplate(source);
-            for (String table :
-                    List.of(
-                            "TAXONOMY_CODES",
-                            "COMPANIES",
-                            "COMPANY_ALIASES",
-                            "TITLES",
-                            "TITLE_ALIASES",
-                            "NORMALIZATION_TASKS")) comments(jdbc, "CATALOG", table);
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT tablename FROM pg_tables WHERE schemaname='CATALOG' ORDER BY tablename",
+                                    String.class))
+                    .containsExactly("ALIASES", "ENTRIES", "TAXONOMY_CODES");
+            for (String table : List.of("TAXONOMY_CODES", "ENTRIES", "ALIASES"))
+                comments(jdbc, "CATALOG", table);
             comments(jdbc, "SEARCH", "CANDIDATE_INDEX");
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM pg_indexes WHERE schemaname='CATALOG' AND tablename='NORMALIZATION_TASKS' AND indexdef LIKE '%(\"STATE\", \"NEXT_ATTEMPT_AT\")%'",
+                                    "SELECT count(*) FROM pg_indexes WHERE schemaname='CATALOG' AND tablename='ALIASES' AND indexdef LIKE '%(\"STATE\", \"NEXT_ATTEMPT_AT\")%' AND indexdef LIKE '%WHERE%' AND indexdef LIKE '%PENDING%' AND indexdef LIKE '%LEASED%' AND indexdef NOT LIKE '%DONE%' AND indexdef NOT LIKE '%FAILED%'",
                                     Integer.class))
                     .isEqualTo(1);
             jdbc.update(
-                    "INSERT INTO \"CATALOG\".\"NORMALIZATION_TASKS\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\") VALUES ('COMPANY','synthetic queue','Synthetic Queue'),('TITLE','synthetic queue','Synthetic Queue')");
+                    "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\") VALUES ('COMPANY','synthetic queue','Synthetic Queue','PENDING'),('TITLE','synthetic queue','Synthetic Queue','PENDING')");
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"STATE\"='PENDING' AND \"ATTEMPTS\"=0 AND \"MAX_ATTEMPTS\"=3 AND \"TOKEN\" IS NULL AND \"LEASE_EXPIRES_AT\" IS NULL AND \"NEXT_ATTEMPT_AT\" IS NOT NULL AND \"CREATED_AT\" IS NOT NULL AND \"COMPLETED_AT\" IS NULL",
+                                    "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"STATE\"='PENDING' AND \"ATTEMPTS\"=0 AND \"MAX_ATTEMPTS\"=3 AND \"TOKEN\" IS NULL AND \"LEASE_EXPIRES_AT\" IS NULL AND \"NEXT_ATTEMPT_AT\" IS NOT NULL AND \"ENTRY_ID\" IS NULL AND \"ORIGIN\" IS NULL AND \"COMPLETED_AT\" IS NULL",
                                     Integer.class))
                     .isEqualTo(2);
             for (String values :
                     List.of(
-                            "'COMPANY','synthetic queue','duplicate'",
-                            "'INVALID','synthetic invalid','Synthetic Invalid'")) {
+                            "'COMPANY','synthetic queue','duplicate','PENDING'",
+                            "'INVALID','synthetic invalid','Synthetic Invalid','PENDING'")) {
                 assertThatThrownBy(
                                 () ->
                                         jdbc.update(
-                                                "INSERT INTO \"CATALOG\".\"NORMALIZATION_TASKS\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\") VALUES ("
+                                                "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\") VALUES ("
                                                         + values
                                                         + ")"))
                         .isInstanceOf(DataIntegrityViolationException.class);
@@ -114,19 +211,19 @@ class CatalogSchemaMigrationIntegrationTests {
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "UPDATE \"CATALOG\".\"NORMALIZATION_TASKS\" SET \"STATE\"='INVALID'"))
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='INVALID'"))
                     .isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "UPDATE \"CATALOG\".\"NORMALIZATION_TASKS\" SET \"CONTEXT_COMPANY\"='Synthetic Context' WHERE \"KIND\"='COMPANY'"))
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"CONTEXT_COMPANY\"='Synthetic Context' WHERE \"KIND\"='COMPANY'"))
                     .isInstanceOf(DataIntegrityViolationException.class);
             assertThat(
                             jdbc.queryForList(
                                     """
                     SELECT a.attname FROM pg_attribute a
                     WHERE a.attrelid IN ('"CANDIDATE"."PROFILES"'::regclass,'"CANDIDATE"."EXPERIENCES"'::regclass)
-                      AND a.attname IN ('COMPANY_ID','TITLE_ID','SCOPE_CODE','NORMALIZATION_ORIGIN','LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID')
+                      AND a.attname IN ('COMPANY_ID','TITLE_ID','COMPANY_KIND','TITLE_KIND','SCOPE_CODE','NORMALIZATION_ORIGIN','LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID','CURRENT_COMPANY_KIND','CURRENT_TITLE_KIND')
                       AND NULLIF(btrim(col_description(a.attrelid,a.attnum)),'') IS NULL
                     """,
                                     String.class))
@@ -149,44 +246,44 @@ class CatalogSchemaMigrationIntegrationTests {
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES ('Aster Constraint','aster constraint','OTHER','SEED')"))
+                                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES ('COMPANY','Aster Constraint','aster constraint','OTHER','SEED')"))
                     .isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('Aster Constraint','aster constraint','OTHER','   ','SEED')"))
+                                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('COMPANY','Aster Constraint','aster constraint','OTHER','   ','SEED')"))
                     .isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES (E' \\t\\n','blank','SEED')"))
+                                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY',E' \\t\\n','blank','SEED')"))
                     .isInstanceOf(DataIntegrityViolationException.class);
             for (String functions : List.of("{OTHER}", "{IT,SALES,HR}", "{}"))
                 assertThatThrownBy(
                                 () ->
                                         jdbc.update(
-                                                "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('Orbit Constraint','orbit constraint',?::text[],'STAFF','SEED')",
+                                                "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('TITLE','Orbit Constraint','orbit constraint',?::text[],'STAFF','SEED')",
                                                 functions))
                         .isInstanceOf(DataIntegrityViolationException.class);
             long company =
                     jdbc.queryForObject(
-                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('Aster Constraint','aster constraint','OTHER','Nhãn tổng hợp','SEED') RETURNING \"ID\"",
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"INDUSTRY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('COMPANY','Aster Constraint','aster constraint','OTHER','Nhãn tổng hợp','SEED') RETURNING \"ID\"",
                             Long.class);
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "UPDATE \"CATALOG\".\"COMPANIES\" SET \"PARENT_ID\"=\"ID\" WHERE \"ID\"=?",
+                                            "UPDATE \"CATALOG\".\"ENTRIES\" SET \"PARENT_ID\"=\"ID\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                             company))
                     .isInstanceOf(DataIntegrityViolationException.class);
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "UPDATE \"CATALOG\".\"COMPANIES\" SET \"PARENT_ID\"=? WHERE \"ID\"=?",
+                                            "UPDATE \"CATALOG\".\"ENTRIES\" SET \"PARENT_ID\"=? WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                             Long.MAX_VALUE,
                                             company))
                     .isInstanceOf(DataIntegrityViolationException.class);
             jdbc.update(
-                    "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('Orbit Constraint','orbit constraint','{OTHER}','STAFF','Nhãn tổng hợp','SEED')");
+                    "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"PROPOSED_LABEL\",\"ORIGIN\") VALUES ('TITLE','Orbit Constraint','orbit constraint','{OTHER}','STAFF','Nhãn tổng hợp','SEED')");
             long candidate = candidate(jdbc);
             UUID experience = experience(jdbc, candidate);
             assertThatThrownBy(
@@ -255,11 +352,11 @@ class CatalogSchemaMigrationIntegrationTests {
                     deleted);
             long company =
                     jdbc.queryForObject(
-                            "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('Aster Links','aster links','SEED') RETURNING \"ID\"",
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Aster Links','aster links','SEED') RETURNING \"ID\"",
                             Long.class);
             long title =
                     jdbc.queryForObject(
-                            "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('Orbit Links','orbit links','{IT}','MANAGER','SEED') RETURNING \"ID\"",
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('TITLE','Orbit Links','orbit links','{IT}','MANAGER','SEED') RETURNING \"ID\"",
                             Long.class);
             jdbc.update(
                     "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"LOCATION_PROVINCE\"='Hà Nội',\"TOTAL_EXPERIENCE_MONTHS\"=24,\"CURRENT_COMPANY_ID\"=?,\"CURRENT_TITLE_ID\"=? WHERE \"CANDIDATE_ID\"=?",
@@ -317,6 +414,189 @@ class CatalogSchemaMigrationIntegrationTests {
                         status.setRollbackOnly();
                     });
             assertThat(links.experiences(candidate).getFirst()).isEqualTo(row);
+        }
+    }
+
+    @Test
+    void compositeForeignKeysEnforceKindsForParentsAliasesAndCandidateLinks() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long company =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic Shared','synthetic shared','SEED') RETURNING \"ID\"",
+                            Long.class);
+            long title =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('TITLE','Synthetic Shared','synthetic shared','{IT}','STAFF','SEED') RETURNING \"ID\"",
+                            Long.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ENTRIES\" SET \"PARENT_ID\"=? WHERE \"ID\"=?",
+                                            title,
+                                            company))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            for (var mismatch : List.of(Map.entry("COMPANY", title), Map.entry("TITLE", company))) {
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ENTRY_ID\",\"ALIAS_RAW\",\"ORIGIN\") VALUES (?,'synthetic shared',?,'Synthetic Shared','SEED')",
+                                                mismatch.getKey(),
+                                                mismatch.getValue()))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            for (var match : List.of(Map.entry("COMPANY", company), Map.entry("TITLE", title))) {
+                jdbc.update(
+                        "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ENTRY_ID\",\"ALIAS_RAW\",\"ORIGIN\") VALUES (?,'synthetic shared',?,'Synthetic Shared','SEED')",
+                        match.getKey(),
+                        match.getValue());
+            }
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ENTRY_ID\",\"ALIAS_RAW\",\"ORIGIN\") VALUES ('COMPANY','synthetic shared',?,'Synthetic Shared','SEED')",
+                                            company))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic Duplicate','synthetic shared','SEED')"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            long candidate = candidate(jdbc);
+            UUID experience = experience(jdbc, candidate);
+            for (var mismatch :
+                    List.of(Map.entry("COMPANY_ID", title), Map.entry("TITLE_ID", company))) {
+                // Column names are fixed test cases; all data values remain bound.
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \""
+                                                        + mismatch.getKey()
+                                                        + "\"=? WHERE \"ID\"=?",
+                                                mismatch.getValue(),
+                                                experience))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"CURRENT_"
+                                                        + mismatch.getKey()
+                                                        + "\"=? WHERE \"CANDIDATE_ID\"=?",
+                                                mismatch.getValue(),
+                                                candidate))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"COMPANY_ID\"=?,\"TITLE_ID\"=? WHERE \"ID\"=?",
+                    company,
+                    title,
+                    experience);
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"CURRENT_COMPANY_ID\"=?,\"CURRENT_TITLE_ID\"=? WHERE \"CANDIDATE_ID\"=?",
+                    company,
+                    title,
+                    candidate);
+            assertThat(
+                            jdbc.queryForMap(
+                                    "SELECT \"COMPANY_KIND\",\"TITLE_KIND\" FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
+                                    experience))
+                    .isEqualTo(Map.of("COMPANY_KIND", "COMPANY", "TITLE_KIND", "TITLE"));
+            assertThat(
+                            jdbc.queryForMap(
+                                    "SELECT \"CURRENT_COMPANY_KIND\",\"CURRENT_TITLE_KIND\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?",
+                                    candidate))
+                    .isEqualTo(
+                            Map.of(
+                                    "CURRENT_COMPANY_KIND",
+                                    "COMPANY",
+                                    "CURRENT_TITLE_KIND",
+                                    "TITLE"));
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"COMPANY_ID\"=NULL,\"TITLE_ID\"=NULL WHERE \"ID\"=?",
+                    experience);
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"CURRENT_COMPANY_ID\"=NULL,\"CURRENT_TITLE_ID\"=NULL WHERE \"CANDIDATE_ID\"=?",
+                    candidate);
+            assertThat(
+                            jdbc.queryForMap(
+                                            "SELECT \"COMPANY_KIND\",\"TITLE_KIND\" FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
+                                            experience)
+                                    .values())
+                    .containsOnlyNulls();
+            jdbc.update("DELETE FROM \"CATALOG\".\"ENTRIES\" WHERE \"ID\"=?", company);
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT \"KIND\" FROM \"CATALOG\".\"ALIASES\"", String.class))
+                    .containsExactly("TITLE");
+        }
+    }
+
+    @Test
+    void perKindChecksRejectIncompatibleFieldsAndRequireTitleClassification() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long company =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic Company','synthetic company','SEED') RETURNING \"ID\"",
+                            Long.class);
+            long title =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('TITLE','Synthetic Title','synthetic title','{IT}','STAFF','SEED') RETURNING \"ID\"",
+                            Long.class);
+            for (String assignment :
+                    List.of(
+                            "\"FUNCTION_CODES\"='{IT}'",
+                            "\"SENIORITY_CODE\"='STAFF'",
+                            "\"SCOPE_CODE\"='COMPANY'",
+                            "\"KIND\"='OTHER'")) {
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "UPDATE \"CATALOG\".\"ENTRIES\" SET "
+                                                        + assignment
+                                                        + " WHERE \"ID\"=?",
+                                                company))
+                        .as(assignment)
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            for (String assignment :
+                    List.of(
+                            "\"PARENT_ID\"=" + company,
+                            "\"INDUSTRY_CODE\"='RETAIL'",
+                            "\"FUNCTION_CODES\"=NULL",
+                            "\"FUNCTION_CODES\"='{}'",
+                            "\"FUNCTION_CODES\"='{IT,SALES,HR}'",
+                            "\"SENIORITY_CODE\"=NULL",
+                            "\"FUNCTION_CODES\"='{OTHER}'",
+                            "\"FUNCTION_CODES\"='{OTHER}',\"PROPOSED_LABEL\"='   '")) {
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "UPDATE \"CATALOG\".\"ENTRIES\" SET "
+                                                        + assignment
+                                                        + " WHERE \"ID\"=?",
+                                                title))
+                        .as(assignment)
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            jdbc.update(
+                    "UPDATE \"CATALOG\".\"ENTRIES\" SET \"FUNCTION_CODES\"='{IT,SALES}' WHERE \"ID\"=?",
+                    title);
+            jdbc.update(
+                    "UPDATE \"CATALOG\".\"ENTRIES\" SET \"PARENT_ID\"=? WHERE \"ID\"=?",
+                    company,
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic Child','synthetic child','SEED') RETURNING \"ID\"",
+                            Long.class));
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"PARENT_KIND\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"NAME_FOLDED\"='synthetic child'",
+                                    String.class))
+                    .isEqualTo("COMPANY");
         }
     }
 

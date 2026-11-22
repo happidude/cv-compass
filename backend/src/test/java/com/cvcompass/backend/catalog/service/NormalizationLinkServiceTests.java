@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
 import com.cvcompass.backend.catalog.api.CatalogLookup;
+import com.cvcompass.backend.catalog.config.NormalizationProperties;
 import com.cvcompass.backend.catalog.repository.NormalizationCatalogRepository;
 import com.cvcompass.backend.catalog.repository.NormalizationTaskRepository;
 import com.cvcompass.backend.catalog.service.NormalizationLinkService.Alias;
@@ -25,6 +26,33 @@ import tools.jackson.databind.ObjectMapper;
 
 class NormalizationLinkServiceTests {
     @Test
+    void submitScanUsesTheConfiguredPageSize() {
+        var candidates = mock(CatalogLinks.class);
+        var properties = new NormalizationProperties();
+        properties.setCandidateScanPageSize(2);
+        var service =
+                new NormalizationLinkService(
+                        candidates,
+                        mock(CatalogLookup.class),
+                        mock(NormalizationCatalogRepository.class),
+                        mock(NormalizationTaskRepository.class),
+                        mock(ApplicationEventPublisher.class),
+                        new ObjectMapper(),
+                        properties);
+        when(candidates.lastCandidateId()).thenReturn(3L);
+        when(candidates.indexCandidates(0, 3, 2, false)).thenReturn(List.of(1L, 2L));
+        when(candidates.indexCandidates(2, 3, 2, false)).thenReturn(List.of(3L));
+        assertThat(service.linkMatches(Map.of(new Alias("COMPANY", "synthetic alias"), 10L)))
+                .isEmpty();
+        verify(candidates).indexCandidates(0, 3, 2, false);
+        verify(candidates).indexCandidates(2, 3, 2, false);
+        for (long id = 1; id <= 3; id++) {
+            verify(candidates).experiences(id);
+            verify(candidates, never()).lockIndexProfile(id);
+        }
+    }
+
+    @Test
     void scansEachPageAndReadsEachCandidateOnceForMultipleAliasesLockingOnlyMatches() {
         var candidates = mock(CatalogLinks.class);
         var lookup = mock(CatalogLookup.class);
@@ -35,7 +63,8 @@ class NormalizationLinkServiceTests {
                         mock(NormalizationCatalogRepository.class),
                         mock(NormalizationTaskRepository.class),
                         mock(ApplicationEventPublisher.class),
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        new NormalizationProperties());
         when(candidates.lastCandidateId()).thenReturn(101L);
         when(candidates.indexCandidates(0, 101, 100, false))
                 .thenReturn(LongStream.rangeClosed(1, 100).boxed().toList());

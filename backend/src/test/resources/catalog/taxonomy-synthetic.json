@@ -1,0 +1,6 @@
+{
+  "functions": {"SYNTHETIC_FUNCTION": "Nhóm nghề tổng hợp"},
+  "seniority": {"SYNTHETIC_SENIORITY": "Cấp bậc tổng hợp"},
+  "industries": {"SYNTHETIC_INDUSTRY": "Ngành tổng hợp"},
+  "scopes": {"SYNTHETIC_SCOPE": "Phạm vi tổng hợp"}
+}

@@ -1,6 +1,7 @@
 package com.cvcompass.backend.search.service;
 
 import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
+import com.cvcompass.backend.search.config.SearchProperties;
 import com.cvcompass.backend.search.dto.RebuildResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,17 +13,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class SearchRebuildService {
     private static final Logger LOG = LoggerFactory.getLogger(SearchRebuildService.class);
-    private static final int BATCH_SIZE = 200;
     private final CatalogLinks candidates;
     private final SearchIndexer indexer;
+    private final SearchProperties properties;
     private final TransactionTemplate candidateTransaction;
 
     public SearchRebuildService(
             CatalogLinks candidates,
             SearchIndexer indexer,
+            SearchProperties properties,
             PlatformTransactionManager transactions) {
         this.candidates = candidates;
         this.indexer = indexer;
+        this.properties = properties;
         candidateTransaction = new TransactionTemplate(transactions);
         candidateTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -42,7 +45,9 @@ public class SearchRebuildService {
         long rebuilt = 0;
         long failed = 0;
         while (true) {
-            var ids = candidates.indexCandidates(after, through, BATCH_SIZE, ongoingOnly);
+            var ids =
+                    candidates.indexCandidates(
+                            after, through, properties.getRebuildBatchSize(), ongoingOnly);
             if (ids.isEmpty()) return new RebuildResult(rebuilt, failed);
             for (long id : ids) {
                 try {
