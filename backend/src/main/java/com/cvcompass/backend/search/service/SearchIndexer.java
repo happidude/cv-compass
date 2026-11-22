@@ -2,14 +2,13 @@ package com.cvcompass.backend.search.service;
 
 import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
 import com.cvcompass.backend.candidate.events.CandidateChanged;
+import com.cvcompass.backend.candidate.metrics.ExperienceMetrics;
 import com.cvcompass.backend.candidate.metrics.ExperienceMonths;
 import com.cvcompass.backend.catalog.api.CatalogLookup;
 import com.cvcompass.backend.catalog.api.CatalogText;
 import com.cvcompass.backend.mapping.api.Provinces;
-import com.cvcompass.backend.search.config.SearchClock;
 import com.cvcompass.backend.search.dto.IndexSnapshot;
 import com.cvcompass.backend.search.repository.SearchIndexRepository;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -19,27 +18,23 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class SearchIndexer {
     private final CatalogLinks candidates;
     private final CatalogLookup catalog;
     private final SearchIndexRepository repository;
-    private final SearchClock clock;
-    private final ObjectMapper json;
+    private final ExperienceMetrics experienceMetrics;
 
     public SearchIndexer(
             CatalogLinks candidates,
             CatalogLookup catalog,
             SearchIndexRepository repository,
-            SearchClock clock,
-            ObjectMapper json) {
-        this.json = json;
+            ExperienceMetrics experienceMetrics) {
         this.candidates = candidates;
         this.catalog = catalog;
         this.repository = repository;
-        this.clock = clock;
+        this.experienceMetrics = experienceMetrics;
     }
 
     @EventListener
@@ -68,11 +63,9 @@ public class SearchIndexer {
                                                 e.endPrecision(),
                                                 e.ongoingAsStated(),
                                                 e.companyId(),
-                                                e.titleId(),
-                                                counted(e),
-                                                state(e)))
+                                                e.titleId()))
                         .toList();
-        int months = ExperienceMonths.total(periods, LocalDate.now(clock.clock()));
+        int months = Math.toIntExact(experienceMetrics.totalMonths(candidateId));
         String province = Provinces.canonical(profile.location());
         var current = ExperienceMonths.current(periods).orElse(null);
         candidates.metrics(
@@ -153,14 +146,6 @@ public class SearchIndexer {
                         province,
                         months,
                         ai));
-    }
-
-    private boolean counted(CatalogLinks.ExperienceLink e) {
-        return json.readTree(e.data()).path("countInTotal").asBoolean(true);
-    }
-
-    private String state(CatalogLinks.ExperienceLink e) {
-        return json.readTree(e.data()).path("period").path("state").asString();
     }
 
     private static <T> void add(Set<T> values, T value) {
