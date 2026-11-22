@@ -32,6 +32,7 @@
 | [CATALOG.TITLES](CATALOG.TITLES.md) | 10 | Danh mục chức danh chuẩn hóa cùng nhóm nghề và cấp bậc. | BASE TABLE |
 | [CATALOG.TITLE_ALIASES](CATALOG.TITLE_ALIASES.md) | 4 | Bí danh chức danh duy nhất theo chuỗi đã bỏ dấu. | BASE TABLE |
 | [SEARCH.CANDIDATE_INDEX](SEARCH.CANDIDATE_INDEX.md) | 14 | Bản chỉ mục tìm kiếm tổng hợp theo ứng viên. | BASE TABLE |
+| [CATALOG.NORMALIZATION_TASKS](CATALOG.NORMALIZATION_TASKS.md) | 14 | Hàng đợi chuẩn hóa bí danh công ty và chức danh. | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -463,6 +464,22 @@ erDiagram
   integer TOTAL_EXPERIENCE_MONTHS
   boolean HAS_AI_NORMALIZATION
   timestamp_with_time_zone UPDATED_AT
+}
+"CATALOG.NORMALIZATION_TASKS" {
+  bigint ID
+  varchar_8_ KIND
+  text ALIAS_FOLDED
+  text ALIAS_RAW
+  text CONTEXT_COMPANY
+  varchar_16_ STATE
+  integer ATTEMPTS
+  integer MAX_ATTEMPTS
+  uuid TOKEN
+  timestamp_with_time_zone LEASE_EXPIRES_AT
+  timestamp_with_time_zone NEXT_ATTEMPT_AT
+  varchar_40_ ERROR_CODE
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone COMPLETED_AT
 }
 ```
 

@@ -172,6 +172,54 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     @Test
+    void mappingWithExperiencesBuildsSearchAndMonthsBeforePublicationCommits() throws Exception {
+        var doc = document();
+        long mappingId =
+                result(
+                        doc,
+                        "Full name: Synthetic Person\nGender: Nam\n\nWork Experience\n01/2020 – 12/2025 Synthetic Publishing Employer",
+                        false,
+                        "personal-info-mapping/3.5");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT jsonb_array_length(\"RESULT\"->'experiences') FROM \"MAPPING\".\"RESULTS\" WHERE \"ID\"=?",
+                                Integer.class,
+                                mappingId))
+                .isEqualTo(1);
+        var mappedPeriod =
+                json.readTree(
+                                jdbc.queryForObject(
+                                        "SELECT \"RESULT\"::text FROM \"MAPPING\".\"RESULTS\" WHERE \"ID\"=?",
+                                        String.class,
+                                        mappingId))
+                        .path("experiences")
+                        .get(0)
+                        .path("period");
+        assertThat(mappedPeriod.path("start").path("precision").asString()).isEqualTo("MONTH");
+        assertThat(mappedPeriod.path("end").path("precision").asString()).isEqualTo("MONTH");
+        assertThat(mappedPeriod.path("start").path("month").asInt()).isEqualTo(1);
+        assertThat(mappedPeriod.path("end").path("month").asInt()).isEqualTo(12);
+        new org.springframework.transaction.support.TransactionTemplate(transactions)
+                .executeWithoutResult(
+                        status -> {
+                            assertThat(publication.publish(mappingId)).isTrue();
+                            long id = candidate(doc);
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"SEARCH_TEXT\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    String.class,
+                                                    id))
+                                    .contains("synthetic publishing employer");
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"TOTAL_EXPERIENCE_MONTHS\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Integer.class,
+                                                    id))
+                                    .isEqualTo(72);
+                        });
+    }
+
+    @Test
     void publicationBuildsSearchSnapshotBeforeCommit() throws Exception {
         var doc = document();
         String raw =

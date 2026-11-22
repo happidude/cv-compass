@@ -12,6 +12,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class TaxonomyCodes {
+    public static final String VERSION = "cv-taxonomy/0";
+
     private final TaxonomyRepository repository;
     private final ObjectMapper json;
 
@@ -46,7 +48,8 @@ public class TaxonomyCodes {
                         kind.getKey(),
                         codes.stream().map(Map.Entry::getKey).toArray(String[]::new));
                 for (var entry : codes) {
-                    repository.upsert(kind.getKey(), entry.getKey(), entry.getValue().asString());
+                    repository.upsert(
+                            kind.getKey(), entry.getKey(), entry.getValue().asString(), VERSION);
                 }
             }
         }

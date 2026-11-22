@@ -18,18 +18,19 @@ public class TaxonomyRepository {
                 codes);
     }
 
-    public void upsert(String kind, String code, String label) {
+    public void upsert(String kind, String code, String label, String version) {
         jdbc.update(
                 """
                 INSERT INTO "CATALOG"."TAXONOMY_CODES"
                   ("KIND","CODE","LABEL_VI","TAXONOMY_VERSION","ACTIVE")
-                VALUES (?,?,?,'cv-taxonomy/0',true)
+                VALUES (?,?,?,?,true)
                 ON CONFLICT ("KIND","CODE") DO UPDATE
                 SET "LABEL_VI"=EXCLUDED."LABEL_VI", "TAXONOMY_VERSION"=EXCLUDED."TAXONOMY_VERSION", "ACTIVE"=true
                 """,
                 kind,
                 code,
-                label);
+                label,
+                version);
     }
 
     public boolean isActive(String kind, String code) {

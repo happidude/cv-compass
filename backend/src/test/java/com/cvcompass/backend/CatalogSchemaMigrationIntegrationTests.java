@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 
 class CatalogSchemaMigrationIntegrationTests {
     @Test
-    void v15PreservesV14ProfilesAndExperiencesAndAddsNullableLinks() throws Exception {
+    void v16PreservesV14ProfilesAndExperiencesAndAddsNullableLinks() throws Exception {
         try (var database = new IsolatedPostgresSchema()) {
             var source = source(database);
             Flyway.configure().dataSource(source).target("14").load().migrate();
@@ -38,9 +38,9 @@ class CatalogSchemaMigrationIntegrationTests {
                             String.class,
                             experience);
             var flyway = Flyway.configure().dataSource(source).load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
             flyway.validate();
-            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("15");
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
             assertThat(
                             jdbc.queryForObject(
                                     "SELECT (to_jsonb(p)-ARRAY['LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID'])::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",
@@ -84,8 +84,43 @@ class CatalogSchemaMigrationIntegrationTests {
                             "COMPANIES",
                             "COMPANY_ALIASES",
                             "TITLES",
-                            "TITLE_ALIASES")) comments(jdbc, "CATALOG", table);
+                            "TITLE_ALIASES",
+                            "NORMALIZATION_TASKS")) comments(jdbc, "CATALOG", table);
             comments(jdbc, "SEARCH", "CANDIDATE_INDEX");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM pg_indexes WHERE schemaname='CATALOG' AND tablename='NORMALIZATION_TASKS' AND indexdef LIKE '%(\"STATE\", \"NEXT_ATTEMPT_AT\")%'",
+                                    Integer.class))
+                    .isEqualTo(1);
+            jdbc.update(
+                    "INSERT INTO \"CATALOG\".\"NORMALIZATION_TASKS\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\") VALUES ('COMPANY','synthetic queue','Synthetic Queue'),('TITLE','synthetic queue','Synthetic Queue')");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CATALOG\".\"NORMALIZATION_TASKS\" WHERE \"STATE\"='PENDING' AND \"ATTEMPTS\"=0 AND \"MAX_ATTEMPTS\"=3 AND \"TOKEN\" IS NULL AND \"LEASE_EXPIRES_AT\" IS NULL AND \"NEXT_ATTEMPT_AT\" IS NOT NULL AND \"CREATED_AT\" IS NOT NULL AND \"COMPLETED_AT\" IS NULL",
+                                    Integer.class))
+                    .isEqualTo(2);
+            for (String values :
+                    List.of(
+                            "'COMPANY','synthetic queue','duplicate'",
+                            "'INVALID','synthetic invalid','Synthetic Invalid'")) {
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "INSERT INTO \"CATALOG\".\"NORMALIZATION_TASKS\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\") VALUES ("
+                                                        + values
+                                                        + ")"))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"NORMALIZATION_TASKS\" SET \"STATE\"='INVALID'"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"NORMALIZATION_TASKS\" SET \"CONTEXT_COMPANY\"='Synthetic Context' WHERE \"KIND\"='COMPANY'"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
             assertThat(
                             jdbc.queryForList(
                                     """
