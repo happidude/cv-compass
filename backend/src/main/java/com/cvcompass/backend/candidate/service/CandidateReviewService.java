@@ -1,6 +1,7 @@
 package com.cvcompass.backend.candidate.service;
 
 import com.cvcompass.backend.candidate.dto.Profile;
+import com.cvcompass.backend.candidate.events.CandidateChanged;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
 import com.cvcompass.backend.candidate.mapping.PersonalInfoMapper;
@@ -8,6 +9,7 @@ import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
@@ -15,6 +17,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Service
 public class CandidateReviewService {
+    private final ApplicationEventPublisher events;
     private final CandidateProfileRepository repository;
     private final CandidateQueryService queries;
     private final CandidateRevisionService revisions;
@@ -26,7 +29,9 @@ public class CandidateReviewService {
             CandidateQueryService queries,
             CandidateRevisionService revisions,
             CandidateExperienceService experiences,
-            CandidateValidator validator) {
+            CandidateValidator validator,
+            ApplicationEventPublisher events) {
+        this.events = events;
         this.repository = repository;
         this.queries = queries;
         this.revisions = revisions;
@@ -120,6 +125,7 @@ public class CandidateReviewService {
                         proposalId,
                         "decision",
                         decision));
+        events.publishEvent(new CandidateChanged(id));
         return queries.detail(id);
     }
 }

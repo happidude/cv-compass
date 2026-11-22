@@ -154,7 +154,8 @@ class LlmRemoteSerializationTests {
                         queries,
                         revisions,
                         new CandidateExperienceService(profiles, new CandidateValueMapper()),
-                        json);
+                        json,
+                        event -> {});
         var softly = new org.assertj.core.api.SoftAssertions();
         for (boolean subsequent : List.of(false, true)) {
             long resultId = subsequent ? 102 : 101;

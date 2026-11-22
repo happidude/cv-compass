@@ -255,10 +255,30 @@ public class CandidateProfileRepository {
             ExperienceValues fields) {
         jdbc.update(
                 """
-   UPDATE "CANDIDATE"."EXPERIENCES" SET "DATA"=?::jsonb,"STATE"=?,"ORIGIN"=?,"DOCUMENT_ID"=?,"RESULT_ID"=?,
-   "COMPANY_RAW"=?,"COMPANY_NORMALIZED"=?,"TITLE_RAW"=?,"START_DATE"=?,"START_PRECISION"=?,"END_DATE"=?,"END_PRECISION"=?,
-   "ONGOING_AS_STATED"=?,"FUNCTION_CODES"=?::jsonb,"INDUSTRY_CODES"=?::jsonb,"SENIORITY_CODE"=?,"DESCRIPTION_RAW"=? WHERE "ID"=?
+   WITH previous AS MATERIALIZED (
+     SELECT *, ("COMPANY_RAW" IS DISTINCT FROM ?::text OR "TITLE_RAW" IS DISTINCT FROM ?::text)
+       AND ("COMPANY_ID" IS NOT NULL OR "TITLE_ID" IS NOT NULL OR "SCOPE_CODE" IS NOT NULL
+         OR "NORMALIZATION_ORIGIN" IS NOT NULL)
+       AND "NORMALIZATION_ORIGIN" IS DISTINCT FROM 'USER' AS names_changed
+     FROM "CANDIDATE"."EXPERIENCES" WHERE "ID"=? FOR UPDATE
+   )
+   UPDATE "CANDIDATE"."EXPERIENCES" e SET "DATA"=?::jsonb,"STATE"=?,"ORIGIN"=?,"DOCUMENT_ID"=?,"RESULT_ID"=?,
+   "COMPANY_RAW"=?,
+   "COMPANY_NORMALIZED"=?,
+   "TITLE_RAW"=?,"START_DATE"=?,"START_PRECISION"=?,"END_DATE"=?,"END_PRECISION"=?,
+   "ONGOING_AS_STATED"=?,
+   "FUNCTION_CODES"=?::jsonb,
+   "INDUSTRY_CODES"=?::jsonb,
+   "SENIORITY_CODE"=?,
+   "COMPANY_ID"=CASE WHEN p.names_changed THEN NULL ELSE p."COMPANY_ID" END,
+   "TITLE_ID"=CASE WHEN p.names_changed THEN NULL ELSE p."TITLE_ID" END,
+   "SCOPE_CODE"=CASE WHEN p.names_changed THEN NULL ELSE p."SCOPE_CODE" END,
+   "NORMALIZATION_ORIGIN"=CASE WHEN p.names_changed THEN NULL ELSE p."NORMALIZATION_ORIGIN" END,
+   "DESCRIPTION_RAW"=? FROM previous p WHERE e."ID"=p."ID"
    """,
+                fields.companyRaw(),
+                fields.titleRaw(),
+                key,
                 data.toString(),
                 state,
                 origin,
@@ -275,8 +295,7 @@ public class CandidateProfileRepository {
                 fields.functionCodes(),
                 fields.industryCodes(),
                 fields.seniorityCode(),
-                fields.descriptionRaw(),
-                key);
+                fields.descriptionRaw());
     }
 
     private JsonNode parse(String s) {

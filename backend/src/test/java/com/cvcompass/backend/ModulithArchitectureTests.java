@@ -17,12 +17,31 @@ class ModulithArchitectureTests {
                         "mapping",
                         "candidate",
                         "identity",
-                        "catalog");
+                        "catalog",
+                        "search");
         assertThat(
                         modules.getModuleByName("candidate")
                                 .orElseThrow()
                                 .getNamedInterfaces()
                                 .getByName("catalog-links"))
+                .isPresent();
+        assertThat(
+                        modules.getModuleByName("catalog")
+                                .orElseThrow()
+                                .getNamedInterfaces()
+                                .getByName("lookup"))
+                .isPresent();
+        assertThat(
+                        modules.getModuleByName("candidate")
+                                .orElseThrow()
+                                .getNamedInterfaces()
+                                .getByName("events"))
+                .isPresent();
+        assertThat(
+                        modules.getModuleByName("candidate")
+                                .orElseThrow()
+                                .getNamedInterfaces()
+                                .getByName("metrics"))
                 .isPresent();
         modules.verify();
     }

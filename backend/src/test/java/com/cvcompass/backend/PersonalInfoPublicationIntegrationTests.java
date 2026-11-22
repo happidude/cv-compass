@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import com.cvcompass.backend.candidate.service.CandidateQueryService;
 import com.cvcompass.backend.candidate.service.CandidateReviewService;
@@ -60,6 +61,8 @@ class PersonalInfoPublicationIntegrationTests {
     @Autowired FileStorageService storage;
     @Autowired MockMvc mvc;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired CatalogLinks catalogLinks;
+    @Autowired org.springframework.context.ApplicationEventPublisher events;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws Exception {
@@ -166,6 +169,193 @@ class PersonalInfoPublicationIntegrationTests {
                 "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                 Long.class,
                 d.getId());
+    }
+
+    @Test
+    void publicationBuildsSearchSnapshotBeforeCommit() throws Exception {
+        var doc = document();
+        String raw =
+                "Full name: Synthetic Index Example\nLocation: Hà Nội\n\nWork Experience\n2020 – 2025 Synthetic Tea House";
+        long mappingId = result(doc, raw, false, "personal-info-mapping/3.3");
+        long nextMappingId = result(doc, raw, false, "personal-info-mapping/3.3");
+        String suffix = UUID.randomUUID().toString();
+        long parent =
+                jdbc.queryForObject(
+                        "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES (?,?,'SEED') RETURNING \"ID\"",
+                        Long.class,
+                        "Synthetic parent " + suffix,
+                        "synthetic parent " + suffix);
+        long company =
+                jdbc.queryForObject(
+                        "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"PARENT_ID\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES (?,?,?,'RETAIL','SEED') RETURNING \"ID\"",
+                        Long.class,
+                        "Synthetic catalog employer " + suffix,
+                        "synthetic catalog employer " + suffix,
+                        parent);
+        long title =
+                jdbc.queryForObject(
+                        "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES (?,?,'{HR}','MANAGER','AI') RETURNING \"ID\"",
+                        Long.class,
+                        "Synthetic catalog title " + suffix,
+                        "synthetic catalog title " + suffix);
+        new org.springframework.transaction.support.TransactionTemplate(transactions)
+                .executeWithoutResult(
+                        status -> {
+                            assertThat(publication.publish(mappingId)).isTrue();
+                            long id = candidate(doc);
+                            // The 3.3 mapping carries no experiences; add one so indexing sees it.
+                            candidates.editExperience(
+                                    id,
+                                    queries.detail(id).version(),
+                                    null,
+                                    (ObjectNode)
+                                            json.readTree(
+                                                    "{\"company\":{\"raw\":\"Synthetic Tea House\"},\"title\":{\"raw\":\"Synthetic Tea Role\"},\"period\":{\"start\":{\"year\":2020,\"precision\":\"YEAR\"},\"end\":{\"year\":2025,\"precision\":\"YEAR\"},\"ongoingAsStated\":false}}"),
+                                    "SAVE",
+                                    "synthetic-editor");
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"SEARCH_TEXT\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    String.class,
+                                                    id))
+                                    .contains(
+                                            "synthetic index example",
+                                            "synthetic tea house",
+                                            "ha noi");
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"SEARCH_TSV\" @@ plainto_tsquery('simple','synthetic tea') FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Boolean.class,
+                                                    id))
+                                    .isTrue();
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"TOTAL_EXPERIENCE_MONTHS\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Integer.class,
+                                                    id))
+                                    .isEqualTo(50);
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT cardinality(\"COMPANY_IDS\") FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Integer.class,
+                                                    id))
+                                    .isZero();
+                            var experienceId = queries.detail(id).experiences().getFirst().id();
+                            assertThat(
+                                            catalogLinks.normalize(
+                                                    id,
+                                                    experienceId,
+                                                    new CatalogLinks.Normalization(
+                                                            company,
+                                                            title,
+                                                            "REGION",
+                                                            "USER",
+                                                            "Synthetic catalog employer " + suffix,
+                                                            List.of("HR"),
+                                                            List.of("RETAIL"),
+                                                            "MANAGER")))
+                                    .isTrue();
+                            assertThat(publication.publish(nextMappingId)).isTrue();
+                            events.publishEvent(
+                                    new com.cvcompass.backend.candidate.events.CandidateChanged(
+                                            id));
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"COMPANY_IDS\"=ARRAY[?]::bigint[] AND \"PARENT_COMPANY_IDS\"=ARRAY[?]::bigint[] AND \"TITLE_IDS\"=ARRAY[?]::bigint[] AND \"FUNCTION_CODES\"=ARRAY['HR']::text[] AND \"INDUSTRY_CODES\"=ARRAY['RETAIL']::text[] AND \"SCOPE_CODES\"=ARRAY['REGION']::text[] AND \"HAS_AI_NORMALIZATION\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Boolean.class,
+                                                    company,
+                                                    parent,
+                                                    title,
+                                                    id))
+                                    .isTrue();
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"SEARCH_TEXT\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    String.class,
+                                                    id))
+                                    .contains(
+                                            "synthetic catalog employer",
+                                            "synthetic catalog title",
+                                            "synthetic parent");
+                        });
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                Integer.class,
+                                candidate(doc)))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void publicationRollbackAlsoRollsBackTheSynchronousSearchSnapshot() throws Exception {
+        var doc = document();
+        long mappingId =
+                result(
+                        doc,
+                        "Full name: Synthetic Rollback Example",
+                        false,
+                        "personal-info-mapping/3.3");
+        var candidateId = new java.util.concurrent.atomic.AtomicLong();
+        new org.springframework.transaction.support.TransactionTemplate(transactions)
+                .executeWithoutResult(
+                        status -> {
+                            assertThat(publication.publish(mappingId)).isTrue();
+                            candidateId.set(candidate(doc));
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Integer.class,
+                                                    candidateId.get()))
+                                    .isEqualTo(1);
+                            status.setRollbackOnly();
+                        });
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                Integer.class,
+                                candidateId.get()))
+                .isZero();
+        assertThat(candidate(doc)).isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                Integer.class,
+                                mappingId))
+                .isZero();
+    }
+
+    @Test
+    void failingSearchListenerRollsBackPublicationLedgerAndProfile() throws Exception {
+        var doc = document();
+        long mappingId =
+                result(
+                        doc,
+                        "Full name: Synthetic Poison Marker",
+                        false,
+                        "personal-info-mapping/3.3");
+        jdbc.execute(
+                "CREATE OR REPLACE FUNCTION \"SEARCH\".synthetic_poison() RETURNS trigger AS $$ BEGIN IF NEW.\"SEARCH_TEXT\" LIKE '%synthetic poison marker%' THEN RAISE EXCEPTION 'synthetic poison'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql");
+        jdbc.execute(
+                "CREATE OR REPLACE TRIGGER synthetic_poison BEFORE INSERT OR UPDATE ON \"SEARCH\".\"CANDIDATE_INDEX\" FOR EACH ROW EXECUTE FUNCTION \"SEARCH\".synthetic_poison()");
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    new org.springframework.transaction.support.TransactionTemplate(
+                                                    transactions)
+                                            .executeWithoutResult(
+                                                    status -> publication.publish(mappingId)))
+                    .hasStackTraceContaining("synthetic poison");
+        } finally {
+            jdbc.execute(
+                    "DROP TRIGGER IF EXISTS synthetic_poison ON \"SEARCH\".\"CANDIDATE_INDEX\"");
+        }
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                Integer.class,
+                                mappingId))
+                .isZero();
+        assertThat(candidate(doc)).isNull();
     }
 
     @Test

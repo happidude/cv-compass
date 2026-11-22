@@ -77,6 +77,60 @@ public class CatalogLinkRepository implements CatalogLinks {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<IndexProfile> lockIndexProfile(long candidateId) {
+        return jdbc
+                .query(
+                        """
+                SELECT "FULL_NAME","LOCATION","SUMMARY" FROM "CANDIDATE"."PROFILES"
+                WHERE "CANDIDATE_ID"=? FOR UPDATE
+                """,
+                        (rs, row) ->
+                                new IndexProfile(rs.getString(1), rs.getString(2), rs.getString(3)),
+                        candidateId)
+                .stream()
+                .findFirst();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void metrics(long candidateId, ProfileLink value) {
+        jdbc.update(
+                """
+                UPDATE "CANDIDATE"."PROFILES" SET "LOCATION_PROVINCE"=?,"TOTAL_EXPERIENCE_MONTHS"=?,
+                  "CURRENT_COMPANY_ID"=?,"CURRENT_TITLE_ID"=? WHERE "CANDIDATE_ID"=?
+                """,
+                value.locationProvince(),
+                value.totalExperienceMonths(),
+                value.currentCompanyId(),
+                value.currentTitleId(),
+                candidateId);
+    }
+
+    @Override
+    public long lastCandidateId() {
+        return jdbc.queryForObject(
+                "SELECT COALESCE(max(\"ID\"),0) FROM \"CANDIDATE\".\"CANDIDATES\"", Long.class);
+    }
+
+    @Override
+    public List<Long> indexCandidates(long after, long through, int limit, boolean ongoingOnly) {
+        return jdbc.queryForList(
+                """
+                SELECT c."ID" FROM "CANDIDATE"."CANDIDATES" c
+                WHERE c."ID">? AND c."ID"<=? AND (NOT ? OR EXISTS (
+                  SELECT 1 FROM "CANDIDATE"."EXPERIENCES" e WHERE e."CANDIDATE_ID"=c."ID"
+                    AND NOT e."DELETED" AND e."ONGOING_AS_STATED"))
+                ORDER BY c."ID" LIMIT ?
+                """,
+                Long.class,
+                after,
+                through,
+                ongoingOnly,
+                limit);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public boolean normalize(long candidateId, UUID experienceId, Normalization value) {
         return jdbc.update(
                         """

@@ -1,18 +1,21 @@
 package com.cvcompass.backend.candidate.service;
 
 import com.cvcompass.backend.candidate.dto.Profile;
+import com.cvcompass.backend.candidate.events.CandidateChanged;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
 import com.cvcompass.backend.candidate.mapping.PersonalInfoMapper;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
 @Service
 public class CandidateService {
+    private final ApplicationEventPublisher events;
     private final CandidateProfileRepository repository;
     private final CandidateQueryService queries;
     private final CandidateRevisionService revisions;
@@ -28,7 +31,9 @@ public class CandidateService {
             CandidateExperienceService experiences,
             CandidateValidator validator,
             CandidateValueMapper mapper,
-            CandidateDocuments documents) {
+            CandidateDocuments documents,
+            ApplicationEventPublisher events) {
+        this.events = events;
         this.repository = repository;
         this.queries = queries;
         this.revisions = revisions;
@@ -47,6 +52,7 @@ public class CandidateService {
         if (!documents.attach(documentId, id))
             throw new CandidateFailure(409, "DOCUMENT_ALREADY_LINKED");
         revisions.revision(id, version, actor, "LINK_DOCUMENT", before, queries.detail(id));
+        events.publishEvent(new CandidateChanged(id));
         return queries.detail(id);
     }
 
@@ -94,6 +100,7 @@ public class CandidateService {
                 confirm ? "CONFIRM_BASIC" : "EDIT_BASIC",
                 before,
                 queries.detail(id));
+        events.publishEvent(new CandidateChanged(id));
         return queries.detail(id);
     }
 
@@ -136,6 +143,7 @@ public class CandidateService {
         }
         revisions.revision(
                 id, version, actor, operation + "_EXPERIENCE", before, queries.detail(id));
+        events.publishEvent(new CandidateChanged(id));
         return queries.detail(id);
     }
 }
