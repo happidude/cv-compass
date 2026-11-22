@@ -893,7 +893,7 @@ Quy tắc 5 theo diễn giải đã duyệt: chọn cụm hậu tố pháp nhân
 có phần đuôi cần bỏ; các hậu tố liên tiếp như `CO., LTD` hoặc `GROUP COMPANY`
 là một cụm. Giữ ngoặc ngắn, dấu chấm cuối và toàn bộ tên tiếng Việt bắt đầu
 `Công ty TNHH`/`Công ty Cổ phần`. Hậu tố mở đầu dùng dạng chữ hoa cố định để không
-nhận nhầm từ tên riêng như `Central Marketing Group VN`. Với chức danh,
+nhận nhầm từ tên riêng như `Northgate Marketing Group VN`. Với chức danh,
 quy tắc 12 chạy trước 10 để bỏ cả dấu nối, kể cả ` at `.
 “Chữ HOA khác” ở quy tắc 5 là từ viết hoa toàn bộ; `ACME JSC Hanoi` không bị cắt.
 
@@ -931,7 +931,7 @@ Raw text, spans và offset dùng cho evidence không bị sửa.
   Giữ năm và tháng/năm như `2020`, `09/2020`, `12/2019`, `2020-09`.
   Bỏ dòng chỉ có ký hiệu/khung, và cụm cấu hình khớp cả dòng sau
   strip, không phân biệt hoa thường. Ví dụ:
-  `CVC_LLM_TRIM_PHRASES=© topcv.vn|Private and Confidential`.
+  `CVC_LLM_TRIM_PHRASES=© example.vn|Private and Confidential`.
 - Gộp khoảng trắng/tab trong dòng thành một khoảng; giữ tối đa một dòng trống
   liên tiếp. Với evidence `lines`, vẫn giữ số `[L<n>]` toàn cục của O5, có thể
   có khoảng trống; bảng ID luôn trỏ về span nguồn chưa sửa.
