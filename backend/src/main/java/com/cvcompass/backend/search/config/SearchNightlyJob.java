@@ -12,7 +12,10 @@ public class SearchNightlyJob {
         this.service = service;
     }
 
-    @Scheduled(cron = "${cv.search.rebuild.cron:0 30 2 * * *}")
+    // SpEL keeps one default in SearchProperties; SearchPropertiesTests verifies scheduling.
+    @Scheduled(
+            cron =
+                    "#{@'cv.search-com.cvcompass.backend.search.config.SearchProperties'.nightlyCron}")
     public void rebuild() {
         service.rebuildOngoing();
     }

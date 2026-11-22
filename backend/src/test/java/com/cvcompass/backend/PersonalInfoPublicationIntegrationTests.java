@@ -181,20 +181,20 @@ class PersonalInfoPublicationIntegrationTests {
         String suffix = UUID.randomUUID().toString();
         long parent =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES (?,?,'SEED') RETURNING \"ID\"",
+                        "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY',?,?,'SEED') RETURNING \"ID\"",
                         Long.class,
                         "Synthetic parent " + suffix,
                         "synthetic parent " + suffix);
         long company =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"PARENT_ID\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES (?,?,?,'RETAIL','SEED') RETURNING \"ID\"",
+                        "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"PARENT_ID\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES ('COMPANY',?,?,?,'RETAIL','SEED') RETURNING \"ID\"",
                         Long.class,
                         "Synthetic catalog employer " + suffix,
                         "synthetic catalog employer " + suffix,
                         parent);
         long title =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES (?,?,'{HR}','MANAGER','AI') RETURNING \"ID\"",
+                        "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('TITLE',?,?,'{HR}','MANAGER','AI') RETURNING \"ID\"",
                         Long.class,
                         "Synthetic catalog title " + suffix,
                         "synthetic catalog title " + suffix);

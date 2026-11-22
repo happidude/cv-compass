@@ -221,13 +221,13 @@ class CatalogLinkInvalidationIntegrationTests {
         String suffix = UUID.randomUUID().toString();
         long company =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES (?,?,'AI') RETURNING \"ID\"",
+                        "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY',?,?,'AI') RETURNING \"ID\"",
                         Long.class,
                         "Synthetic company " + suffix,
                         "synthetic company " + suffix);
         long title =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES (?,?,'{IT}','SENIOR','AI') RETURNING \"ID\"",
+                        "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"ORIGIN\") VALUES ('TITLE',?,?,'{IT}','SENIOR','AI') RETURNING \"ID\"",
                         Long.class,
                         "Synthetic title " + suffix,
                         "synthetic title " + suffix);

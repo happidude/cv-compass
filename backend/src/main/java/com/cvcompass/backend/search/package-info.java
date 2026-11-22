@@ -4,7 +4,6 @@
             "candidate::metrics",
             "candidate::events",
             "catalog::lookup",
-            "mapping::results",
-            "web"
+            "mapping::results"
         })
 package com.cvcompass.backend.search;
