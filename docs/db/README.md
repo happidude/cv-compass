@@ -18,8 +18,8 @@
 | [MAPPING.SETTINGS](MAPPING.SETTINGS.md) | 4 | Cấu hình ánh xạ đang hoạt động và con trỏ quét bền vững. | BASE TABLE |
 | [MAPPING.JOBS](MAPPING.JOBS.md) | 15 | Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên bản bộ máy. | BASE TABLE |
 | [MAPPING.RESULTS](MAPPING.RESULTS.md) | 7 | Kết quả ánh xạ bất biến cùng phiên bản cấu trúc và chất lượng. | BASE TABLE |
-| [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | 17 | Hồ sơ ứng viên có phiên bản và trạng thái xác nhận thông tin. | BASE TABLE |
-| [CANDIDATE.EXPERIENCES](CANDIDATE.EXPERIENCES.md) | 25 | Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nhận. | BASE TABLE |
+| [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | 19 | Hồ sơ ứng viên có phiên bản và trạng thái xác nhận thông tin. | BASE TABLE |
+| [CANDIDATE.EXPERIENCES](CANDIDATE.EXPERIENCES.md) | 27 | Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nhận. | BASE TABLE |
 | [CANDIDATE.PUBLICATIONS](CANDIDATE.PUBLICATIONS.md) | 8 | Sổ công bố kết quả ánh xạ vào hồ sơ ứng viên. | BASE TABLE |
 | [CANDIDATE.PROPOSALS](CANDIDATE.PROPOSALS.md) | 9 | Đề xuất cập nhật hồ sơ từ kết quả ánh xạ và quyết định xử lý. | BASE TABLE |
 | [CANDIDATE.HISTORY](CANDIDATE.HISTORY.md) | 8 | Lịch sử thay đổi hồ sơ ứng viên theo phiên bản. | BASE TABLE |
@@ -27,10 +27,8 @@
 | [IDENTITY.USERS](IDENTITY.USERS.md) | 4 | Tài khoản người dùng cùng vai trò và trạng thái hoạt động. | BASE TABLE |
 | [MAPPING.ATTEMPTS](MAPPING.ATTEMPTS.md) | 19 | Lần thực hiện ánh xạ từ xa cùng thời hạn thuê và kết quả kết thúc. | BASE TABLE |
 | [CATALOG.TAXONOMY_CODES](CATALOG.TAXONOMY_CODES.md) | 5 | Bảng mã phân loại theo phiên bản đã duyệt. | BASE TABLE |
-| [CATALOG.COMPANIES](CATALOG.COMPANIES.md) | 9 | Danh mục công ty chuẩn hóa và liên kết tập đoàn mẹ. | BASE TABLE |
-| [CATALOG.COMPANY_ALIASES](CATALOG.COMPANY_ALIASES.md) | 4 | Bí danh công ty duy nhất theo chuỗi đã bỏ dấu. | BASE TABLE |
-| [CATALOG.TITLES](CATALOG.TITLES.md) | 10 | Danh mục chức danh chuẩn hóa cùng nhóm nghề và cấp bậc. | BASE TABLE |
-| [CATALOG.TITLE_ALIASES](CATALOG.TITLE_ALIASES.md) | 4 | Bí danh chức danh duy nhất theo chuỗi đã bỏ dấu. | BASE TABLE |
+| [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | 14 | Danh mục công ty và chức danh chuẩn hóa theo loại. | BASE TABLE |
+| [CATALOG.ALIASES](CATALOG.ALIASES.md) | 6 | Bí danh công ty và chức danh duy nhất theo loại và chuỗi đã bỏ dấu. | BASE TABLE |
 | [SEARCH.CANDIDATE_INDEX](SEARCH.CANDIDATE_INDEX.md) | 14 | Bản chỉ mục tìm kiếm tổng hợp theo ứng viên. | BASE TABLE |
 | [CATALOG.NORMALIZATION_TASKS](CATALOG.NORMALIZATION_TASKS.md) | 14 | Hàng đợi chuẩn hóa bí danh công ty và chức danh. | BASE TABLE |
 
@@ -98,13 +96,13 @@ erDiagram
 "MAPPING.JOBS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
 "MAPPING.RESULTS" |o--|| "MAPPING.JOBS" : "FOREIGN KEY (#quot;JOB_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;JOBS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PROFILES" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;)"
-"CANDIDATE.PROFILES" }o--o| "CATALOG.COMPANIES" : "FOREIGN KEY (#quot;CURRENT_COMPANY_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;COMPANIES#quot;(#quot;ID#quot;)"
-"CANDIDATE.PROFILES" }o--o| "CATALOG.TITLES" : "FOREIGN KEY (#quot;CURRENT_TITLE_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;TITLES#quot;(#quot;ID#quot;)"
+"CANDIDATE.PROFILES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;CURRENT_COMPANY_ID#quot;, #quot;CURRENT_COMPANY_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CANDIDATE.PROFILES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;CURRENT_TITLE_ID#quot;, #quot;CURRENT_TITLE_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "INGESTION.DOCUMENTS" : "FOREIGN KEY (#quot;DOCUMENT_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;DOCUMENTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "MAPPING.RESULTS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;RESULTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--|| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
-"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.COMPANIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;COMPANIES#quot;(#quot;ID#quot;)"
-"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.TITLES" : "FOREIGN KEY (#quot;TITLE_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;TITLES#quot;(#quot;ID#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;, #quot;COMPANY_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;TITLE_ID#quot;, #quot;TITLE_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
 "CANDIDATE.PUBLICATIONS" }o--|| "INGESTION.DOCUMENTS" : "FOREIGN KEY (#quot;DOCUMENT_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;DOCUMENTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PUBLICATIONS" |o--|| "MAPPING.RESULTS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;RESULTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PUBLICATIONS" }o--o| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
@@ -113,9 +111,8 @@ erDiagram
 "CANDIDATE.PROPOSALS" }o--|| "CANDIDATE.PUBLICATIONS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PUBLICATIONS#quot;(#quot;RESULT_ID#quot;)"
 "CANDIDATE.HISTORY" }o--|| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
 "MAPPING.ATTEMPTS" }o--|| "MAPPING.JOBS" : "FOREIGN KEY (#quot;JOB_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;JOBS#quot;(#quot;ID#quot;)"
-"CATALOG.COMPANIES" }o--o| "CATALOG.COMPANIES" : "FOREIGN KEY (#quot;PARENT_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;COMPANIES#quot;(#quot;ID#quot;)"
-"CATALOG.COMPANY_ALIASES" }o--|| "CATALOG.COMPANIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;COMPANIES#quot;(#quot;ID#quot;) ON DELETE CASCADE"
-"CATALOG.TITLE_ALIASES" }o--|| "CATALOG.TITLES" : "FOREIGN KEY (#quot;TITLE_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;TITLES#quot;(#quot;ID#quot;) ON DELETE CASCADE"
+"CATALOG.ENTRIES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;PARENT_ID#quot;, #quot;PARENT_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CATALOG.ALIASES" }o--|| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;ENTRY_ID#quot;, #quot;KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;) ON DELETE CASCADE"
 "SEARCH.CANDIDATE_INDEX" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;) ON DELETE CASCADE"
 
 "public.event_publication" {
@@ -315,7 +312,9 @@ erDiagram
   varchar_64_ LOCATION_PROVINCE
   integer TOTAL_EXPERIENCE_MONTHS
   bigint CURRENT_COMPANY_ID FK
+  varchar_8_ CURRENT_COMPANY_KIND FK
   bigint CURRENT_TITLE_ID FK
+  varchar_8_ CURRENT_TITLE_KIND FK
 }
 "CANDIDATE.EXPERIENCES" {
   uuid ID
@@ -340,7 +339,9 @@ erDiagram
   bigint RESULT_ID FK
   boolean DELETED
   bigint COMPANY_ID FK
+  varchar_8_ COMPANY_KIND FK
   bigint TITLE_ID FK
+  varchar_8_ TITLE_KIND FK
   varchar_64_ SCOPE_CODE
   varchar_8_ NORMALIZATION_ORIGIN
 }
@@ -414,27 +415,14 @@ erDiagram
   varchar_32_ TAXONOMY_VERSION
   boolean ACTIVE
 }
-"CATALOG.COMPANIES" {
+"CATALOG.ENTRIES" {
   bigint ID
+  varchar_8_ KIND
   text NAME
   text NAME_FOLDED
   bigint PARENT_ID FK
+  varchar_8_ PARENT_KIND FK
   varchar_64_ INDUSTRY_CODE
-  text PROPOSED_LABEL
-  varchar_8_ ORIGIN
-  timestamp_with_time_zone CREATED_AT
-  timestamp_with_time_zone UPDATED_AT
-}
-"CATALOG.COMPANY_ALIASES" {
-  text ALIAS_FOLDED
-  bigint COMPANY_ID FK
-  text ALIAS_RAW
-  varchar_8_ ORIGIN
-}
-"CATALOG.TITLES" {
-  bigint ID
-  text NAME
-  text NAME_FOLDED
   text__ FUNCTION_CODES
   varchar_64_ SENIORITY_CODE
   varchar_64_ SCOPE_CODE
@@ -443,9 +431,11 @@ erDiagram
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone UPDATED_AT
 }
-"CATALOG.TITLE_ALIASES" {
+"CATALOG.ALIASES" {
+  bigint ID
+  varchar_8_ KIND FK
   text ALIAS_FOLDED
-  bigint TITLE_ID FK
+  bigint ENTRY_ID FK
   text ALIAS_RAW
   varchar_8_ ORIGIN
 }

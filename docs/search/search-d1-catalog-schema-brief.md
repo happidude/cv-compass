@@ -1,5 +1,7 @@
 # Brief D1 — Schema CATALOG + SEARCH, cột chuẩn hóa, nạp bảng mã + danh mục khởi đầu
 
+> **Cập nhật 22/11/2026 (chủ dự án duyệt):** catalog dùng 3 bảng thay vì 5 — `"CATALOG"."TAXONOMY_CODES"` (giữ), `"CATALOG"."ENTRIES"` (công ty + chức danh, cột `KIND`, CHECK theo loại) và `"CATALOG"."ALIASES"` (`UNIQUE (KIND, ALIAS_FOLDED)`, kind alias = kind entry). FK từ EXPERIENCES/PROFILES và PARENT_ID kiểm đúng loại bằng composite FK. Phần còn lại của brief giữ nguyên.
+
 Mục tiêu/acceptance (theo quy ước DB0: schema/bảng/cột VIẾT HOA, `COMMENT ON` tiếng Việt):
 (1) Migration mới: bật extension `unaccent`, `pg_trgm` (schema `public`); schema `"CATALOG"`, `"SEARCH"`:
   - `"CATALOG"."TAXONOMY_CODES"`: KIND (FUNCTION/SENIORITY/INDUSTRY/SCOPE), CODE, LABEL_VI, TAXONOMY_VERSION, ACTIVE; PK (KIND, CODE).

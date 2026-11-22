@@ -27,8 +27,9 @@ public class CatalogLookupRepository implements CatalogLookup {
                 .query(
                         """
                 SELECT c."ID",c."NAME",c."PARENT_ID",p."NAME",c."INDUSTRY_CODE",c."ORIGIN"
-                FROM "CATALOG"."COMPANIES" c LEFT JOIN "CATALOG"."COMPANIES" p ON p."ID"=c."PARENT_ID"
-                WHERE c."ID"=ANY(?::bigint[])
+                FROM "CATALOG"."ENTRIES" c LEFT JOIN "CATALOG"."ENTRIES" p
+                  ON p."ID"=c."PARENT_ID" AND p."KIND"='COMPANY'
+                WHERE c."KIND"='COMPANY' AND c."ID"=ANY(?::bigint[])
                 """,
                         (rs, row) ->
                                 new Company(
@@ -50,7 +51,7 @@ public class CatalogLookupRepository implements CatalogLookup {
                 .query(
                         """
                 SELECT "ID","NAME","FUNCTION_CODES","SENIORITY_CODE","SCOPE_CODE","ORIGIN"
-                FROM "CATALOG"."TITLES" WHERE "ID"=ANY(?::bigint[])
+                FROM "CATALOG"."ENTRIES" WHERE "KIND"='TITLE' AND "ID"=ANY(?::bigint[])
                 """,
                         (rs, row) -> {
                             var functions = rs.getArray(3);

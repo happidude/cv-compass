@@ -49,6 +49,7 @@ class CatalogImportIntegrationTests {
     @Test
     void startupLoadsApprovedTaxonomyAndReloadReactivatesCurrentAndRetiresMissingCodes()
             throws Exception {
+        assertThat(taxonomy.version()).isEqualTo("cv-taxonomy/0");
         assertThat(
                         jdbc.queryForList(
                                 "SELECT \"KIND\",count(*) AS count FROM \"CATALOG\".\"TAXONOMY_CODES\" WHERE \"ACTIVE\" GROUP BY \"KIND\" ORDER BY \"KIND\""))
@@ -92,12 +93,12 @@ class CatalogImportIntegrationTests {
                 .isEqualTo(json.readTree("{\"created\":8,\"updated\":0,\"unchanged\":0}"));
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT p.\"NAME\" FROM \"CATALOG\".\"COMPANIES\" c JOIN \"CATALOG\".\"COMPANIES\" p ON p.\"ID\"=c.\"PARENT_ID\" WHERE c.\"NAME\"='Aster Works Create'",
+                                "SELECT p.\"NAME\" FROM \"CATALOG\".\"ENTRIES\" c JOIN \"CATALOG\".\"ENTRIES\" p ON p.\"ID\"=c.\"PARENT_ID\" WHERE c.\"NAME\"='Aster Works Create'",
                                 String.class))
                 .isEqualTo("Helix Group Create");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME\"='Helix Group Create'",
+                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME\"='Helix Group Create'",
                                 String.class))
                 .isNull();
         var before = catalogRows();
@@ -111,14 +112,46 @@ class CatalogImportIntegrationTests {
         assertThat(json.readTree(updated.body()).path("updated").asInt()).isEqualTo(2);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME\"='Aster Works Create'",
+                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME\"='Aster Works Create'",
                                 String.class))
                 .isEqualTo("RETAIL");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"FUNCTION_CODES\"[1] FROM \"CATALOG\".\"TITLES\" WHERE \"NAME\"='Orbit Lead Create'",
+                                "SELECT \"FUNCTION_CODES\"[1] FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='TITLE' AND \"NAME\"='Orbit Lead Create'",
                                 String.class))
                 .isEqualTo("SALES");
+    }
+
+    @Test
+    void companyAndTitleCanShareCanonicalNamesAndAliasesWithoutResolvingAcrossKinds()
+            throws Exception {
+        var admin = session("ADMIN");
+        String body =
+                """
+                {"schemaVersion":"catalog-seed/0",
+                 "companies":[{"name":"Synthetic Shared Import","industry":"RETAIL","aliases":["Synthetic Shared Alias"]}],
+                 "titles":[{"name":"Synthetic Shared Import","functions":["IT"],"seniority":"STAFF","aliases":["Synthetic Shared Alias"]}]}
+                """;
+        var first = post(admin, body);
+        assertThat(first.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(first.body()))
+                .isEqualTo(json.readTree("{\"created\":6,\"updated\":0,\"unchanged\":0}"));
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT \"KIND\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"NAME_FOLDED\"='synthetic shared import' ORDER BY \"KIND\"",
+                                String.class))
+                .containsExactly("COMPANY", "TITLE");
+        assertThat(
+                        jdbc.queryForList(
+                                "SELECT a.\"KIND\" FROM \"CATALOG\".\"ALIASES\" a JOIN \"CATALOG\".\"ENTRIES\" e ON e.\"ID\"=a.\"ENTRY_ID\" AND e.\"KIND\"=a.\"KIND\" WHERE a.\"ALIAS_FOLDED\"='synthetic shared alias' ORDER BY a.\"KIND\"",
+                                String.class))
+                .containsExactly("COMPANY", "TITLE");
+        var before = catalogRows();
+        var repeated = post(admin, body);
+        assertThat(repeated.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(repeated.body()))
+                .isEqualTo(json.readTree("{\"created\":0,\"updated\":0,\"unchanged\":6}"));
+        assertThat(catalogRows()).isEqualTo(before);
     }
 
     @Test
@@ -137,12 +170,12 @@ class CatalogImportIntegrationTests {
         assertThat(first.statusCode()).isEqualTo(200);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='helix ordered'",
+                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='helix ordered'",
                                 String.class))
                 .isEqualTo("MANUFACTURING");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"SCOPE_CODE\" FROM \"CATALOG\".\"TITLES\" WHERE \"NAME_FOLDED\"='orbit ordered'",
+                                "SELECT \"SCOPE_CODE\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='TITLE' AND \"NAME_FOLDED\"='orbit ordered'",
                                 String.class))
                 .isNull();
         var before = catalogRows();
@@ -254,11 +287,11 @@ class CatalogImportIntegrationTests {
         assertThat(post(admin, seed("Resolved", "RETAIL", "IT")).statusCode()).isEqualTo(200);
         long company =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='aster works resolved'",
+                        "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='aster works resolved'",
                         Long.class);
         long title =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CATALOG\".\"TITLES\" WHERE \"NAME_FOLDED\"='orbit lead resolved'",
+                        "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='TITLE' AND \"NAME_FOLDED\"='orbit lead resolved'",
                         Long.class);
         var ownersBefore = aliasOwners();
         String throughAliases =
@@ -274,12 +307,12 @@ class CatalogImportIntegrationTests {
         assertThat(json.readTree(response.body()).path("created").asInt()).isZero();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='aster alias resolved'",
+                                "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='aster alias resolved'",
                                 Long.class))
                 .isEqualTo(company);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ID\" FROM \"CATALOG\".\"TITLES\" WHERE \"NAME_FOLDED\"='orbit alias resolved'",
+                                "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='TITLE' AND \"NAME_FOLDED\"='orbit alias resolved'",
                                 Long.class))
                 .isEqualTo(title);
         assertThat(aliasOwners()).isEqualTo(ownersBefore);
@@ -290,8 +323,11 @@ class CatalogImportIntegrationTests {
         assertThat(json.readTree(response.body()).path("updated").asInt()).isZero();
         assertThat(catalogRows()).isEqualTo(before);
         jdbc.update(
-                "UPDATE \"CATALOG\".\"COMPANIES\" SET \"ORIGIN\"='USER' WHERE \"ID\"=?", company);
-        jdbc.update("UPDATE \"CATALOG\".\"TITLES\" SET \"ORIGIN\"='USER' WHERE \"ID\"=?", title);
+                "UPDATE \"CATALOG\".\"ENTRIES\" SET \"ORIGIN\"='USER' WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
+                company);
+        jdbc.update(
+                "UPDATE \"CATALOG\".\"ENTRIES\" SET \"ORIGIN\"='USER' WHERE \"KIND\"='TITLE' AND \"ID\"=?",
+                title);
         before = catalogRows();
         // The former canonical names remain aliases of these USER-owned rows.
         response = post(admin, seed("Resolved", "RETAIL", "IT"));
@@ -314,11 +350,11 @@ class CatalogImportIntegrationTests {
         assertThat(post(admin, initial).statusCode()).isEqualTo(200);
         long parent =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='helix parentonly'",
+                        "SELECT \"ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='helix parentonly'",
                         Long.class);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"ID\"=?",
+                                "SELECT \"INDUSTRY_CODE\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                 String.class,
                                 parent))
                 .isNull();
@@ -335,12 +371,12 @@ class CatalogImportIntegrationTests {
         assertThat(post(admin, child).statusCode()).isEqualTo(200);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"PARENT_ID\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='aster second parentonly'",
+                                "SELECT \"PARENT_ID\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='aster second parentonly'",
                                 Long.class))
                 .isEqualTo(parent);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CATALOG\".\"COMPANIES\" WHERE \"NAME_FOLDED\"='helix alternate parentonly'",
+                                "SELECT count(*) FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"NAME_FOLDED\"='helix alternate parentonly'",
                                 Integer.class))
                 .isZero();
         var before = catalogRows();
@@ -470,6 +506,9 @@ class CatalogImportIntegrationTests {
         assertThat(response.statusCode()).isEqualTo(422);
         var error = json.readTree(response.body());
         assertThat(error.path("code").asString()).isEqualTo(code);
+        assertThat(error.path("message").asString()).isEqualTo("Invalid catalog seed");
+        assertThat(error.path("correlationId").asString())
+                .isEqualTo(response.headers().firstValue("X-Correlation-ID").orElseThrow());
         var fields = new ArrayList<String>();
         for (var violation : error.path("details")) fields.add(violation.path("field").asString());
         assertThat(fields).contains(field);
@@ -485,9 +524,9 @@ class CatalogImportIntegrationTests {
     private List<List<Map<String, Object>>> aliasOwners() {
         return List.of(
                 jdbc.queryForList(
-                        "SELECT \"ALIAS_FOLDED\",\"COMPANY_ID\" FROM \"CATALOG\".\"COMPANY_ALIASES\" ORDER BY \"ALIAS_FOLDED\""),
+                        "SELECT \"ALIAS_FOLDED\",\"ENTRY_ID\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='COMPANY' ORDER BY \"ALIAS_FOLDED\""),
                 jdbc.queryForList(
-                        "SELECT \"ALIAS_FOLDED\",\"TITLE_ID\" FROM \"CATALOG\".\"TITLE_ALIASES\" ORDER BY \"ALIAS_FOLDED\""));
+                        "SELECT \"ALIAS_FOLDED\",\"ENTRY_ID\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='TITLE' ORDER BY \"ALIAS_FOLDED\""));
     }
 
     @Test
@@ -496,7 +535,7 @@ class CatalogImportIntegrationTests {
         var before = catalogRows();
         // Fail after company, parent, title and earlier alias writes in this private database.
         jdbc.execute(
-                "ALTER TABLE \"CATALOG\".\"TITLE_ALIASES\" ADD CONSTRAINT \"SYNTHETIC_IMPORT_ROLLBACK\" CHECK (\"ALIAS_RAW\" <> 'Orbit Alias Rollback')");
+                "ALTER TABLE \"CATALOG\".\"ALIASES\" ADD CONSTRAINT \"SYNTHETIC_IMPORT_ROLLBACK\" CHECK (\"ALIAS_RAW\" <> 'Orbit Alias Rollback')");
         try {
             var response = post(session, seed("Rollback", "RETAIL", "IT"));
             assertThat(response.statusCode()).isEqualTo(500);
@@ -504,7 +543,7 @@ class CatalogImportIntegrationTests {
             assertThat(catalogRows()).isEqualTo(before);
         } finally {
             jdbc.execute(
-                    "ALTER TABLE \"CATALOG\".\"TITLE_ALIASES\" DROP CONSTRAINT \"SYNTHETIC_IMPORT_ROLLBACK\"");
+                    "ALTER TABLE \"CATALOG\".\"ALIASES\" DROP CONSTRAINT \"SYNTHETIC_IMPORT_ROLLBACK\"");
         }
     }
 
@@ -514,18 +553,21 @@ class CatalogImportIntegrationTests {
         var before = catalogRows();
         var denied = post(user, seed("Denied", "RETAIL", "IT"));
         assertThat(denied.statusCode()).isEqualTo(403);
-        assertThat(json.readTree(denied.body()).path("code").asString()).isEqualTo("FORBIDDEN");
+        assertThat(json.readTree(denied.body()))
+                .isEqualTo(
+                        json.readTree(
+                                "{\"code\":\"ACCESS_DENIED\",\"message\":\"Request denied\",\"correlationId\":null,\"details\":[]}"));
         assertThat(catalogRows()).isEqualTo(before);
         var admin = session("ADMIN");
         assertThat(post(admin, seed("Protected", "RETAIL", "IT")).statusCode()).isEqualTo(200);
         jdbc.update(
-                "UPDATE \"CATALOG\".\"COMPANIES\" SET \"ORIGIN\"='USER' WHERE \"NAME\" LIKE '%Protected'");
+                "UPDATE \"CATALOG\".\"ENTRIES\" SET \"ORIGIN\"='USER' WHERE \"KIND\"='COMPANY' AND \"NAME\" LIKE '%Protected'");
         jdbc.update(
-                "UPDATE \"CATALOG\".\"TITLES\" SET \"ORIGIN\"='USER' WHERE \"NAME\" LIKE '%Protected'");
+                "UPDATE \"CATALOG\".\"ENTRIES\" SET \"ORIGIN\"='USER' WHERE \"KIND\"='TITLE' AND \"NAME\" LIKE '%Protected'");
         jdbc.update(
-                "UPDATE \"CATALOG\".\"COMPANY_ALIASES\" SET \"ORIGIN\"='USER' WHERE \"ALIAS_RAW\" LIKE '%Protected'");
+                "UPDATE \"CATALOG\".\"ALIASES\" SET \"ORIGIN\"='USER' WHERE \"KIND\"='COMPANY' AND \"ALIAS_RAW\" LIKE '%Protected'");
         jdbc.update(
-                "UPDATE \"CATALOG\".\"TITLE_ALIASES\" SET \"ORIGIN\"='USER' WHERE \"ALIAS_RAW\" LIKE '%Protected'");
+                "UPDATE \"CATALOG\".\"ALIASES\" SET \"ORIGIN\"='USER' WHERE \"KIND\"='TITLE' AND \"ALIAS_RAW\" LIKE '%Protected'");
         before = catalogRows();
         var response = post(admin, seed("Protected", "MANUFACTURING", "SALES"));
         assertThat(response.statusCode()).isEqualTo(200);
@@ -574,16 +616,16 @@ class CatalogImportIntegrationTests {
     private List<List<String>> catalogRows() {
         return List.of(
                 jdbc.queryForList(
-                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"COMPANIES\" t ORDER BY \"ID\"",
+                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"ENTRIES\" t WHERE \"KIND\"='COMPANY' ORDER BY \"ID\"",
                         String.class),
                 jdbc.queryForList(
-                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"TITLES\" t ORDER BY \"ID\"",
+                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"ENTRIES\" t WHERE \"KIND\"='TITLE' ORDER BY \"ID\"",
                         String.class),
                 jdbc.queryForList(
-                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"COMPANY_ALIASES\" t ORDER BY \"ALIAS_FOLDED\"",
+                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"ALIASES\" t WHERE \"KIND\"='COMPANY' ORDER BY \"ALIAS_FOLDED\"",
                         String.class),
                 jdbc.queryForList(
-                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"TITLE_ALIASES\" t ORDER BY \"ALIAS_FOLDED\"",
+                        "SELECT row_to_json(t)::text FROM \"CATALOG\".\"ALIASES\" t WHERE \"KIND\"='TITLE' ORDER BY \"ALIAS_FOLDED\"",
                         String.class));
     }
 }

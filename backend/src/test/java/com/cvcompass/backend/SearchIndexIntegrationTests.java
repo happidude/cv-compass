@@ -1,13 +1,20 @@
 package com.cvcompass.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
 import com.cvcompass.backend.candidate.events.CandidateChanged;
 import com.cvcompass.backend.candidate.service.CandidateQueryService;
 import com.cvcompass.backend.candidate.service.CandidateService;
 import com.cvcompass.backend.catalog.Fold;
+import com.cvcompass.backend.catalog.api.CatalogLookup;
 import com.cvcompass.backend.search.config.SearchNightlyJob;
+import com.cvcompass.backend.search.config.SearchProperties;
 import com.cvcompass.backend.search.service.SearchIndexer;
 import com.cvcompass.backend.search.service.SearchRebuildService;
 import java.net.URI;
@@ -30,6 +37,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -37,7 +45,11 @@ import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"cv.candidate.publication.enabled=false", "cv.search.rebuild.cron=-"})
+        properties = {
+            "cv.candidate.publication.enabled=false",
+            "cv.search.nightly-cron=-",
+            "cv.search.rebuild-batch-size=2"
+        })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class SearchIndexIntegrationTests {
     private static final IsolatedPostgresSchema DATABASE = new IsolatedPostgresSchema();
@@ -45,7 +57,9 @@ class SearchIndexIntegrationTests {
     @Autowired ObjectMapper json;
     @Autowired CandidateService candidates;
     @Autowired CandidateQueryService queries;
-    @Autowired CatalogLinks links;
+    @MockitoSpyBean CatalogLinks links;
+    @Autowired CatalogLookup catalog;
+    @Autowired SearchProperties properties;
     @Autowired SearchIndexer indexer;
     @Autowired SearchRebuildService rebuild;
     @Autowired SearchNightlyJob nightly;
@@ -148,6 +162,48 @@ class SearchIndexIntegrationTests {
     }
 
     @Test
+    void lookupFiltersMixedEntryIdsByKindAndPreservesCompanyAndTitleFields() {
+        long parent = company(null, "SEED");
+        long company = company(parent, "AI");
+        long title = title("USER");
+        var ids = List.of(parent, company, title);
+        var companies = catalog.companies(ids);
+        assertThat(companies).containsOnlyKeys(parent, company);
+        assertThat(companies.get(company))
+                .isEqualTo(
+                        new CatalogLookup.Company(
+                                company,
+                                jdbc.queryForObject(
+                                        "SELECT \"NAME\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"ID\"=?",
+                                        String.class,
+                                        company),
+                                parent,
+                                companies.get(parent).name(),
+                                "LOGISTICS",
+                                "AI"));
+        assertThat(companies.get(parent).parentId()).isNull();
+        assertThat(companies.get(parent).parentName()).isNull();
+        var titles = catalog.titles(ids);
+        assertThat(titles).containsOnlyKeys(title);
+        assertThat(titles.get(title))
+                .isEqualTo(
+                        new CatalogLookup.Title(
+                                title,
+                                jdbc.queryForObject(
+                                        "SELECT \"NAME\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"ID\"=?",
+                                        String.class,
+                                        title),
+                                List.of("IT", "HR"),
+                                "MANAGER",
+                                "COMPANY",
+                                "USER"));
+        assertThat(catalog.companies(List.of(title))).isEmpty();
+        assertThat(catalog.titles(List.of(company))).isEmpty();
+        assertThat(catalog.companies(List.of())).isEmpty();
+        assertThat(catalog.titles(List.of())).isEmpty();
+    }
+
+    @Test
     void indexesCatalogNamesParentCodesAndSortedDistinctArraysFromActiveLinks() {
         long id = candidate();
         var first =
@@ -197,7 +253,7 @@ class SearchIndexIntegrationTests {
                 .contains(
                         Fold.fold(
                                 jdbc.queryForObject(
-                                        "SELECT \"NAME\" FROM \"CATALOG\".\"COMPANIES\" WHERE \"ID\"=?",
+                                        "SELECT \"NAME\" FROM \"CATALOG\".\"ENTRIES\" WHERE \"KIND\"='COMPANY' AND \"ID\"=?",
                                         String.class,
                                         parent)));
         assertThat(longs(id, "TITLE_IDS")).containsExactly(title);
@@ -332,7 +388,7 @@ class SearchIndexIntegrationTests {
         indexer.rebuild(id);
         assertThat(ai(id)).isTrue();
         assertThat(strings(id, "SCOPE_CODES")).containsExactly("COMPANY");
-        jdbc.update("UPDATE \"CATALOG\".\"TITLES\" SET \"ORIGIN\"='USER' WHERE \"ID\"=?", title);
+        jdbc.update("UPDATE \"CATALOG\".\"ENTRIES\" SET \"ORIGIN\"='USER' WHERE \"ID\"=?", title);
         indexer.rebuild(id);
         assertThat(ai(id)).isFalse();
         new TransactionTemplate(transactions)
@@ -397,6 +453,7 @@ class SearchIndexIntegrationTests {
                 "UPDATE \"SEARCH\".\"CANDIDATE_INDEX\" SET \"TOTAL_EXPERIENCE_MONTHS\"=999 WHERE \"CANDIDATE_ID\"=?",
                 ongoing);
         nightly.rebuild();
+        verify(links, atLeastOnce()).indexCandidates(anyLong(), anyLong(), eq(2), eq(true));
         assertTotals(ongoing, 10);
         assertThat(indexVersion(ongoing)).isNotEqualTo(ongoingVersion);
         assertThat(indexVersion(ended)).isEqualTo(endedVersion);
@@ -421,7 +478,10 @@ class SearchIndexIntegrationTests {
         assertThat(unauthenticated.statusCode()).isIn(401, 403);
         var denied = post(session("USER"));
         assertThat(denied.statusCode()).isEqualTo(403);
-        assertThat(json.readTree(denied.body()).path("code").asString()).isEqualTo("FORBIDDEN");
+        assertThat(json.readTree(denied.body()))
+                .isEqualTo(
+                        json.readTree(
+                                "{\"code\":\"ACCESS_DENIED\",\"message\":\"Request denied\",\"correlationId\":null,\"details\":[]}"));
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\"", Long.class))
@@ -430,6 +490,9 @@ class SearchIndexIntegrationTests {
         assertThat(result.statusCode()).isEqualTo(200);
         assertThat(json.readTree(result.body()).path("rebuilt").asLong()).isEqualTo(total);
         assertThat(json.readTree(result.body()).path("failed").asLong()).isZero();
+        assertThat(properties.getRebuildBatchSize()).isEqualTo(2);
+        verify(links, times(Math.toIntExact((total + 1) / 2 + 1)))
+                .indexCandidates(anyLong(), anyLong(), eq(2), eq(false));
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\"", Long.class))
@@ -567,7 +630,7 @@ class SearchIndexIntegrationTests {
     private long company(Long parent, String origin) {
         String name = "Synthetic canonical company " + UUID.randomUUID();
         return jdbc.queryForObject(
-                "INSERT INTO \"CATALOG\".\"COMPANIES\" (\"NAME\",\"NAME_FOLDED\",\"PARENT_ID\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES (?,?,?,'LOGISTICS',?) RETURNING \"ID\"",
+                "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"PARENT_ID\",\"INDUSTRY_CODE\",\"ORIGIN\") VALUES ('COMPANY',?,?,?,'LOGISTICS',?) RETURNING \"ID\"",
                 Long.class,
                 name,
                 name,
@@ -578,7 +641,7 @@ class SearchIndexIntegrationTests {
     private long title(String origin) {
         String name = "Synthetic canonical title " + UUID.randomUUID();
         return jdbc.queryForObject(
-                "INSERT INTO \"CATALOG\".\"TITLES\" (\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"SCOPE_CODE\",\"ORIGIN\") VALUES (?,?,'{IT,HR}','MANAGER','COMPANY',?) RETURNING \"ID\"",
+                "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"FUNCTION_CODES\",\"SENIORITY_CODE\",\"SCOPE_CODE\",\"ORIGIN\") VALUES ('TITLE',?,?,'{IT,HR}','MANAGER','COMPANY',?) RETURNING \"ID\"",
                 Long.class,
                 name,
                 name,
