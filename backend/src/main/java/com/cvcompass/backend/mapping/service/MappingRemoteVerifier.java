@@ -43,6 +43,7 @@ public class MappingRemoteVerifier {
                     "UNRECOGNIZED_GENDER",
                     "INVALID_EMAIL",
                     "INVALID_PHONE",
+                    "PHONE_MULTIPLE_FIRST_KEPT",
                     "INVALID_NAME",
                     "LEGACY_UNPAGED",
                     "OCR_UNUSABLE",
@@ -166,6 +167,8 @@ public class MappingRemoteVerifier {
                                 ? "GENDER_UNSUPPORTED"
                                 : checked.issue();
                 if (code != null) fieldIssues.add(new Issue(code, field, evidence));
+                if (checked.info() != null)
+                    fieldIssues.add(new Issue(checked.info(), field, evidence));
             }
             personal.put(
                     field,

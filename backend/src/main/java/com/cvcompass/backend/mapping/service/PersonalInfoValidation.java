@@ -1,10 +1,15 @@
 package com.cvcompass.backend.mapping.service;
 
 import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.Locale;
 
 final class PersonalInfoValidation {
-    record Checked(String normalized, String issue) {}
+    record Checked(String normalized, String issue, String info) {
+        Checked(String normalized, String issue) {
+            this(normalized, issue, null);
+        }
+    }
 
     // Contact proximity cannot establish that an occupational heading is a person's name.
     private static final java.util.regex.Pattern ROLE_OR_DOCUMENT_HEADING =
@@ -24,7 +29,21 @@ final class PersonalInfoValidation {
             java.util.regex.Pattern.compile(
                     "([\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*?)(?: *\\(([\\p{L}\\p{M}][\\p{L}\\p{M} .'-]*)\\))?");
 
+    private static final java.util.regex.Pattern REMOTE_PHONE_LABEL =
+            java.util.regex.Pattern.compile(
+                    "^(?:Tel|Phone|Mobile|ĐT|SĐT|Điện thoại|Hotline)\\b *[.:]? *",
+                    java.util.regex.Pattern.CASE_INSENSITIVE
+                            | java.util.regex.Pattern.UNICODE_CASE);
+
+    private static final java.util.regex.Pattern REMOTE_PHONE_DATE =
+            java.util.regex.Pattern.compile(
+                    "(?:[12][0-9]{3}[-/.][01]?[0-9][-/.][0-3]?[0-9]|[0-3]?[0-9][-/.][01]?[0-9][-/.][12][0-9]{3}|[12][0-9]{3}[-/.–—][12][0-9]{3})");
+
+    private static final java.util.regex.Pattern REMOTE_PHONE_EXTENSION =
+            java.util.regex.Pattern.compile("(?iu) *(?:ext\\.?|x|máy lẻ) *([0-9]{1,8})$");
+
     static Checked checkRemote(String field, String raw) {
+        if (field.equals("phone")) return remotePhone(raw);
         if (!field.equals("fullName")) return check(field, raw);
         String text =
                 Normalizer.normalize(raw, Normalizer.Form.NFC).strip().replaceAll("\\s+", " ");
@@ -41,6 +60,51 @@ final class PersonalInfoValidation {
                 || ROLE_OR_DOCUMENT_HEADING.matcher(cleaned).find())
             return new Checked(null, "INVALID_NAME");
         return new Checked(fullName + (alias == null ? "" : " (" + alias + ")"), null);
+    }
+
+    private static Checked remotePhone(String raw) {
+        String text =
+                Normalizer.normalize(raw, Normalizer.Form.NFC).strip().replaceAll("(?U)\\s+", " ");
+        if (text.isBlank() || text.codePointCount(0, text.length()) > 50)
+            return new Checked(null, "VALUE_LENGTH_INVALID");
+        if (REMOTE_PHONE_DATE.matcher(text.replace(" ", "")).matches())
+            return new Checked(null, "INVALID_PHONE");
+        text = REMOTE_PHONE_LABEL.matcher(text).replaceFirst("");
+        var candidates = new ArrayList<String>();
+        var separators = java.util.regex.Pattern.compile("[/;,]| [-–] ").matcher(text);
+        int start = 0;
+        while (separators.find()) {
+            if (text.substring(start, separators.start()).replaceAll("[^0-9]", "").length() >= 7
+                    && text.substring(separators.end()).replaceAll("[^0-9]", "").length() >= 7) {
+                candidates.add(text.substring(start, separators.start()).strip());
+                start = separators.end();
+            }
+        }
+        candidates.add(text.substring(start).strip());
+        // Date-shaped candidates remain invalid even when a different number would be kept.
+        for (String candidate : candidates) {
+            String number = REMOTE_PHONE_EXTENSION.matcher(candidate).replaceFirst("");
+            if (REMOTE_PHONE_DATE.matcher(number.replace(" ", "")).matches())
+                return new Checked(null, "INVALID_PHONE");
+        }
+        String first = candidates.getFirst();
+        var extension = REMOTE_PHONE_EXTENSION.matcher(first);
+        String suffix = "";
+        if (extension.find()) {
+            suffix = "x" + extension.group(1);
+            first = first.substring(0, extension.start());
+        }
+        String normalized =
+                first.replaceFirst("^\\(\\+([0-9]{1,3})\\)", "+$1")
+                        .replaceFirst("^\\(84\\)", "+84")
+                        .replaceFirst("^0084", "+84")
+                        .replaceFirst("^(\\+[0-9]{1,3}) *\\(0\\)", "$1")
+                        .replaceAll("[ .–/(),;\\-]", "");
+        if (!normalized.matches("\\+?[0-9]{7,15}")) return new Checked(null, "INVALID_PHONE");
+        return new Checked(
+                normalized + suffix,
+                null,
+                candidates.size() > 1 ? "PHONE_MULTIPLE_FIRST_KEPT" : null);
     }
 
     static String name(String raw) {
