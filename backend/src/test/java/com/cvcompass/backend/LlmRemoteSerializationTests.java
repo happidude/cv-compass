@@ -143,7 +143,9 @@ class LlmRemoteSerializationTests {
                         })
                 .when(profiles)
                 .revision(eq(1L), anyLong(), anyString(), anyString(), anyString(), anyString());
-        var queries = new CandidateQueryService(profiles, documents);
+        var queries =
+                new CandidateQueryService(
+                        profiles, documents, new CandidateExperienceTotals(profiles, documents));
         var revisions = new CandidateRevisionService(profiles, queries, json);
         var publication =
                 new PublicationService(
