@@ -82,7 +82,9 @@ erDiagram
   bigint RESULT_ID FK
   boolean DELETED
   bigint COMPANY_ID FK
+  varchar_8_ COMPANY_KIND FK
   bigint TITLE_ID FK
+  varchar_8_ TITLE_KIND FK
   varchar_64_ SCOPE_CODE
   varchar_8_ NORMALIZATION_ORIGIN
 }

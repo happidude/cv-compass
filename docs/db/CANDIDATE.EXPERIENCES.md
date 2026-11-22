@@ -6,33 +6,35 @@ Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nh
 
 ## Columns
 
-| Name | Type | Default | Nullable | Children | Parents | Comment |
-| ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| ID | uuid |  | false |  |  | Khóa chính của kinh nghiệm ứng viên. |
-| CANDIDATE_ID | bigint |  | false |  | [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | Khóa ngoại tới hồ sơ ứng viên. |
-| COMPANY_RAW | text |  | true |  |  |  |
-| COMPANY_NORMALIZED | text |  | true |  |  |  |
-| TITLE_RAW | text |  | true |  |  |  |
-| START_DATE | date |  | true |  |  |  |
-| START_PRECISION | varchar(5) |  | true |  |  |  |
-| END_DATE | date |  | true |  |  |  |
-| END_PRECISION | varchar(5) |  | true |  |  |  |
-| ONGOING_AS_STATED | boolean | false | false |  |  | Dấu hiệu công việc còn tiếp diễn theo thông tin nguồn. |
-| FUNCTION_CODES | jsonb | '[]'::jsonb | false |  |  |  |
-| INDUSTRY_CODES | jsonb | '[]'::jsonb | false |  |  |  |
-| SENIORITY_CODE | varchar(64) |  | true |  |  |  |
-| DESCRIPTION_RAW | text |  | true |  |  |  |
-| DATA | jsonb |  | false |  |  |  |
-| DATA_SCHEMA_VERSION | integer | 1 | false |  |  |  |
-| STATE | varchar(16) |  | false |  |  | Trạng thái xác nhận kinh nghiệm ứng viên. |
-| ORIGIN | varchar(8) |  | false |  |  |  |
-| DOCUMENT_ID | bigint |  | true |  | [INGESTION.DOCUMENTS](INGESTION.DOCUMENTS.md) | Khóa ngoại tới tài liệu làm bằng chứng. |
-| RESULT_ID | bigint |  | true |  | [MAPPING.RESULTS](MAPPING.RESULTS.md) | Khóa ngoại tới kết quả ánh xạ nguồn. |
-| DELETED | boolean | false | false |  |  | Trạng thái xóa mềm của kinh nghiệm ứng viên. |
-| COMPANY_ID | bigint |  | true |  | [CATALOG.COMPANIES](CATALOG.COMPANIES.md) | Khóa ngoại tới công ty chuẩn hóa, không thay đổi giá trị gốc. |
-| TITLE_ID | bigint |  | true |  | [CATALOG.TITLES](CATALOG.TITLES.md) | Khóa ngoại tới chức danh chuẩn hóa, không thay đổi giá trị gốc. |
-| SCOPE_CODE | varchar(64) |  | true |  |  | Mã phạm vi công việc đã chuẩn hóa. |
-| NORMALIZATION_ORIGIN | varchar(8) |  | true |  |  | Nguồn chuẩn hóa AI hoặc người dùng. |
+| Name | Type | Default | Nullable | Extra Definition | Children | Parents | Comment |
+| ---- | ---- | ------- | -------- | ---------------- | -------- | ------- | ------- |
+| ID | uuid |  | false |  |  |  | Khóa chính của kinh nghiệm ứng viên. |
+| CANDIDATE_ID | bigint |  | false |  |  | [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | Khóa ngoại tới hồ sơ ứng viên. |
+| COMPANY_RAW | text |  | true |  |  |  |  |
+| COMPANY_NORMALIZED | text |  | true |  |  |  |  |
+| TITLE_RAW | text |  | true |  |  |  |  |
+| START_DATE | date |  | true |  |  |  |  |
+| START_PRECISION | varchar(5) |  | true |  |  |  |  |
+| END_DATE | date |  | true |  |  |  |  |
+| END_PRECISION | varchar(5) |  | true |  |  |  |  |
+| ONGOING_AS_STATED | boolean | false | false |  |  |  | Dấu hiệu công việc còn tiếp diễn theo thông tin nguồn. |
+| FUNCTION_CODES | jsonb | '[]'::jsonb | false |  |  |  |  |
+| INDUSTRY_CODES | jsonb | '[]'::jsonb | false |  |  |  |  |
+| SENIORITY_CODE | varchar(64) |  | true |  |  |  |  |
+| DESCRIPTION_RAW | text |  | true |  |  |  |  |
+| DATA | jsonb |  | false |  |  |  |  |
+| DATA_SCHEMA_VERSION | integer | 1 | false |  |  |  |  |
+| STATE | varchar(16) |  | false |  |  |  | Trạng thái xác nhận kinh nghiệm ứng viên. |
+| ORIGIN | varchar(8) |  | false |  |  |  |  |
+| DOCUMENT_ID | bigint |  | true |  |  | [INGESTION.DOCUMENTS](INGESTION.DOCUMENTS.md) | Khóa ngoại tới tài liệu làm bằng chứng. |
+| RESULT_ID | bigint |  | true |  |  | [MAPPING.RESULTS](MAPPING.RESULTS.md) | Khóa ngoại tới kết quả ánh xạ nguồn. |
+| DELETED | boolean | false | false |  |  |  | Trạng thái xóa mềm của kinh nghiệm ứng viên. |
+| COMPANY_ID | bigint |  | true |  |  | [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | Khóa ngoại tới công ty chuẩn hóa, không thay đổi giá trị gốc. |
+| COMPANY_KIND | varchar(8) |  | true | GENERATED ALWAYS AS <br />CASE<br />    WHEN ("COMPANY_ID" IS NULL) THEN NULL::text<br />    ELSE 'COMPANY'::text<br />END STORED |  | [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | Loại công ty tự sinh để ràng buộc liên kết công ty. |
+| TITLE_ID | bigint |  | true |  |  | [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | Khóa ngoại tới chức danh chuẩn hóa, không thay đổi giá trị gốc. |
+| TITLE_KIND | varchar(8) |  | true | GENERATED ALWAYS AS <br />CASE<br />    WHEN ("TITLE_ID" IS NULL) THEN NULL::text<br />    ELSE 'TITLE'::text<br />END STORED |  | [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | Loại chức danh tự sinh để ràng buộc liên kết chức danh. |
+| SCOPE_CODE | varchar(64) |  | true |  |  |  | Mã phạm vi công việc đã chuẩn hóa. |
+| NORMALIZATION_ORIGIN | varchar(8) |  | true |  |  |  | Nguồn chuẩn hóa AI hoặc người dùng. |
 
 ## Constraints
 
@@ -49,8 +51,8 @@ Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nh
 | CANDIDATE_EXPERIENCES_RESULT_ID_fkey | FOREIGN KEY | FOREIGN KEY ("RESULT_ID") REFERENCES "MAPPING"."RESULTS"("ID") |
 | CANDIDATE_EXPERIENCES_CANDIDATE_ID_fkey | FOREIGN KEY | FOREIGN KEY ("CANDIDATE_ID") REFERENCES "CANDIDATE"."PROFILES"("CANDIDATE_ID") |
 | CANDIDATE_EXPERIENCES_pkey | PRIMARY KEY | PRIMARY KEY ("ID") |
-| EXPERIENCES_COMPANY_ID_fkey | FOREIGN KEY | FOREIGN KEY ("COMPANY_ID") REFERENCES "CATALOG"."COMPANIES"("ID") |
-| EXPERIENCES_TITLE_ID_fkey | FOREIGN KEY | FOREIGN KEY ("TITLE_ID") REFERENCES "CATALOG"."TITLES"("ID") |
+| EXPERIENCES_COMPANY_ID_COMPANY_KIND_fkey | FOREIGN KEY | FOREIGN KEY ("COMPANY_ID", "COMPANY_KIND") REFERENCES "CATALOG"."ENTRIES"("ID", "KIND") |
+| EXPERIENCES_TITLE_ID_TITLE_KIND_fkey | FOREIGN KEY | FOREIGN KEY ("TITLE_ID", "TITLE_KIND") REFERENCES "CATALOG"."ENTRIES"("ID", "KIND") |
 
 ## Indexes
 
@@ -69,8 +71,8 @@ erDiagram
 "CANDIDATE.EXPERIENCES" }o--|| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "INGESTION.DOCUMENTS" : "FOREIGN KEY (#quot;DOCUMENT_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;DOCUMENTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "MAPPING.RESULTS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;RESULTS#quot;(#quot;ID#quot;)"
-"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.COMPANIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;COMPANIES#quot;(#quot;ID#quot;)"
-"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.TITLES" : "FOREIGN KEY (#quot;TITLE_ID#quot;) REFERENCES #quot;CATALOG#quot;.#quot;TITLES#quot;(#quot;ID#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;, #quot;COMPANY_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;TITLE_ID#quot;, #quot;TITLE_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
 
 "CANDIDATE.EXPERIENCES" {
   uuid ID
@@ -95,7 +97,9 @@ erDiagram
   bigint RESULT_ID FK
   boolean DELETED
   bigint COMPANY_ID FK
+  varchar_8_ COMPANY_KIND FK
   bigint TITLE_ID FK
+  varchar_8_ TITLE_KIND FK
   varchar_64_ SCOPE_CODE
   varchar_8_ NORMALIZATION_ORIGIN
 }
@@ -116,7 +120,9 @@ erDiagram
   varchar_64_ LOCATION_PROVINCE
   integer TOTAL_EXPERIENCE_MONTHS
   bigint CURRENT_COMPANY_ID FK
+  varchar_8_ CURRENT_COMPANY_KIND FK
   bigint CURRENT_TITLE_ID FK
+  varchar_8_ CURRENT_TITLE_KIND FK
 }
 "INGESTION.DOCUMENTS" {
   bigint ID
@@ -139,21 +145,14 @@ erDiagram
   jsonb RESULT
   timestamp_with_time_zone CREATED_AT
 }
-"CATALOG.COMPANIES" {
+"CATALOG.ENTRIES" {
   bigint ID
+  varchar_8_ KIND
   text NAME
   text NAME_FOLDED
   bigint PARENT_ID FK
+  varchar_8_ PARENT_KIND FK
   varchar_64_ INDUSTRY_CODE
-  text PROPOSED_LABEL
-  varchar_8_ ORIGIN
-  timestamp_with_time_zone CREATED_AT
-  timestamp_with_time_zone UPDATED_AT
-}
-"CATALOG.TITLES" {
-  bigint ID
-  text NAME
-  text NAME_FOLDED
   text__ FUNCTION_CODES
   varchar_64_ SENIORITY_CODE
   varchar_64_ SCOPE_CODE
