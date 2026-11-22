@@ -1,13 +1,12 @@
 package com.cvcompass.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
 import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
 import com.cvcompass.backend.candidate.events.CandidateChanged;
+import com.cvcompass.backend.candidate.service.CandidateQueryService;
 import com.cvcompass.backend.candidate.service.CandidateService;
 import com.cvcompass.backend.catalog.Fold;
-import com.cvcompass.backend.search.config.SearchClock;
 import com.cvcompass.backend.search.config.SearchNightlyJob;
 import com.cvcompass.backend.search.service.SearchIndexer;
 import com.cvcompass.backend.search.service.SearchRebuildService;
@@ -15,14 +14,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -31,7 +30,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -46,15 +44,13 @@ class SearchIndexIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
     @Autowired CandidateService candidates;
+    @Autowired CandidateQueryService queries;
     @Autowired CatalogLinks links;
     @Autowired SearchIndexer indexer;
     @Autowired SearchRebuildService rebuild;
     @Autowired SearchNightlyJob nightly;
     @Autowired PlatformTransactionManager transactions;
     @Autowired ApplicationEventPublisher events;
-
-    @MockitoBean(name = "searchClock")
-    SearchClock searchClock;
 
     @LocalServerPort int port;
     private final HttpClient client = HttpClient.newHttpClient();
@@ -64,18 +60,91 @@ class SearchIndexIntegrationTests {
         DATABASE.configure(registry);
     }
 
-    @BeforeEach
-    void fixedClock() {
-        when(searchClock.clock())
-                .thenReturn(Clock.fixed(Instant.parse("2026-11-22T00:00:00Z"), ZoneOffset.UTC));
-    }
-
     @AfterAll
     static void cleanup() throws Exception {
         new org.springframework.test.context.TestContextManager(SearchIndexIntegrationTests.class)
                 .getTestContext()
                 .markApplicationContextDirty(DirtiesContext.HierarchyMode.EXHAUSTIVE);
         DATABASE.close();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "2020-01-01,YEAR,2022-01-01,YEAR,36",
+        "2020-01-01,YEAR,2020-01-01,YEAR,12",
+        "2020-01-01,YEAR,2020-03-01,MONTH,3",
+        "2020-12-01,MONTH,2021-01-01,YEAR,13",
+        "2024-01-17,MONTH,2024-03-09,MONTH,3",
+        "2024-01-20,DAY,2024-02-19,DAY,1"
+    })
+    void indexAndProfileUseExactlyTheHrTotalForPartialDates(
+            String start, String startPrecision, String end, String endPrecision, long expected) {
+        long id = candidate();
+        experienceRow(id, start, startPrecision, end, endPrecision);
+        indexer.rebuild(id);
+        assertTotals(id, expected);
+    }
+
+    @Test
+    void indexAndProfileUseTheHrUnionForOverlappingAndDuplicateRows() {
+        long id = candidate();
+        experienceRow(id, "2024-01-01", "MONTH", "2024-03-01", "MONTH");
+        experienceRow(id, "2024-02-01", "MONTH", "2024-05-01", "MONTH");
+        experienceRow(id, "2024-01-01", "MONTH", "2024-03-01", "MONTH");
+        indexer.rebuild(id);
+        assertTotals(id, 5);
+    }
+
+    @Test
+    void ongoingUsesItsOwnImportDateAndHrRowsUseTheNewestImportInUtc() {
+        long id = candidate();
+        long source = document(id, "2024-04-01T00:30:00+07:00");
+        document(id, "2025-12-31T00:00:00Z");
+        experienceRow(id, "2024-01-01", "MONTH", null, null, true, source, true, null);
+        indexer.rebuild(id);
+        assertTotals(id, 3);
+        assertThat(queries.detail(id).experienceSummary().ongoingReferenceDates())
+                .containsExactly("2024-03-31");
+
+        experienceRow(id, "2024-01-01", "MONTH", null, null, true, null, true, null);
+        indexer.rebuild(id);
+        assertTotals(id, 24);
+        assertThat(queries.detail(id).experienceSummary().ongoingReferenceDates())
+                .containsExactly("2024-03-31", "2025-12-31");
+    }
+
+    @Test
+    void closedPeriodsAreCappedAtTheImportDateAndOngoingWithoutAnImportIsSkipped() {
+        long capped = candidate();
+        long source = document(capped, "2024-04-15T00:00:00Z");
+        experienceRow(
+                capped, "2024-01-01", "MONTH", "2024-12-01", "MONTH", false, source, true, null);
+        indexer.rebuild(capped);
+        assertTotals(capped, 3);
+
+        long noReference = candidate();
+        experienceRow(noReference, "2024-01-01", "MONTH", null, null, true, null, true, null);
+        indexer.rebuild(noReference);
+        assertTotals(noReference, 0);
+    }
+
+    @Test
+    void indexAndProfileRespectHrExclusionsAndSkipUnresolvedOrDeletedRows() {
+        long id = candidate();
+        var counted = experienceRow(id, "2024-01-01", "MONTH", "2024-03-01", "MONTH");
+        experienceRow(id, "2000-01-01", "YEAR", "2030-01-01", "YEAR", false, null, false, null);
+        for (String state : List.of("INVALID", "AMBIGUOUS"))
+            experienceRow(id, "2000-01-01", "YEAR", "2030-01-01", "YEAR", false, null, true, state);
+        experienceRow(id, "2024-03-20", "DAY", "2024-03-10", "DAY");
+        experienceRow(id, null, null, "2024-12-01", "MONTH");
+        experienceRow(id, "2024-01-01", "MONTH", null, null);
+        var deleted = experienceRow(id, "2000-01-01", "YEAR", "2030-01-01", "YEAR");
+        jdbc.update(
+                "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"DELETED\"=true WHERE \"ID\"=?",
+                deleted);
+        indexer.rebuild(id);
+        assertTotals(id, 3);
+        assertThat(queries.detail(id).experienceSummary().countedIds()).containsExactly(counted);
     }
 
     @Test
@@ -299,8 +368,9 @@ class SearchIndexIntegrationTests {
     }
 
     @Test
-    void nightlyAdvancesOnlyActiveOngoingCandidatesUsingTheInjectedClock() {
+    void nightlyRecomputesOnlyActiveOngoingCandidatesUsingImportDates() {
         long ongoing = candidate();
+        document(ongoing, "2026-11-22T00:00:00Z");
         candidates.editExperience(ongoing, 0, null, experience(true), "SAVE", "synthetic-editor");
         long ended = candidate();
         candidates.editExperience(ended, 0, null, experience(false), "SAVE", "synthetic-editor");
@@ -317,17 +387,18 @@ class SearchIndexIntegrationTests {
                 "synthetic-editor");
         String endedVersion = indexVersion(ended);
         String deletedVersion = indexVersion(deleted);
-        assertThat(links.profile(ongoing).orElseThrow().totalExperienceMonths()).isEqualTo(11);
-        when(searchClock.clock())
-                .thenReturn(Clock.fixed(Instant.parse("2026-12-22T00:00:00Z"), ZoneOffset.UTC));
+        assertTotals(ongoing, 10);
+        String ongoingVersion = indexVersion(ongoing);
+        // A stale cached value must be repaired without advancing past the import date.
+        jdbc.update(
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"TOTAL_EXPERIENCE_MONTHS\"=999 WHERE \"CANDIDATE_ID\"=?",
+                ongoing);
+        jdbc.update(
+                "UPDATE \"SEARCH\".\"CANDIDATE_INDEX\" SET \"TOTAL_EXPERIENCE_MONTHS\"=999 WHERE \"CANDIDATE_ID\"=?",
+                ongoing);
         nightly.rebuild();
-        assertThat(links.profile(ongoing).orElseThrow().totalExperienceMonths()).isEqualTo(12);
-        assertThat(
-                        jdbc.queryForObject(
-                                "SELECT \"TOTAL_EXPERIENCE_MONTHS\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
-                                Integer.class,
-                                ongoing))
-                .isEqualTo(12);
+        assertTotals(ongoing, 10);
+        assertThat(indexVersion(ongoing)).isNotEqualTo(ongoingVersion);
         assertThat(indexVersion(ended)).isEqualTo(endedVersion);
         assertThat(indexVersion(deleted)).isEqualTo(deletedVersion);
     }
@@ -413,6 +484,71 @@ class SearchIndexIntegrationTests {
                 "Hà Nội",
                 "Synthetic summary");
         return id;
+    }
+
+    private void assertTotals(long id, long expected) {
+        long hrTotal = queries.detail(id).experienceSummary().totalMonths();
+        assertThat(hrTotal).isEqualTo(expected);
+        assertThat(links.profile(id).orElseThrow().totalExperienceMonths().longValue())
+                .isEqualTo(hrTotal);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"TOTAL_EXPERIENCE_MONTHS\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                Long.class,
+                                id))
+                .isEqualTo(hrTotal);
+    }
+
+    private long document(long candidateId, String importedAt) {
+        return jdbc.queryForObject(
+                """
+                INSERT INTO "INGESTION"."DOCUMENTS"
+                  ("CANDIDATE_ID","ORIGINAL_FILENAME","STORAGE_PATH","FILE_SIZE","MIME_TYPE",
+                   "SHA256","STATUS","CREATED_AT")
+                VALUES (?,'synthetic.pdf','synthetic.pdf',1,'application/pdf',?,'COMPLETED',?)
+                RETURNING "ID"
+                """,
+                Long.class,
+                candidateId,
+                "0".repeat(64),
+                OffsetDateTime.parse(importedAt));
+    }
+
+    private UUID experienceRow(
+            long id, String start, String startPrecision, String end, String endPrecision) {
+        return experienceRow(id, start, startPrecision, end, endPrecision, false, null, true, null);
+    }
+
+    private UUID experienceRow(
+            long id,
+            String start,
+            String startPrecision,
+            String end,
+            String endPrecision,
+            boolean ongoing,
+            Long documentId,
+            boolean countInTotal,
+            String state) {
+        var key = UUID.randomUUID();
+        var data = json.createObjectNode().put("countInTotal", countInTotal);
+        data.putObject("period").put("state", state);
+        jdbc.update(
+                """
+                INSERT INTO "CANDIDATE"."EXPERIENCES"
+                  ("ID","CANDIDATE_ID","START_DATE","START_PRECISION","END_DATE","END_PRECISION",
+                   "ONGOING_AS_STATED","DOCUMENT_ID","DATA","STATE","ORIGIN")
+                VALUES (?,?,?,?,?,?,?,?,?::jsonb,'UNVERIFIED','MAPPING')
+                """,
+                key,
+                id,
+                start == null ? null : LocalDate.parse(start),
+                startPrecision,
+                end == null ? null : LocalDate.parse(end),
+                endPrecision,
+                ongoing,
+                documentId,
+                data.toString());
+        return key;
     }
 
     private ObjectNode experience(boolean ongoing) {

@@ -233,7 +233,16 @@ class PersonalInfoPublicationIntegrationTests {
                                                     "SELECT \"TOTAL_EXPERIENCE_MONTHS\" FROM \"CANDIDATE\".\"PROFILES\" WHERE \"CANDIDATE_ID\"=?",
                                                     Integer.class,
                                                     id))
-                                    .isEqualTo(50);
+                                    .isEqualTo(72);
+                            assertThat(queries.detail(id).experienceSummary().totalMonths())
+                                    .isEqualTo(72);
+                            assertThat(
+                                            jdbc.queryForObject(
+                                                    "SELECT \"TOTAL_EXPERIENCE_MONTHS\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                                    Long.class,
+                                                    id))
+                                    .isEqualTo(
+                                            queries.detail(id).experienceSummary().totalMonths());
                             assertThat(
                                             jdbc.queryForObject(
                                                     "SELECT cardinality(\"COMPANY_IDS\") FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",

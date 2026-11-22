@@ -1,7 +1,6 @@
 package com.cvcompass.backend.candidate.service;
 
 import com.cvcompass.backend.candidate.dto.ExperienceReadRow;
-import com.cvcompass.backend.candidate.dto.ExperienceTotalsInput;
 import com.cvcompass.backend.candidate.dto.Page;
 import com.cvcompass.backend.candidate.dto.Profile;
 import com.cvcompass.backend.candidate.dto.Proposal;
@@ -9,21 +8,22 @@ import com.cvcompass.backend.candidate.dto.Summary;
 import com.cvcompass.backend.candidate.exception.CandidateFailure;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
 import com.cvcompass.backend.ingestion.candidateapi.CandidateDocuments;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
 public class CandidateQueryService {
     private final CandidateProfileRepository repository;
     private final CandidateDocuments documents;
+    private final CandidateExperienceTotals experienceTotals;
 
     public CandidateQueryService(
-            CandidateProfileRepository repository, CandidateDocuments documents) {
+            CandidateProfileRepository repository,
+            CandidateDocuments documents,
+            CandidateExperienceTotals experienceTotals) {
         this.repository = repository;
         this.documents = documents;
+        this.experienceTotals = experienceTotals;
     }
 
     public Page list(Long before, int size) {
@@ -44,19 +44,7 @@ public class CandidateQueryService {
         var row = rows.getFirst();
         var experienceRows = repository.experiences(id);
         var linkedDocuments = documents.list(id);
-        var importedDates =
-                linkedDocuments.stream()
-                        .collect(
-                                Collectors.toMap(
-                                        CandidateDocuments.Document::id,
-                                        doc ->
-                                                Instant.parse(doc.importedAt())
-                                                        .atOffset(ZoneOffset.UTC)
-                                                        .toLocalDate()));
-        var totals =
-                ExperienceTotals.calculate(
-                        experienceRows.stream().map(CandidateQueryService::totalEntry).toList(),
-                        importedDates);
+        var totals = experienceTotals.summarize(experienceRows, linkedDocuments);
         return new Profile(
                 id,
                 row.version(),
@@ -67,21 +55,6 @@ public class CandidateQueryService {
                 experienceRows.stream().map(ExperienceReadRow::experience).toList(),
                 linkedDocuments,
                 totals);
-    }
-
-    private static ExperienceTotalsInput totalEntry(ExperienceReadRow row) {
-        var experience = row.experience();
-        return new ExperienceTotalsInput(
-                experience.id(),
-                row.startDate(),
-                row.startPrecision(),
-                row.endDate(),
-                row.endPrecision(),
-                row.ongoingAsStated(),
-                experience.data().path("period").path("state").asString(),
-                false,
-                experience.data().path("countInTotal").asBoolean(true),
-                experience.documentId());
     }
 
     public List<Proposal> proposals(long id, Long ignored, int size) {
