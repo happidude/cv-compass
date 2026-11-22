@@ -60,12 +60,19 @@ CI (PR/push vào `main`, `develop`; action ghim SHA, `contents: read`, chỉ run
 
 | Workflow | Trigger | Lệnh chính |
 |---|---|---|
-| Persistence CI | job `scope` (không service) quyết định; `backend-check` chỉ chạy khi `run=true`: mọi PR/push main; develop chỉ khi diff chạm `backend/**`, `frontend/tests/fixtures/llm-remote`, `worker/design` (test backend đọc), workflow này hoặc `scripts/ci/**` | `./gradlew check` (Postgres 17) |
+| Persistence CI | job `scope` (không service) quyết định; `backend-check` chỉ chạy khi `run=true`: mọi PR/push main; develop chỉ khi diff chạm `backend/**`, `frontend/tests/fixtures/llm-remote`, `worker/design` (test backend đọc), workflow này, `scripts/ci/**`, `docs/db` hoặc `.tbls.yml` | `./gradlew check` (Postgres 17), rồi `tbls diff` (tbls v1.96.1 ghim sha256) |
 | Flyway immutability | mọi PR, trong job `scope`; so với đầu `origin/<base>` hiện tại | `scripts/ci/check-flyway-immutable.sh BASE HEAD` + test `scripts/ci/tests/`; FAIL nếu sửa/xóa/đổi tên migration đã có, version không tăng hoặc trùng |
 | LLM worker CI | `llm-worker/**` | `unittest discover` + `ruff check` + `ruff format --check` (ruff khóa hash `llm-worker/requirements-ci.lock`) |
 | Python worker baseline | `worker/**` | build image + `verify_baseline.py` (full suite/cleanup/provenance) |
 | Frontend CI | `frontend/**` | typecheck/lint/format, unit, build, browser |
 
+Schema DB: `docs/db/` do tbls v1.96.1 sinh (cấu hình `.tbls.yml`, DSN từ `TBLS_DSN`), **không sửa tay**. Không đặt file khác vào `docs/db/`,
+vì `tbls diff` sẽ coi là lệch. DB tài liệu được tạo bằng psql, áp lần lượt `V*__*.sql` (`sort -V`, `-1 -v ON_ERROR_STOP=1`) vào một DB tạm, không qua Flyway,
+nên không có `flyway_schema_history`. `backend-check` làm đúng các bước này, cài tbls ghim (kiểm sha256) rồi chạy `tbls diff`; lệch thì FAIL.
+Cách sinh lại sau khi đổi migration (DB tạm riêng, không bao giờ trỏ vào DB có dữ liệu thật):
+`for f in $(ls backend/src/main/resources/db/migration | grep -E '^V[0-9]+__.*\.sql$' | sort -V); do psql -d tbls_doc -1 -v ON_ERROR_STOP=1 -f backend/src/main/resources/db/migration/$f; done`, sau đó
+`docker run --rm --network container:<postgres-container> -v <repo>:/work -w /work -e TBLS_DSN ghcr.io/k1low/tbls@sha256:0d90f07aed0c423a6012d542358c10b13fcdf15a1074ceee3d73676c87cc2f79 doc --force -c .tbls.yml`
+(`-c` là bắt buộc), cuối cùng chạy cùng image với `diff -c .tbls.yml`, kết quả phải sạch.
 Run thất bại upload báo cáo 7 ngày.
 Run thiếu/pending không PASS; chỉ báo CI PASS sau khi kiểm đúng head mới đã kết thúc.
 Thử native dispatch/scanner có sẵn khi môi trường hỗ trợ; ghi lệnh/event/source/kết quả,

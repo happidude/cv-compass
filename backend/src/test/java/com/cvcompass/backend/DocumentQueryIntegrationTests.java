@@ -51,8 +51,8 @@ class DocumentQueryIntegrationTests {
 
     @BeforeEach
     void ownSchema() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
     }
 
     @AfterAll
@@ -87,7 +87,7 @@ class DocumentQueryIntegrationTests {
         var second = document();
         var third = document();
         jdbc.update(
-                "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"='2026-01-01T00:00:00Z' WHERE \"ID\" IN (?,?,?)",
+                "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CREATED_AT\"='2026-01-01T00:00:00Z' WHERE \"ID\" IN (?,?,?)",
                 first.getId(),
                 second.getId(),
                 third.getId());

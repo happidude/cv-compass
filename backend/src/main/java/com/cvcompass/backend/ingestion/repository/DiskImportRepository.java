@@ -25,7 +25,7 @@ public class DiskImportRepository {
     public void observe(String key, SourceFile file, UUID scan, Instant now) {
         jdbc.update(
                 """
-                INSERT INTO "CV_DISK_OBSERVATIONS" AS old
+                INSERT INTO "INGESTION"."DISK_OBSERVATIONS" AS old
                 ("SOURCE_KEY","FILE_NAME","SIZE_BYTES","MODIFIED","FILE_KEY","OBSERVED_SINCE","LAST_SCAN","NEXT_READ_AT")
                 VALUES (?,?,?,?,?,?,?,?) ON CONFLICT ("SOURCE_KEY","FILE_NAME") DO UPDATE SET
                 "OBSERVED_SINCE"=CASE WHEN old."SIZE_BYTES"=excluded."SIZE_BYTES" AND old."MODIFIED"=excluded."MODIFIED"
@@ -58,7 +58,7 @@ public class DiskImportRepository {
             Instant now) {
         return jdbc.query(
                 """
-                SELECT * FROM "CV_DISK_OBSERVATIONS" WHERE "SOURCE_KEY"=? AND "LAST_SCAN"=? AND "OBSERVED_SINCE"<=?
+                SELECT * FROM "INGESTION"."DISK_OBSERVATIONS" WHERE "SOURCE_KEY"=? AND "LAST_SCAN"=? AND "OBSERVED_SINCE"<=?
                   AND "FILE_NAME" COLLATE "C">? COLLATE "C" AND COALESCE("ERROR_CODE",'')<>'SOURCE_READ_NEEDS_ATTENTION' AND "READ_ATTEMPTS"<? AND "NEXT_READ_AT"<=? ORDER BY "FILE_NAME" COLLATE "C" LIMIT ?
                 """,
                 (rs, row) -> snapshot(rs),
@@ -77,7 +77,7 @@ public class DiskImportRepository {
                         jdbc.queryForObject(
                                 """
                 SELECT COALESCE(MAX(h."ATTEMPTS"-h."READ_FAILURES_APPLIED"),0)
-                FROM "CV_DISK_IMPORT_FILES" h JOIN "CV_DISK_OBSERVATIONS" o
+                FROM "INGESTION"."DISK_IMPORT_FILES" h JOIN "INGESTION"."DISK_OBSERVATIONS" o
                 ON h."SOURCE_KEY"=o."SOURCE_KEY" AND h."FILE_NAME"=o."FILE_NAME"
                 AND h."SIZE_BYTES"=o."SIZE_BYTES" AND h."MODIFIED"=o."MODIFIED" AND h."FILE_KEY"=o."FILE_KEY"
                 WHERE h."SOURCE_KEY"=? AND h."FILE_NAME"=? AND h."STATE" IN ('PENDING','RETRY_WAIT')
@@ -87,7 +87,7 @@ public class DiskImportRepository {
                                 name));
         jdbc.update(
                 """
-                UPDATE "CV_DISK_OBSERVATIONS" SET "READ_ATTEMPTS"="READ_ATTEMPTS"+1,"NEXT_READ_AT"=?,
+                UPDATE "INGESTION"."DISK_OBSERVATIONS" SET "READ_ATTEMPTS"="READ_ATTEMPTS"+1,"NEXT_READ_AT"=?,
                 "ERROR_CODE"=CASE WHEN "READ_ATTEMPTS"+1+?>=? THEN 'SOURCE_READ_NEEDS_ATTENTION' ELSE 'SOURCE_READ_RETRY' END
                 WHERE "SOURCE_KEY"=? AND "FILE_NAME"=?
                 """,
@@ -98,12 +98,12 @@ public class DiskImportRepository {
                 name);
         jdbc.update(
                 """
-                UPDATE "CV_DISK_IMPORT_FILES" h SET
+                UPDATE "INGESTION"."DISK_IMPORT_FILES" h SET
                 "ATTEMPTS"=h."ATTEMPTS"+GREATEST(0,o."READ_ATTEMPTS"-h."READ_FAILURES_APPLIED"),
                 "READ_FAILURES_APPLIED"=o."READ_ATTEMPTS",
                 "STATE"=CASE WHEN o."ERROR_CODE"='SOURCE_READ_NEEDS_ATTENTION' THEN 'NEEDS_ATTENTION' ELSE h."STATE" END,
                 "ERROR_CODE"=o."ERROR_CODE"
-                FROM "CV_DISK_OBSERVATIONS" o WHERE h."SOURCE_KEY"=o."SOURCE_KEY" AND h."FILE_NAME"=o."FILE_NAME"
+                FROM "INGESTION"."DISK_OBSERVATIONS" o WHERE h."SOURCE_KEY"=o."SOURCE_KEY" AND h."FILE_NAME"=o."FILE_NAME"
                 AND h."SIZE_BYTES"=o."SIZE_BYTES" AND h."MODIFIED"=o."MODIFIED" AND h."FILE_KEY"=o."FILE_KEY"
                 AND h."SOURCE_KEY"=? AND h."FILE_NAME"=? AND h."STATE" IN ('PENDING','RETRY_WAIT')
 
@@ -116,13 +116,13 @@ public class DiskImportRepository {
         int reads =
                 Objects.requireNonNull(
                         jdbc.queryForObject(
-                                "SELECT \"READ_ATTEMPTS\" FROM \"CV_DISK_OBSERVATIONS\" WHERE \"SOURCE_KEY\"=? AND \"FILE_NAME\"=?",
+                                "SELECT \"READ_ATTEMPTS\" FROM \"INGESTION\".\"DISK_OBSERVATIONS\" WHERE \"SOURCE_KEY\"=? AND \"FILE_NAME\"=?",
                                 Integer.class,
                                 key,
                                 file.name()));
         jdbc.update(
                 """
-                INSERT INTO "CV_DISK_IMPORT_FILES" AS old
+                INSERT INTO "INGESTION"."DISK_IMPORT_FILES" AS old
                 ("SOURCE_KEY","FILE_NAME","SHA256","SIZE_BYTES","MODIFIED","FILE_KEY","STATE","NEXT_ATTEMPT_AT","NEXT_MOVE_AT","TARGET_NAME","ATTEMPTS","READ_FAILURES_APPLIED")
                 VALUES (?,?,?,?,?,?,'PENDING',?,?,?,?,?) ON CONFLICT ("SOURCE_KEY","FILE_NAME","SHA256") DO UPDATE SET
                 "ATTEMPTS"=old."ATTEMPTS"+GREATEST(0,excluded."READ_FAILURES_APPLIED"-old."READ_FAILURES_APPLIED"),
@@ -141,7 +141,7 @@ public class DiskImportRepository {
                 reads,
                 reads);
         return jdbc.queryForObject(
-                "SELECT * FROM \"CV_DISK_IMPORT_FILES\" WHERE \"SOURCE_KEY\"=? AND \"FILE_NAME\"=? AND \"SHA256\"=?",
+                "SELECT * FROM \"INGESTION\".\"DISK_IMPORT_FILES\" WHERE \"SOURCE_KEY\"=? AND \"FILE_NAME\"=? AND \"SHA256\"=?",
                 (rs, row) -> entry(rs),
                 key,
                 file.name(),
@@ -151,7 +151,7 @@ public class DiskImportRepository {
     public boolean due(long id, Instant now, int maximum) {
         jdbc.update(
                 """
-                UPDATE "CV_DISK_IMPORT_FILES" SET "STATE"='FAILED_MOVE',"ERROR_CODE"='SOURCE_READ_RETRIES_EXHAUSTED'
+                UPDATE "INGESTION"."DISK_IMPORT_FILES" SET "STATE"='FAILED_MOVE',"ERROR_CODE"='SOURCE_READ_RETRIES_EXHAUSTED'
                 WHERE "ID"=? AND "STATE" IN ('PENDING','RETRY_WAIT') AND "ATTEMPTS">=?
                 """,
                 id,
@@ -159,7 +159,7 @@ public class DiskImportRepository {
         return Boolean.TRUE.equals(
                 jdbc.queryForObject(
                         """
-                SELECT "STATE" IN ('PENDING','RETRY_WAIT') AND "NEXT_ATTEMPT_AT"<=? FROM "CV_DISK_IMPORT_FILES" WHERE "ID"=?
+                SELECT "STATE" IN ('PENDING','RETRY_WAIT') AND "NEXT_ATTEMPT_AT"<=? FROM "INGESTION"."DISK_IMPORT_FILES" WHERE "ID"=?
                 """,
                         Boolean.class,
                         Timestamp.from(now),
@@ -170,7 +170,7 @@ public class DiskImportRepository {
         for (var entry : entries) {
             int changed =
                     jdbc.update(
-                            "UPDATE \"CV_DISK_IMPORT_FILES\" SET \"STATE\"='QUEUED',\"ATTEMPTS\"=\"ATTEMPTS\"+1 WHERE \"ID\"=? AND \"STATE\" IN ('PENDING','RETRY_WAIT')",
+                            "UPDATE \"INGESTION\".\"DISK_IMPORT_FILES\" SET \"STATE\"='QUEUED',\"ATTEMPTS\"=\"ATTEMPTS\"+1 WHERE \"ID\"=? AND \"STATE\" IN ('PENDING','RETRY_WAIT')",
                             entry.id());
             if (changed != 1) throw new IllegalStateException("Import queue ownership mismatch");
         }
@@ -180,7 +180,7 @@ public class DiskImportRepository {
         for (var entry : entries) {
             int changed =
                     jdbc.update(
-                            "UPDATE \"CV_DISK_IMPORT_FILES\" SET \"BATCH_ID\"=? WHERE \"ID\"=? AND \"STATE\"='QUEUED'",
+                            "UPDATE \"INGESTION\".\"DISK_IMPORT_FILES\" SET \"BATCH_ID\"=? WHERE \"ID\"=? AND \"STATE\"='QUEUED'",
                             batchId,
                             entry.id());
             if (changed != 1) throw new IllegalStateException("Import batch ownership mismatch");
@@ -191,7 +191,7 @@ public class DiskImportRepository {
         int changed =
                 jdbc.update(
                         """
-                UPDATE "CV_DISK_IMPORT_FILES" SET "STATE"='IMPORTING', "BATCH_ID"=?,
+                UPDATE "INGESTION"."DISK_IMPORT_FILES" SET "STATE"='IMPORTING', "BATCH_ID"=?,
                 "SIZE_BYTES"=?,"MODIFIED"=?,"FILE_KEY"=?,"UPDATED_AT"=CURRENT_TIMESTAMP WHERE "ID"=? AND "STATE"='QUEUED'
                 """,
                         batchId,
@@ -217,7 +217,7 @@ public class DiskImportRepository {
         int updated =
                 jdbc.update(
                         """
-                UPDATE "CV_DISK_IMPORT_FILES" SET "STATE"=?,"DOCUMENT_ID"=?,"ERROR_CODE"=?,"NEXT_ATTEMPT_AT"=?,
+                UPDATE "INGESTION"."DISK_IMPORT_FILES" SET "STATE"=?,"DOCUMENT_ID"=?,"ERROR_CODE"=?,"NEXT_ATTEMPT_AT"=?,
                 "ATTEMPTS"="ATTEMPTS"-?,"UPDATED_AT"=CURRENT_TIMESTAMP WHERE "ID"=? AND "STATE"='IMPORTING'
                 """,
                         state,
@@ -232,7 +232,7 @@ public class DiskImportRepository {
     public int attempts(long id) {
         return Objects.requireNonNull(
                 jdbc.queryForObject(
-                        "SELECT \"ATTEMPTS\" FROM \"CV_DISK_IMPORT_FILES\" WHERE \"ID\"=?",
+                        "SELECT \"ATTEMPTS\" FROM \"INGESTION\".\"DISK_IMPORT_FILES\" WHERE \"ID\"=?",
                         Integer.class,
                         id));
     }
@@ -241,7 +241,7 @@ public class DiskImportRepository {
         // QUEUED cannot have streamed: started commits IMPORTING before opening input.
         jdbc.update(
                 """
-                UPDATE "CV_DISK_IMPORT_FILES" SET
+                UPDATE "INGESTION"."DISK_IMPORT_FILES" SET
                 "STATE"=CASE WHEN "ATTEMPTS">=? THEN 'NEEDS_ATTENTION' ELSE 'RETRY_WAIT' END,
                 "ERROR_CODE"='BATCH_PREPARATION_INTERRUPTED',"NEXT_ATTEMPT_AT"=?,"UPDATED_AT"=CURRENT_TIMESTAMP
                 WHERE "SOURCE_KEY"=? AND "STATE"='QUEUED'
@@ -251,7 +251,7 @@ public class DiskImportRepository {
                 key);
         jdbc.update(
                 """
-                UPDATE "CV_DISK_IMPORT_FILES" SET "STATE"='NEEDS_ATTENTION',"ERROR_CODE"='INTERRUPTED',"UPDATED_AT"=CURRENT_TIMESTAMP
+                UPDATE "INGESTION"."DISK_IMPORT_FILES" SET "STATE"='NEEDS_ATTENTION',"ERROR_CODE"='INTERRUPTED',"UPDATED_AT"=CURRENT_TIMESTAMP
                 WHERE "SOURCE_KEY"=? AND "STATE"='IMPORTING'
                 """,
                 key);
@@ -260,7 +260,7 @@ public class DiskImportRepository {
     public List<DiskImportEntry> moves(String key, Instant now, long after, int limit) {
         return jdbc.query(
                 """
-                SELECT * FROM "CV_DISK_IMPORT_FILES" WHERE "SOURCE_KEY"=? AND "STATE" IN ('SUCCEEDED_MOVE','FAILED_MOVE')
+                SELECT * FROM "INGESTION"."DISK_IMPORT_FILES" WHERE "SOURCE_KEY"=? AND "STATE" IN ('SUCCEEDED_MOVE','FAILED_MOVE')
                 AND "NEXT_MOVE_AT"<=? AND "ID">? ORDER BY "ID" LIMIT ?
                 """,
                 (rs, row) -> entry(rs),
@@ -272,34 +272,34 @@ public class DiskImportRepository {
 
     public String storageKey(long document) {
         return jdbc.queryForObject(
-                "SELECT \"STORAGE_PATH\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                "SELECT \"STORAGE_PATH\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                 String.class,
                 document);
     }
 
     public void attention(long id, String code) {
         jdbc.update(
-                "UPDATE \"CV_DISK_IMPORT_FILES\" SET \"STATE\"='NEEDS_ATTENTION',\"MOVE_ERROR_CODE\"=?,\"UPDATED_AT\"=CURRENT_TIMESTAMP WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"DISK_IMPORT_FILES\" SET \"STATE\"='NEEDS_ATTENTION',\"MOVE_ERROR_CODE\"=?,\"UPDATED_AT\"=CURRENT_TIMESTAMP WHERE \"ID\"=?",
                 code,
                 id);
     }
 
     public void moveStarted(long id) {
         jdbc.update(
-                "UPDATE \"CV_DISK_IMPORT_FILES\" SET \"MOVE_ATTEMPTS\"=\"MOVE_ATTEMPTS\"+1 WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"DISK_IMPORT_FILES\" SET \"MOVE_ATTEMPTS\"=\"MOVE_ATTEMPTS\"+1 WHERE \"ID\"=?",
                 id);
     }
 
     public void moved(DiskImportEntry item) {
         jdbc.update(
-                "UPDATE \"CV_DISK_IMPORT_FILES\" SET \"STATE\"=?,\"MOVE_ERROR_CODE\"=NULL,\"UPDATED_AT\"=CURRENT_TIMESTAMP WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"DISK_IMPORT_FILES\" SET \"STATE\"=?,\"MOVE_ERROR_CODE\"=NULL,\"UPDATED_AT\"=CURRENT_TIMESTAMP WHERE \"ID\"=?",
                 item.documentId() == null ? "FAILED" : "PROCESSED",
                 item.id());
     }
 
     public void moveFailed(long id, Instant next) {
         jdbc.update(
-                "UPDATE \"CV_DISK_IMPORT_FILES\" SET \"NEXT_MOVE_AT\"=?,\"MOVE_ERROR_CODE\"='MOVE_FAILED',\"UPDATED_AT\"=CURRENT_TIMESTAMP WHERE \"ID\"=?",
+                "UPDATE \"INGESTION\".\"DISK_IMPORT_FILES\" SET \"NEXT_MOVE_AT\"=?,\"MOVE_ERROR_CODE\"='MOVE_FAILED',\"UPDATED_AT\"=CURRENT_TIMESTAMP WHERE \"ID\"=?",
                 Timestamp.from(next),
                 id);
     }

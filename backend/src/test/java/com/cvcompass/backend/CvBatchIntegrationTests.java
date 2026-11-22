@@ -49,16 +49,16 @@ class CvBatchIntegrationTests {
 
     @BeforeEach
     void assertIsolation() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         assertThat(DATABASE.storageRoot().getFileName().toString()).startsWith("cv-storage-test-");
     }
 
     @AfterEach
     void clean() throws Exception {
-        jdbc.execute("DELETE FROM \"CV_IMPORT_ITEMS\"");
-        jdbc.execute("DELETE FROM \"CV_DOCUMENTS\"");
-        jdbc.execute("DELETE FROM \"CV_IMPORT_BATCHES\"");
+        jdbc.execute("DELETE FROM \"INGESTION\".\"IMPORT_ITEMS\"");
+        jdbc.execute("DELETE FROM \"INGESTION\".\"DOCUMENTS\"");
+        jdbc.execute("DELETE FROM \"INGESTION\".\"IMPORT_BATCHES\"");
         try (var files = Files.list(DATABASE.storageRoot())) {
             for (var file : files.toList()) Files.delete(file);
         }
@@ -91,7 +91,7 @@ class CvBatchIntegrationTests {
         long id = batch.get("id").asLong();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_DOCUMENTS\" WHERE \"BATCH_ID\"=?",
+                                "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"BATCH_ID\"=?",
                                 Integer.class,
                                 id))
                 .isEqualTo(count);
@@ -123,9 +123,12 @@ class CvBatchIntegrationTests {
         assertThat(failed.get("completedAt").isNull()).isFalse();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_PROCESSING_JOBS\"", Integer.class))
+                                "SELECT count(*) FROM \"INGESTION\".\"PROCESSING_JOBS\"",
+                                Integer.class))
                 .isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATES\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CANDIDATE\".\"CANDIDATES\"", Integer.class))
                 .isZero();
     }
 
@@ -134,7 +137,10 @@ class CvBatchIntegrationTests {
         assertThat(upload(Collections.nCopies(11, PDF), "files").statusCode()).isEqualTo(400);
         assertThat(upload(List.of(PDF), "file").statusCode()).isEqualTo(400);
         assertThat(upload(List.of(), "files").statusCode()).isEqualTo(400);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                Integer.class))
                 .isZero();
     }
 
@@ -156,7 +162,7 @@ class CvBatchIntegrationTests {
         long second =
                 json.readTree(upload(List.of(PDF), "files").body()).get("batch").get("id").asLong();
         jdbc.update(
-                "UPDATE \"CV_IMPORT_BATCHES\" SET \"CREATED_AT\" = ?",
+                "UPDATE \"INGESTION\".\"IMPORT_BATCHES\" SET \"CREATED_AT\" = ?",
                 java.sql.Timestamp.from(java.time.Instant.parse("2026-01-01T00:00:00Z")));
         assertThat(
                         json.readTree(get("/api/batches?size=1").body())
@@ -190,13 +196,13 @@ class CvBatchIntegrationTests {
             throws Exception {
         jdbc.execute(
                 "CREATE FUNCTION reject_batch_commit() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''synthetic commit failure''; END'");
-        String table = counter ? "CV_IMPORT_BATCHES" : "CV_DOCUMENTS";
+        String table = counter ? "INGESTION.IMPORT_BATCHES" : "INGESTION.DOCUMENTS";
         String event = counter ? "UPDATE" : "INSERT";
         jdbc.execute(
                 "CREATE CONSTRAINT TRIGGER reject_batch_commit AFTER "
                         + event
                         + " ON \""
-                        + table
+                        + table.replace(".", "\".\"")
                         + "\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_batch_commit()");
         try {
             var response = upload(List.of(PDF, PDF), "files");
@@ -204,26 +210,32 @@ class CvBatchIntegrationTests {
             assertThat(response.body())
                     .doesNotContain(
                             "synthetic commit failure", "SQL", DATABASE.storageRoot().toString());
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DOCUMENTS\"", Integer.class))
-                    .isZero();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_IMPORT_ITEMS\"", Integer.class))
-                    .isZero();
-            assertThat(
-                            jdbc.queryForObject(
-                                    "SELECT \"SUCCESS_COUNT\" FROM \"CV_IMPORT_BATCHES\"",
+                                    "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\"",
                                     Integer.class))
                     .isZero();
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"STATUS\" FROM \"CV_IMPORT_BATCHES\"", String.class))
+                                    "SELECT count(*) FROM \"INGESTION\".\"IMPORT_ITEMS\"",
+                                    Integer.class))
+                    .isZero();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"SUCCESS_COUNT\" FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                    Integer.class))
+                    .isZero();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"STATUS\" FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                    String.class))
                     .isEqualTo("PROCESSING");
             try (var files = Files.list(DATABASE.storageRoot())) {
                 assertThat(files.count()).isZero();
             }
         } finally {
-            jdbc.execute("DROP TRIGGER reject_batch_commit ON \"" + table + "\"");
+            jdbc.execute(
+                    "DROP TRIGGER reject_batch_commit ON \"" + table.replace(".", "\".\"") + "\"");
             jdbc.execute("DROP FUNCTION reject_batch_commit()");
         }
     }
@@ -233,16 +245,20 @@ class CvBatchIntegrationTests {
         jdbc.execute(
                 "CREATE FUNCTION reject_second_item() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.\"FILE_ORDER\" = 2 THEN RAISE EXCEPTION ''synthetic item failure''; END IF; RETURN NEW; END'");
         jdbc.execute(
-                "CREATE CONSTRAINT TRIGGER reject_second_item AFTER INSERT ON \"CV_IMPORT_ITEMS\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_second_item()");
+                "CREATE CONSTRAINT TRIGGER reject_second_item AFTER INSERT ON \"INGESTION\".\"IMPORT_ITEMS\" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_second_item()");
         try {
             assertThat(upload(List.of(PDF, new byte[0], PDF), "files").statusCode()).isEqualTo(500);
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DOCUMENTS\"", Integer.class))
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\"",
+                                    Integer.class))
                     .isEqualTo(1);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_IMPORT_ITEMS\"", Integer.class))
+                                    "SELECT count(*) FROM \"INGESTION\".\"IMPORT_ITEMS\"",
+                                    Integer.class))
                     .isEqualTo(1);
-            var batch = jdbc.queryForMap("SELECT * FROM \"CV_IMPORT_BATCHES\"");
+            var batch = jdbc.queryForMap("SELECT * FROM \"INGESTION\".\"IMPORT_BATCHES\"");
             assertThat(batch.get("SUCCESS_COUNT")).isEqualTo(1);
             assertThat(batch.get("FAILED_COUNT")).isEqualTo(0);
             assertThat(batch.get("TOTAL_FILES")).isEqualTo(3);
@@ -252,7 +268,7 @@ class CvBatchIntegrationTests {
                 assertThat(files.count()).isEqualTo(1);
             }
         } finally {
-            jdbc.execute("DROP TRIGGER reject_second_item ON \"CV_IMPORT_ITEMS\"");
+            jdbc.execute("DROP TRIGGER reject_second_item ON \"INGESTION\".\"IMPORT_ITEMS\"");
             jdbc.execute("DROP FUNCTION reject_second_item()");
         }
     }
@@ -263,9 +279,14 @@ class CvBatchIntegrationTests {
         assertThat(accepted.statusCode()).as(accepted.body()).isEqualTo(201);
         assertThat(json.readTree(accepted.body()).get("batch").get("successCount").asInt())
                 .isEqualTo(10);
-        long before = jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Long.class);
+        long before =
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"", Long.class);
         assertThat(uploadLarge(11).statusCode()).isEqualTo(413);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Long.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                Long.class))
                 .isEqualTo(before);
     }
 
@@ -307,7 +328,10 @@ class CvBatchIntegrationTests {
                             + "\r\n--batch-test--\r\n";
             assertThat(send(HttpRequest.BodyPublishers.ofString(body)).statusCode()).isEqualTo(400);
         }
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                Integer.class))
                 .isZero();
     }
 

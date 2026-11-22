@@ -29,7 +29,7 @@ public class StoredOcrExtractionReader implements OcrExtractionReader {
         }
         return jdbc.query(
                 """
-                SELECT "ID" FROM "CV_EXTRACTIONS" WHERE "ID">? AND "ID"<=? ORDER BY "ID" LIMIT ?
+                SELECT "ID" FROM "INGESTION"."EXTRACTIONS" WHERE "ID">? AND "ID"<=? ORDER BY "ID" LIMIT ?
                 """,
                 (rs, n) -> rs.getLong(1),
                 afterId,
@@ -40,7 +40,7 @@ public class StoredOcrExtractionReader implements OcrExtractionReader {
     @Override
     public long upperId() {
         return jdbc.queryForObject(
-                "SELECT COALESCE(MAX(\"ID\"),0) FROM \"CV_EXTRACTIONS\"", Long.class);
+                "SELECT COALESCE(MAX(\"ID\"),0) FROM \"INGESTION\".\"EXTRACTIONS\"", Long.class);
     }
 
     @Override
@@ -48,7 +48,7 @@ public class StoredOcrExtractionReader implements OcrExtractionReader {
         return jdbc
                 .query(
                         """
-                SELECT "ID","CV_DOCUMENT_ID","OCR_RESULT"::text,"PROFILE_REVISION" FROM "CV_EXTRACTIONS" WHERE "ID"=?
+                SELECT "ID","CV_DOCUMENT_ID","OCR_RESULT"::text,"PROFILE_REVISION" FROM "INGESTION"."EXTRACTIONS" WHERE "ID"=?
                 """,
                         (rs, n) -> {
                             String stored = rs.getString(3);

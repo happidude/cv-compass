@@ -52,7 +52,7 @@ Model 4B ở 4 GB VRAM có thể bị đẩy một phần sang CPU, chậm hơn;
 ## O2 — Xuất OCR_RESULT ra thư mục NGOÀI repo
 
 Nguồn dữ liệu, theo Flyway `V6__create_ocr_job_state_machine.sql`:
-- bảng `"CV_EXTRACTIONS"`, cột `"OCR_RESULT"` (JSONB, dạng `{"pages":[{page_number,status,raw_text}...],"status":...}`);
+- bảng `"INGESTION"."EXTRACTIONS"`, cột `"OCR_RESULT"` (JSONB, dạng `{"pages":[{page_number,status,raw_text}...],"status":...}`);
 - khóa `"CV_DOCUMENT_ID"`, `"CREATED_AT"`, `"ID"`.
 
 L1a đọc thẳng dạng JSON này (khóa `status` ở gốc được bỏ qua).
@@ -72,7 +72,7 @@ L1a đọc thẳng dạng JSON này (khóa `status` ở gốc được bỏ qua)
 OUT=~/cvc-llm-eval/ocr
 psql -h <host> -p <port> -U <user> -d <db> -At -F $'\t' -c '
 SELECT DISTINCT ON ("CV_DOCUMENT_ID") "CV_DOCUMENT_ID", "OCR_RESULT"::text
-FROM "CV_EXTRACTIONS"
+FROM "INGESTION"."EXTRACTIONS"
 WHERE "OCR_RESULT" IS NOT NULL
 ORDER BY "CV_DOCUMENT_ID", "CREATED_AT" DESC, "ID" DESC' |
 while IFS=$'\t' read -r id json; do printf '%s' "$json" > "$OUT/doc-$id.json"; done

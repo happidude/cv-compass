@@ -22,15 +22,15 @@ class DiskImportRestartIntegrationTests {
             Files.writeString(inbox.resolve("a.pdf"), "%PDF-1.7\nfirst\n%%EOF\n");
             try (var first = start(settings, inbox, database.storageRoot())) {
                 runStable(first);
-                assertThat(documents(settings, database.schemaName())).isEqualTo(1);
+                assertThat(documents(settings)).isEqualTo(1);
             }
             Files.writeString(inbox.resolve("a.pdf"), "%PDF-1.7\nfirst\n%%EOF\n");
             try (var second = start(settings, inbox, database.storageRoot())) {
                 runStable(second);
-                assertThat(documents(settings, database.schemaName())).isEqualTo(1);
+                assertThat(documents(settings)).isEqualTo(1);
                 Files.writeString(inbox.resolve("a.pdf"), "%PDF-1.7\nsecond content\n%%EOF\n");
                 runStable(second);
-                assertThat(documents(settings, database.schemaName())).isEqualTo(2);
+                assertThat(documents(settings)).isEqualTo(2);
             }
         } finally {
             try (var paths = Files.walk(inbox)) {
@@ -67,15 +67,15 @@ class DiskImportRestartIntegrationTests {
         context.getBean(DiskImportService.class).tick();
     }
 
-    private long documents(Map<String, Object> settings, String schema) throws Exception {
+    private long documents(Map<String, Object> settings) throws Exception {
         try (var connection =
                         DriverManager.getConnection(
                                 settings.get("spring.datasource.url").toString(),
                                 settings.get("spring.datasource.username").toString(),
                                 settings.get("spring.datasource.password").toString());
                 var statement = connection.createStatement()) {
-            connection.setSchema(schema);
-            try (var result = statement.executeQuery("SELECT count(*) FROM \"CV_DOCUMENTS\"")) {
+            try (var result =
+                    statement.executeQuery("SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\"")) {
                 result.next();
                 return result.getLong(1);
             }

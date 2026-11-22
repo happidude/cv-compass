@@ -137,20 +137,24 @@ class OcrWorkerIntegrationTests {
 
     @BeforeEach
     void resetOwnedSchema() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
-        for (String table :
-                List.of("CV_DISK_IMPORT_FILES", "CV_DISK_OBSERVATIONS", "CV_EXTRACTIONS"))
-            jdbc.execute("DELETE FROM \"" + table + "\"");
-        jdbc.execute(
-                "UPDATE \"CV_PROCESSING_JOBS\" SET \"CURRENT_ATTEMPT_ID\"=NULL,\"STATUS\"='PENDING'");
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         for (String table :
                 List.of(
-                        "CV_OCR_ATTEMPTS",
-                        "CV_PROCESSING_JOBS",
-                        "CV_IMPORT_ITEMS",
-                        "CV_DOCUMENTS",
-                        "CV_IMPORT_BATCHES")) jdbc.execute("DELETE FROM \"" + table + "\"");
+                        "INGESTION.DISK_IMPORT_FILES",
+                        "INGESTION.DISK_OBSERVATIONS",
+                        "INGESTION.EXTRACTIONS"))
+            jdbc.execute("DELETE FROM \"" + table.replace(".", "\".\"") + "\"");
+        jdbc.execute(
+                "UPDATE \"INGESTION\".\"PROCESSING_JOBS\" SET \"CURRENT_ATTEMPT_ID\"=NULL,\"STATUS\"='PENDING'");
+        for (String table :
+                List.of(
+                        "INGESTION.OCR_ATTEMPTS",
+                        "INGESTION.PROCESSING_JOBS",
+                        "INGESTION.IMPORT_ITEMS",
+                        "INGESTION.DOCUMENTS",
+                        "INGESTION.IMPORT_BATCHES"))
+            jdbc.execute("DELETE FROM \"" + table.replace(".", "\".\"") + "\"");
         for (Path root :
                 List.of(
                         INBOX,
@@ -247,10 +251,12 @@ class OcrWorkerIntegrationTests {
         assertThat(jobs.count()).isEqualTo(1);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"SUCCESS_COUNT\" FROM \"CV_IMPORT_BATCHES\"",
+                                "SELECT \"SUCCESS_COUNT\" FROM \"INGESTION\".\"IMPORT_BATCHES\"",
                                 Integer.class))
                 .isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CANDIDATES\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CANDIDATE\".\"CANDIDATES\"", Integer.class))
                 .isZero();
     }
 
@@ -261,7 +267,10 @@ class OcrWorkerIntegrationTests {
         when(diskClock.instant()).thenReturn(Instant.parse("2026-01-01T00:00:02Z"));
         importer.tick();
         assertThat(jobs.count()).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_IMPORT_ITEMS\"", Integer.class))
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"INGESTION\".\"IMPORT_ITEMS\"",
+                                Integer.class))
                 .isEqualTo(1);
         assertThat(INBOX.resolve("synthetic.pdf")).doesNotExist();
     }
@@ -271,18 +280,21 @@ class OcrWorkerIntegrationTests {
         jdbc.execute(
                 "CREATE FUNCTION reject_ocr_enqueue() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''synthetic queue failure''; END'");
         jdbc.execute(
-                "CREATE TRIGGER reject_ocr_enqueue BEFORE INSERT ON \"CV_PROCESSING_JOBS\" FOR EACH ROW EXECUTE FUNCTION reject_ocr_enqueue()");
+                "CREATE TRIGGER reject_ocr_enqueue BEFORE INSERT ON \"INGESTION\".\"PROCESSING_JOBS\" FOR EACH ROW EXECUTE FUNCTION reject_ocr_enqueue()");
         try {
             assertThatThrownBy(() -> uploads.upload("synthetic.pdf", new ByteArrayInputStream(PDF)))
                     .isInstanceOf(RuntimeException.class);
             assertThat(jobs.count()).isZero();
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM \"CV_DOCUMENTS\"", Integer.class))
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\"",
+                                    Integer.class))
                     .isZero();
             try (var files = Files.list(DATABASE.storageRoot())) {
                 assertThat(files.count()).isZero();
             }
         } finally {
-            jdbc.execute("DROP TRIGGER reject_ocr_enqueue ON \"CV_PROCESSING_JOBS\"");
+            jdbc.execute("DROP TRIGGER reject_ocr_enqueue ON \"INGESTION\".\"PROCESSING_JOBS\"");
             jdbc.execute("DROP FUNCTION reject_ocr_enqueue()");
         }
     }

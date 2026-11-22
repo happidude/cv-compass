@@ -14,7 +14,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "\"CV_IMPORT_ITEMS\"")
+@Table(schema = "\"INGESTION\"", name = "\"IMPORT_ITEMS\"")
 public class CvImportItem extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "\"BATCH_ID\"", nullable = false)

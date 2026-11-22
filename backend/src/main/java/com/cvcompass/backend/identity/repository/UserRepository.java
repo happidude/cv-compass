@@ -16,7 +16,7 @@ public class UserRepository {
     public Optional<UserAccount> find(String username) {
         return jdbc
                 .query(
-                        "SELECT \"USERNAME\",\"PASSWORD_HASH\",\"ROLE\",\"ENABLED\" FROM \"CV_USERS\" WHERE \"USERNAME\"=?",
+                        "SELECT \"USERNAME\",\"PASSWORD_HASH\",\"ROLE\",\"ENABLED\" FROM \"IDENTITY\".\"USERS\" WHERE \"USERNAME\"=?",
                         (rs, n) ->
                                 new UserAccount(
                                         rs.getString(1),
@@ -30,7 +30,7 @@ public class UserRepository {
 
     public void provision(String username, String hash, String role) {
         jdbc.update(
-                "INSERT INTO \"CV_USERS\" (\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES (?,?,?) ON CONFLICT (\"USERNAME\") DO NOTHING",
+                "INSERT INTO \"IDENTITY\".\"USERS\" (\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES (?,?,?) ON CONFLICT (\"USERNAME\") DO NOTHING",
                 username,
                 hash,
                 role);

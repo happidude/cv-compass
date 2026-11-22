@@ -59,8 +59,8 @@ class RepositoryPersistenceIntegrationTests {
 
     @BeforeEach
     void usesItsOwnSchema() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
     }
 
     @Test
@@ -201,7 +201,7 @@ class RepositoryPersistenceIntegrationTests {
         assertThat(extractions.count()).isEqualTo(2);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT pg_typeof(\"STRUCTURED_DATA\")::text FROM \"CV_EXTRACTIONS\" WHERE \"ID\" = ?",
+                                "SELECT pg_typeof(\"STRUCTURED_DATA\")::text FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\" = ?",
                                 String.class,
                                 extraction.getId()))
                 .isEqualTo("jsonb");
@@ -256,9 +256,9 @@ class RepositoryPersistenceIntegrationTests {
 
     @ParameterizedTest
     @CsvSource({
-        "CV_IMPORT_BATCHES, CK_BATCH_STATUS",
-        "CV_DOCUMENTS, CK_DOCUMENT_STATUS",
-        "CV_PROCESSING_JOBS, CK_JOB_STATUS"
+        "INGESTION.IMPORT_BATCHES, CK_BATCH_STATUS",
+        "INGESTION.DOCUMENTS, CK_DOCUMENT_STATUS",
+        "INGESTION.PROCESSING_JOBS, CK_JOB_STATUS"
     })
     void databaseRejectsInvalidStatus(String table, String constraint) {
         var batch = batches.saveAndFlush(batch());
@@ -266,9 +266,9 @@ class RepositoryPersistenceIntegrationTests {
         var job = jobs.saveAndFlush(job(document));
         var id =
                 switch (table) {
-                    case "CV_IMPORT_BATCHES" -> batch.getId();
-                    case "CV_DOCUMENTS" -> document.getId();
-                    case "CV_PROCESSING_JOBS" -> job.getId();
+                    case "INGESTION.IMPORT_BATCHES" -> batch.getId();
+                    case "INGESTION.DOCUMENTS" -> document.getId();
+                    case "INGESTION.PROCESSING_JOBS" -> job.getId();
                     default -> throw new IllegalArgumentException("Unexpected test table");
                 };
         // Exercise the DB check directly because Java enums cannot represent invalid values.
@@ -276,7 +276,7 @@ class RepositoryPersistenceIntegrationTests {
                         () ->
                                 jdbc.update(
                                         "UPDATE \""
-                                                + table
+                                                + table.replace(".", "\".\"")
                                                 + "\" SET \"STATUS\" = ? WHERE \"ID\" = ?",
                                         "INVALID",
                                         id))
@@ -286,11 +286,11 @@ class RepositoryPersistenceIntegrationTests {
 
     @ParameterizedTest
     @CsvSource({
-        "CV_DOCUMENTS, BATCH_ID, FK_DOCUMENT_BATCH",
-        "CV_DOCUMENTS, CANDIDATE_ID, FK_DOCUMENT_CANDIDATE",
-        "CV_PROCESSING_JOBS, CV_DOCUMENT_ID, FK_JOB_DOCUMENT",
-        "CV_EXTRACTIONS, CV_DOCUMENT_ID, FK_EXTRACTION_DOCUMENT",
-        "CV_EXTRACTIONS, PROCESSING_JOB_ID, FK_EXTRACTION_JOB_DOCUMENT"
+        "INGESTION.DOCUMENTS, BATCH_ID, FK_DOCUMENT_BATCH",
+        "INGESTION.DOCUMENTS, CANDIDATE_ID, FK_DOCUMENT_CANDIDATE",
+        "INGESTION.PROCESSING_JOBS, CV_DOCUMENT_ID, FK_JOB_DOCUMENT",
+        "INGESTION.EXTRACTIONS, CV_DOCUMENT_ID, FK_EXTRACTION_DOCUMENT",
+        "INGESTION.EXTRACTIONS, PROCESSING_JOB_ID, FK_EXTRACTION_JOB_DOCUMENT"
     })
     void foreignKeysRejectMissingReferences(String table, String column, String constraint) {
         var document = documents.saveAndFlush(document(batches.saveAndFlush(batch())));
@@ -298,9 +298,9 @@ class RepositoryPersistenceIntegrationTests {
 
         var id =
                 switch (table) {
-                    case "CV_DOCUMENTS" -> document.getId();
-                    case "CV_PROCESSING_JOBS" -> job.getId();
-                    case "CV_EXTRACTIONS" ->
+                    case "INGESTION.DOCUMENTS" -> document.getId();
+                    case "INGESTION.PROCESSING_JOBS" -> job.getId();
+                    case "INGESTION.EXTRACTIONS" ->
                             extractions.saveAndFlush(extraction(document, job)).getId();
                     default -> throw new IllegalArgumentException("Unexpected test table");
                 };
@@ -309,7 +309,7 @@ class RepositoryPersistenceIntegrationTests {
                         () ->
                                 jdbc.update(
                                         "UPDATE \""
-                                                + table
+                                                + table.replace(".", "\".\"")
                                                 + "\" SET \""
                                                 + column
                                                 + "\" = ? WHERE \"ID\" = ?",
@@ -321,11 +321,11 @@ class RepositoryPersistenceIntegrationTests {
 
     @ParameterizedTest
     @CsvSource({
-        "CV_IMPORT_BATCHES, TOTAL_FILES, 0, CK_BATCH_TOTAL_FILES",
-        "CV_IMPORT_BATCHES, SUCCESS_COUNT, -1, CK_BATCH_SUCCESS_COUNT",
-        "CV_IMPORT_BATCHES, FAILED_COUNT, -1, CK_BATCH_FAILED_COUNT",
-        "CV_DOCUMENTS, FILE_SIZE, -1, CK_DOCUMENT_FILE_SIZE",
-        "CV_EXTRACTIONS, EXTRACTION_METHOD, INVALID, CK_EXTRACTION_METHOD"
+        "INGESTION.IMPORT_BATCHES, TOTAL_FILES, 0, CK_BATCH_TOTAL_FILES",
+        "INGESTION.IMPORT_BATCHES, SUCCESS_COUNT, -1, CK_BATCH_SUCCESS_COUNT",
+        "INGESTION.IMPORT_BATCHES, FAILED_COUNT, -1, CK_BATCH_FAILED_COUNT",
+        "INGESTION.DOCUMENTS, FILE_SIZE, -1, CK_DOCUMENT_FILE_SIZE",
+        "INGESTION.EXTRACTIONS, EXTRACTION_METHOD, INVALID, CK_EXTRACTION_METHOD"
     })
     void databaseRejectsInvalidCountsSizesAndExtractionMethods(
             String table, String column, String invalid, String constraint) {
@@ -335,9 +335,9 @@ class RepositoryPersistenceIntegrationTests {
                 extractions.saveAndFlush(extraction(document, jobs.saveAndFlush(job(document))));
         long id =
                 switch (table) {
-                    case "CV_IMPORT_BATCHES" -> batch.getId();
-                    case "CV_DOCUMENTS" -> document.getId();
-                    case "CV_EXTRACTIONS" -> extraction.getId();
+                    case "INGESTION.IMPORT_BATCHES" -> batch.getId();
+                    case "INGESTION.DOCUMENTS" -> document.getId();
+                    case "INGESTION.EXTRACTIONS" -> extraction.getId();
                     default -> throw new IllegalArgumentException("Unexpected test table");
                 };
         Object value = column.equals("EXTRACTION_METHOD") ? invalid : Integer.valueOf(invalid);
@@ -345,7 +345,7 @@ class RepositoryPersistenceIntegrationTests {
                         () ->
                                 jdbc.update(
                                         "UPDATE \""
-                                                + table
+                                                + table.replace(".", "\".\"")
                                                 + "\" SET \""
                                                 + column
                                                 + "\"=? WHERE \"ID\"=?",
@@ -363,7 +363,7 @@ class RepositoryPersistenceIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "INSERT INTO \"CV_IMPORT_ITEMS\" "
+                                        "INSERT INTO \"INGESTION\".\"IMPORT_ITEMS\" "
                                                 + "(\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"DOCUMENT_ID\",\"ERROR_CODE\") VALUES (?,1,'fixture.pdf',?,?)",
                                         batch.getId(),
                                         both ? document.getId() : null,
@@ -378,7 +378,7 @@ class RepositoryPersistenceIntegrationTests {
     void importItemOrderAndReferencesAreProtected(String invalid) {
         var batch = batches.saveAndFlush(batch());
         jdbc.update(
-                "INSERT INTO \"CV_IMPORT_ITEMS\" (\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"ERROR_CODE\") "
+                "INSERT INTO \"INGESTION\".\"IMPORT_ITEMS\" (\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"ERROR_CODE\") "
                         + "VALUES (?,1,'fixture.pdf','INVALID_PDF')",
                 batch.getId());
         long batchId = invalid.equals("batch") ? Long.MAX_VALUE : batch.getId();
@@ -388,7 +388,7 @@ class RepositoryPersistenceIntegrationTests {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        "INSERT INTO \"CV_IMPORT_ITEMS\" "
+                                        "INSERT INTO \"INGESTION\".\"IMPORT_ITEMS\" "
                                                 + "(\"BATCH_ID\",\"FILE_ORDER\",\"DISPLAY_NAME\",\"DOCUMENT_ID\",\"ERROR_CODE\") VALUES (?,?,'fixture.pdf',?,?)",
                                         batchId,
                                         order,

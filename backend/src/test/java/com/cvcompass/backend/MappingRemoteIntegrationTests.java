@@ -96,10 +96,10 @@ class MappingRemoteIntegrationTests {
 
     @BeforeEach
     void reset() {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         jdbc.execute(
-                "TRUNCATE \"CANDIDATE_PROPOSALS\",\"CANDIDATE_PUBLICATIONS\",\"CANDIDATE_EXPERIENCES\",\"CV_MAPPING_RESULTS\",\"CV_MAPPING_ATTEMPTS\",\"CV_MAPPING_JOBS\"");
+                "TRUNCATE \"CANDIDATE\".\"PROPOSALS\",\"CANDIDATE\".\"PUBLICATIONS\",\"CANDIDATE\".\"EXPERIENCES\",\"MAPPING\".\"RESULTS\",\"MAPPING\".\"ATTEMPTS\",\"MAPPING\".\"JOBS\"");
         properties.setEnabled(true);
     }
 
@@ -146,7 +146,7 @@ class MappingRemoteIntegrationTests {
         long config = mapping.register(definition.revision(), definition);
         return jdbc.queryForObject(
                 """
-                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
+                INSERT INTO "MAPPING"."JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
                 VALUES (?,?,'llm-extraction/1.0',5) RETURNING "ID"
                 """,
                 Long.class,
@@ -163,7 +163,7 @@ class MappingRemoteIntegrationTests {
         worker.setCredentialSha256(Set.of(MappingWorkerAuthenticationFilter.hash(credential)));
         properties.setWorkers(Map.of("synthetic_worker", worker));
         jdbc.update(
-                "INSERT INTO \"CV_USERS\" (\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES (?,?,'USER') ON CONFLICT DO NOTHING",
+                "INSERT INTO \"IDENTITY\".\"USERS\" (\"USERNAME\",\"PASSWORD_HASH\",\"ROLE\") VALUES (?,?,'USER') ON CONFLICT DO NOTHING",
                 "synthetic-user",
                 new BCryptPasswordEncoder().encode("synthetic-test-only"));
         var csrf =
@@ -190,12 +190,12 @@ class MappingRemoteIntegrationTests {
             long job = seed(doc, LlmRemoteContractFixtures.definition());
             long documentId =
                     jdbc.queryForObject(
-                            "SELECT e.\"CV_DOCUMENT_ID\" FROM \"CV_EXTRACTIONS\" e JOIN \"CV_MAPPING_JOBS\" j ON j.\"EXTRACTION_ID\"=e.\"ID\" WHERE j.\"ID\"=?",
+                            "SELECT e.\"CV_DOCUMENT_ID\" FROM \"INGESTION\".\"EXTRACTIONS\" e JOIN \"MAPPING\".\"JOBS\" j ON j.\"EXTRACTION_ID\"=e.\"ID\" WHERE j.\"ID\"=?",
                             Long.class,
                             job);
             doc = documents.findById(documentId).orElseThrow();
             jdbc.update(
-                    "UPDATE \"CV_DOCUMENTS\" SET \"CREATED_AT\"=?::timestamptz WHERE \"ID\"=?",
+                    "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CREATED_AT\"=?::timestamptz WHERE \"ID\"=?",
                     LlmRemoteContractFixtures.AT,
                     documentId);
             var claimed =
@@ -224,13 +224,13 @@ class MappingRemoteIntegrationTests {
                     .andExpect(status().isOk());
             long result =
                     jdbc.queryForObject(
-                            "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                            "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                             Long.class,
                             job);
             assertThat(publication.publish(result)).isTrue();
             long candidate =
                     jdbc.queryForObject(
-                            "SELECT \"CANDIDATE_ID\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                            "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                             Long.class,
                             documentId);
             String prefix = subsequent ? "subsequent-" : "initial-";
@@ -312,7 +312,7 @@ class MappingRemoteIntegrationTests {
                         .map(
                                 reply ->
                                         jdbc.queryForObject(
-                                                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                                "SELECT \"JOB_ID\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                                 Long.class,
                                                 id(reply)))
                         .toList();
@@ -330,7 +330,7 @@ class MappingRemoteIntegrationTests {
                 replies.stream().filter(reply -> reply.status() == 201).findFirst().orElseThrow();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                "SELECT \"JOB_ID\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                 Long.class,
                                 id(claimed)))
                 .isEqualTo(job);
@@ -339,7 +339,7 @@ class MappingRemoteIntegrationTests {
         assertThat(idle.data()).isEmpty();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"STATUS\"='ACTIVE'",
+                                "SELECT count(*) FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"STATUS\"='ACTIVE'",
                                 Integer.class))
                 .isEqualTo(1);
     }
@@ -407,7 +407,7 @@ class MappingRemoteIntegrationTests {
         }
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"STATUS\"='ACTIVE'",
+                                "SELECT count(*) FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"STATUS\"='ACTIVE'",
                                 Integer.class))
                 .isEqualTo(1);
     }
@@ -431,7 +431,7 @@ class MappingRemoteIntegrationTests {
         assertThat(mapping.result(job).orElseThrow().quality()).isEqualTo("NEEDS_REVIEW");
         long resultId =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         Long.class,
                         job);
         assertThat(completed.publishable(completed.read(resultId).orElseThrow())).isPresent();
@@ -449,7 +449,7 @@ class MappingRemoteIntegrationTests {
         remote.result("synthetic_worker", id(claim), HASH, body.toString());
         long resultId =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         Long.class,
                         job);
         assertThat(completed.publishable(completed.read(resultId).orElseThrow())).isPresent();
@@ -470,7 +470,7 @@ class MappingRemoteIntegrationTests {
         remote.result("synthetic_worker", id(claim), HASH, body.toString());
         long resultId =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         Long.class,
                         job);
         var stored = completed.read(resultId).orElseThrow();
@@ -487,8 +487,8 @@ class MappingRemoteIntegrationTests {
                 jdbc.queryForMap(
                         """
                         SELECT p."BASIC"::text, p."EXTENSIONS"::text, c."STATUS"
-                        FROM "CANDIDATE_PROFILES" p
-                        JOIN "CANDIDATE_PUBLICATIONS" c ON c."CANDIDATE_ID"=p."CANDIDATE_ID"
+                        FROM "CANDIDATE"."PROFILES" p
+                        JOIN "CANDIDATE"."PUBLICATIONS" c ON c."CANDIDATE_ID"=p."CANDIDATE_ID"
                         WHERE c."RESULT_ID"=?
                         """,
                         resultId);
@@ -510,9 +510,9 @@ class MappingRemoteIntegrationTests {
         String value = "Mr Cao";
         jdbc.update(
                 """
-                UPDATE "CV_EXTRACTIONS"
+                UPDATE "INGESTION"."EXTRACTIONS"
                 SET "OCR_RESULT"=jsonb_set("OCR_RESULT",'{pages,0,raw_text}',to_jsonb(?::text))
-                WHERE "ID"=(SELECT "EXTRACTION_ID" FROM "CV_MAPPING_JOBS" WHERE "ID"=?)
+                WHERE "ID"=(SELECT "EXTRACTION_ID" FROM "MAPPING"."JOBS" WHERE "ID"=?)
                 """,
                 MappingRemoteFixtures.RAW + "\n" + value,
                 job);
@@ -533,7 +533,7 @@ class MappingRemoteIntegrationTests {
         remote.result("synthetic_worker", id(claim), HASH, body.toString());
         long resultId =
                 jdbc.queryForObject(
-                        "SELECT \"ID\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         Long.class,
                         job);
         var stored = completed.read(resultId).orElseThrow();
@@ -552,8 +552,8 @@ class MappingRemoteIntegrationTests {
                 jdbc.queryForMap(
                         """
                         SELECT p."BASIC"::text, p."EXTENSIONS"::text, c."STATUS"
-                        FROM "CANDIDATE_PROFILES" p
-                        JOIN "CANDIDATE_PUBLICATIONS" c ON c."CANDIDATE_ID"=p."CANDIDATE_ID"
+                        FROM "CANDIDATE"."PROFILES" p
+                        JOIN "CANDIDATE"."PUBLICATIONS" c ON c."CANDIDATE_ID"=p."CANDIDATE_ID"
                         WHERE c."RESULT_ID"=?
                         """,
                         resultId);
@@ -582,19 +582,19 @@ class MappingRemoteIntegrationTests {
                 .hasMessage("INVALID_EVIDENCE");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                 String.class,
                                 id(claim)))
                 .isEqualTo("FAILED");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                                "SELECT count(*) FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                                 Integer.class,
                                 job))
                 .isZero();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 job))
                 .isEqualTo("PENDING");
@@ -609,22 +609,22 @@ class MappingRemoteIntegrationTests {
         assertThat(remote.reap()).isEqualTo(1);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                 String.class,
                                 id(claim)))
                 .isEqualTo("EXPIRED");
         assertThat(
                         jdbc.queryForObject(
                                 """
-                SELECT j."NEXT_ATTEMPT_AT">=a."RECLAIM_AFTER" FROM "CV_MAPPING_JOBS" j
-                JOIN "CV_MAPPING_ATTEMPTS" a ON a."JOB_ID"=j."ID" WHERE j."ID"=?
+                SELECT j."NEXT_ATTEMPT_AT">=a."RECLAIM_AFTER" FROM "MAPPING"."JOBS" j
+                JOIN "MAPPING"."ATTEMPTS" a ON a."JOB_ID"=j."ID" WHERE j."ID"=?
                 """,
                                 Boolean.class,
                                 job))
                 .isTrue();
         assertThat(claim(UUID.randomUUID()).status()).isEqualTo(204);
         jdbc.update(
-                "UPDATE \"CV_MAPPING_JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
+                "UPDATE \"MAPPING\".\"JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
                 job);
         assertThat(claim(UUID.randomUUID()).status()).isEqualTo(201);
         assertThatThrownBy(() -> remote.result("synthetic_worker", id(claim), HASH, result(claim)))
@@ -643,12 +643,12 @@ class MappingRemoteIntegrationTests {
                                         HASH,
                                         "{\"code\":\"LEASE_EXPIRED\"}"))
                 .hasMessage("INVALID_RESULT");
-        jdbc.update("UPDATE \"CV_MAPPING_JOBS\" SET \"MAX_ATTEMPTS\"=1 WHERE \"ID\"=?", job);
+        jdbc.update("UPDATE \"MAPPING\".\"JOBS\" SET \"MAX_ATTEMPTS\"=1 WHERE \"ID\"=?", job);
         remote.failure("synthetic_worker", id(claim), HASH, "{\"code\":\"PROVIDER_TIMEOUT\"}");
         remote.failure("synthetic_worker", id(claim), HASH, "{\"code\":\"PROVIDER_TIMEOUT\"}");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 job))
                 .isEqualTo("FAILED");
@@ -667,7 +667,7 @@ class MappingRemoteIntegrationTests {
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
-                                            "UPDATE \"CV_MAPPING_ATTEMPTS\" SET "
+                                            "UPDATE \"MAPPING\".\"ATTEMPTS\" SET "
                                                     + assignment
                                                     + " WHERE \"PUBLIC_ID\"=?",
                                             id(claim)))
@@ -677,8 +677,8 @@ class MappingRemoteIntegrationTests {
                         () ->
                                 jdbc.update(
                                         """
-                INSERT INTO "CV_MAPPING_ATTEMPTS" ("PUBLIC_ID","JOB_ID","ATTEMPT_NO","WORKER_ID","CLAIM_REQUEST_ID","CLAIM_BODY_SHA256","LEASE_TOKEN_HASH","LEASE_EXPIRES_AT","HARD_DEADLINE_AT","RECLAIM_AFTER","STATUS","STARTED_AT","PROVENANCE")
-                SELECT ?,"JOB_ID",2,"WORKER_ID",?,"CLAIM_BODY_SHA256","LEASE_TOKEN_HASH","LEASE_EXPIRES_AT","HARD_DEADLINE_AT","RECLAIM_AFTER","STATUS","STARTED_AT","PROVENANCE" FROM "CV_MAPPING_ATTEMPTS" WHERE "PUBLIC_ID"=?
+                INSERT INTO "MAPPING"."ATTEMPTS" ("PUBLIC_ID","JOB_ID","ATTEMPT_NO","WORKER_ID","CLAIM_REQUEST_ID","CLAIM_BODY_SHA256","LEASE_TOKEN_HASH","LEASE_EXPIRES_AT","HARD_DEADLINE_AT","RECLAIM_AFTER","STATUS","STARTED_AT","PROVENANCE")
+                SELECT ?,"JOB_ID",2,"WORKER_ID",?,"CLAIM_BODY_SHA256","LEASE_TOKEN_HASH","LEASE_EXPIRES_AT","HARD_DEADLINE_AT","RECLAIM_AFTER","STATUS","STARTED_AT","PROVENANCE" FROM "MAPPING"."ATTEMPTS" WHERE "PUBLIC_ID"=?
                 """,
                                         UUID.randomUUID(),
                                         UUID.randomUUID(),
@@ -689,12 +689,12 @@ class MappingRemoteIntegrationTests {
     private void expire(UUID id, long job) {
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '3 minutes',
+                UPDATE "MAPPING"."ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '3 minutes',
                 "LEASE_EXPIRES_AT"=clock_timestamp()-interval '1 second' WHERE "PUBLIC_ID"=?
                 """,
                 id);
         jdbc.update(
-                "UPDATE \"CV_MAPPING_JOBS\" SET \"LEASE_EXPIRES_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
+                "UPDATE \"MAPPING\".\"JOBS\" SET \"LEASE_EXPIRES_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
                 job);
     }
 
@@ -704,27 +704,27 @@ class MappingRemoteIntegrationTests {
         var claim = claim(UUID.randomUUID());
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_ATTEMPTS" SET "LEASE_EXPIRES_AT"=clock_timestamp()+interval '30 seconds',
+                UPDATE "MAPPING"."ATTEMPTS" SET "LEASE_EXPIRES_AT"=clock_timestamp()+interval '30 seconds',
                 "HARD_DEADLINE_AT"=clock_timestamp()+interval '60 seconds' WHERE "PUBLIC_ID"=?
                 """,
                 id(claim));
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_JOBS" j SET "LEASE_EXPIRES_AT"=a."LEASE_EXPIRES_AT","HARD_DEADLINE_AT"=a."HARD_DEADLINE_AT"
-                FROM "CV_MAPPING_ATTEMPTS" a WHERE j."ID"=? AND a."PUBLIC_ID"=?
+                UPDATE "MAPPING"."JOBS" j SET "LEASE_EXPIRES_AT"=a."LEASE_EXPIRES_AT","HARD_DEADLINE_AT"=a."HARD_DEADLINE_AT"
+                FROM "MAPPING"."ATTEMPTS" a WHERE j."ID"=? AND a."PUBLIC_ID"=?
                 """,
                 job,
                 id(claim));
         remote.heartbeat("synthetic_worker", id(claim), HASH, "{}");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"LEASE_EXPIRES_AT\"=\"HARD_DEADLINE_AT\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                "SELECT \"LEASE_EXPIRES_AT\"=\"HARD_DEADLINE_AT\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                 Boolean.class,
                                 id(claim)))
                 .isTrue();
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '3 minutes',
+                UPDATE "MAPPING"."ATTEMPTS" SET "STARTED_AT"=clock_timestamp()-interval '3 minutes',
                 "LEASE_EXPIRES_AT"=clock_timestamp()-interval '2 seconds',
                 "HARD_DEADLINE_AT"=clock_timestamp()-interval '1 second' WHERE "PUBLIC_ID"=?
                 """,
@@ -747,7 +747,7 @@ class MappingRemoteIntegrationTests {
         assertThat(mapping.result(job)).isEmpty();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                 String.class,
                                 id(claim)))
                 .isEqualTo("FAILED");
@@ -756,11 +756,11 @@ class MappingRemoteIntegrationTests {
     @Test
     void changedInputCannotBlockQueueAndEventuallyExhaustsJobBudget() {
         long broken = seed();
-        jdbc.update("UPDATE \"CV_MAPPING_JOBS\" SET \"MAX_ATTEMPTS\"=3 WHERE \"ID\"=?", broken);
+        jdbc.update("UPDATE \"MAPPING\".\"JOBS\" SET \"MAX_ATTEMPTS\"=3 WHERE \"ID\"=?", broken);
         var first = claim(UUID.randomUUID());
         // Simulate a changed extraction fingerprint after the worker pinned its input.
         jdbc.update(
-                "UPDATE \"CV_MAPPING_JOBS\" SET \"INPUT_SHA256\"=? WHERE \"ID\"=?",
+                "UPDATE \"MAPPING\".\"JOBS\" SET \"INPUT_SHA256\"=? WHERE \"ID\"=?",
                 "b".repeat(64),
                 broken);
         for (int replay = 0; replay < 2; replay++) {
@@ -776,19 +776,19 @@ class MappingRemoteIntegrationTests {
         assertThat(claim(UUID.randomUUID()).status()).isEqualTo(204);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ATTEMPTS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"ATTEMPTS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 Integer.class,
                                 broken))
                 .isEqualTo(2);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"NEXT_ATTEMPT_AT\">clock_timestamp() FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"NEXT_ATTEMPT_AT\">clock_timestamp() FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 Boolean.class,
                                 broken))
                 .isTrue();
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"JOB_ID\"=? AND \"STATUS\"='ACTIVE'",
+                                "SELECT count(*) FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"JOB_ID\"=? AND \"STATUS\"='ACTIVE'",
                                 Integer.class,
                                 broken))
                 .isZero();
@@ -796,7 +796,7 @@ class MappingRemoteIntegrationTests {
         assertThat(next.status()).isEqualTo(201);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"JOB_ID\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                "SELECT \"JOB_ID\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                 Long.class,
                                 id(next)))
                 .isEqualTo(healthy);
@@ -804,19 +804,19 @@ class MappingRemoteIntegrationTests {
         assertThat(claim(UUID.randomUUID()).status()).isEqualTo(204);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"STATUS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"STATUS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 broken))
                 .isEqualTo("FAILED");
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ATTEMPTS\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"ATTEMPTS\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 Integer.class,
                                 broken))
                 .isEqualTo(3);
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT \"ERROR_CODE\" FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?",
+                                "SELECT \"ERROR_CODE\" FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?",
                                 String.class,
                                 broken))
                 .isEqualTo("INPUT_CHANGED");
@@ -825,7 +825,7 @@ class MappingRemoteIntegrationTests {
 
     private void ready(long job) {
         jdbc.update(
-                "UPDATE \"CV_MAPPING_JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
+                "UPDATE \"MAPPING\".\"JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()-interval '1 second' WHERE \"ID\"=?",
                 job);
     }
 
@@ -858,32 +858,32 @@ class MappingRemoteIntegrationTests {
             expire(id(first), job);
             if (mismatch.equals("status")) {
                 jdbc.update(
-                        "UPDATE \"CV_MAPPING_JOBS\" SET \"STATUS\"='PENDING',\"TOKEN\"=NULL,\"LEASE_EXPIRES_AT\"=NULL WHERE \"ID\"=?",
+                        "UPDATE \"MAPPING\".\"JOBS\" SET \"STATUS\"='PENDING',\"TOKEN\"=NULL,\"LEASE_EXPIRES_AT\"=NULL WHERE \"ID\"=?",
                         job);
             } else {
                 jdbc.update(
-                        "UPDATE \"CV_MAPPING_JOBS\" SET \"ATTEMPTS\"=\"ATTEMPTS\"+1 WHERE \"ID\"=?",
+                        "UPDATE \"MAPPING\".\"JOBS\" SET \"ATTEMPTS\"=\"ATTEMPTS\"+1 WHERE \"ID\"=?",
                         job);
             }
-            var before = jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?", job);
+            var before = jdbc.queryForMap("SELECT * FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?", job);
             assertThat(remote.reap()).isEqualTo(1);
-            assertThat(jdbc.queryForMap("SELECT * FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?", job))
+            assertThat(jdbc.queryForMap("SELECT * FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?", job))
                     .isEqualTo(before);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"STATUS\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                    "SELECT \"STATUS\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                     String.class,
                                     id(first)))
                     .isEqualTo("EXPIRED");
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT \"ERROR_CODE\" FROM \"CV_MAPPING_ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
+                                    "SELECT \"ERROR_CODE\" FROM \"MAPPING\".\"ATTEMPTS\" WHERE \"PUBLIC_ID\"=?",
                                     String.class,
                                     id(first)))
                     .isEqualTo("LEASE_EXPIRED");
             // Keep the prior pending job out of the next loop's claim.
             jdbc.update(
-                    "UPDATE \"CV_MAPPING_JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()+interval '1 day' WHERE \"ID\"=?",
+                    "UPDATE \"MAPPING\".\"JOBS\" SET \"NEXT_ATTEMPT_AT\"=clock_timestamp()+interval '1 day' WHERE \"ID\"=?",
                     job);
         }
     }

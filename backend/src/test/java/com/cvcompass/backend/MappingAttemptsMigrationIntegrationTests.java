@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
-/** Independent check of the V13 constraints; uses only synthetic rows in a private schema. */
+/** Independent check of the V13 constraints; uses only synthetic rows in a private database. */
 class MappingAttemptsMigrationIntegrationTests {
     private static final String FINISHED = "TIMESTAMPTZ '2026-01-01 00:01:00+00'";
     private static final String OUTCOME = "'" + "c".repeat(64) + "'";
@@ -36,37 +36,31 @@ class MappingAttemptsMigrationIntegrationTests {
                         properties.get("spring.datasource.url").toString(),
                         properties.get("spring.datasource.username").toString(),
                         properties.get("spring.datasource.password").toString());
-        var flyway =
-                Flyway.configure()
-                        .dataSource(plain)
-                        .defaultSchema(database.schemaName())
-                        .schemas(database.schemaName())
-                        .load();
+        var flyway = Flyway.configure().dataSource(plain).load();
         flyway.migrate();
         flyway.validate();
         // Autocommit stays on, so every rejected statement is independent.
         source = new SingleConnectionDataSource(plain.getConnection(), true);
         jdbc = new JdbcTemplate(source);
-        jdbc.execute("SET search_path TO " + database.schemaName());
         long document =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_DOCUMENTS\" (\"ORIGINAL_FILENAME\",\"STORAGE_PATH\",\"FILE_SIZE\",\"MIME_TYPE\",\"SHA256\",\"STATUS\") VALUES ('synthetic.pdf','synthetic.pdf',1,'application/pdf',?,'COMPLETED') RETURNING \"ID\"",
+                        "INSERT INTO \"INGESTION\".\"DOCUMENTS\" (\"ORIGINAL_FILENAME\",\"STORAGE_PATH\",\"FILE_SIZE\",\"MIME_TYPE\",\"SHA256\",\"STATUS\") VALUES ('synthetic.pdf','synthetic.pdf',1,'application/pdf',?,'COMPLETED') RETURNING \"ID\"",
                         Long.class,
                         "a".repeat(64));
         long processing =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_PROCESSING_JOBS\" (\"CV_DOCUMENT_ID\",\"STATUS\") VALUES (?,'COMPLETED') RETURNING \"ID\"",
+                        "INSERT INTO \"INGESTION\".\"PROCESSING_JOBS\" (\"CV_DOCUMENT_ID\",\"STATUS\") VALUES (?,'COMPLETED') RETURNING \"ID\"",
                         Long.class,
                         document);
         long extraction =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_EXTRACTIONS\" (\"CV_DOCUMENT_ID\",\"PROCESSING_JOB_ID\",\"RAW_TEXT\",\"STRUCTURED_DATA\",\"EXTRACTION_METHOD\") VALUES (?,?,'Synthetic Person','{}'::jsonb,'TEXT_EXTRACTION') RETURNING \"ID\"",
+                        "INSERT INTO \"INGESTION\".\"EXTRACTIONS\" (\"CV_DOCUMENT_ID\",\"PROCESSING_JOB_ID\",\"RAW_TEXT\",\"STRUCTURED_DATA\",\"EXTRACTION_METHOD\") VALUES (?,?,'Synthetic Person','{}'::jsonb,'TEXT_EXTRACTION') RETURNING \"ID\"",
                         Long.class,
                         document,
                         processing);
         long config =
                 jdbc.queryForObject(
-                        "INSERT INTO \"CV_MAPPING_CONFIGS\" (\"REVISION\",\"DEFINITION\") VALUES ('synthetic-rev','{}'::jsonb) RETURNING \"ID\"",
+                        "INSERT INTO \"MAPPING\".\"CONFIGS\" (\"REVISION\",\"DEFINITION\") VALUES ('synthetic-rev','{}'::jsonb) RETURNING \"ID\"",
                         Long.class);
         job = mappingJob(extraction, config, "llm-extraction/1.0");
         secondJob = mappingJob(extraction, config, "synthetic-other/1.0");
@@ -74,7 +68,7 @@ class MappingAttemptsMigrationIntegrationTests {
 
     private static long mappingJob(long extraction, long config, String engine) {
         return jdbc.queryForObject(
-                "INSERT INTO \"CV_MAPPING_JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?) RETURNING \"ID\"",
+                "INSERT INTO \"MAPPING\".\"JOBS\" (\"EXTRACTION_ID\",\"CONFIG_ID\",\"ENGINE_VERSION\") VALUES (?,?,?) RETURNING \"ID\"",
                 Long.class,
                 extraction,
                 config,
@@ -84,24 +78,12 @@ class MappingAttemptsMigrationIntegrationTests {
     @AfterAll
     static void cleanup() throws Exception {
         if (source != null) source.destroy();
-        if (database != null) {
-            try (var connection =
-                            java.sql.DriverManager.getConnection(
-                                    System.getenv()
-                                            .getOrDefault(
-                                                    "TEST_DB_URL",
-                                                    "jdbc:postgresql://localhost:5432/cv_compass"),
-                                    System.getenv().getOrDefault("TEST_DB_USERNAME", "cvcompass"),
-                                    System.getenv("TEST_DB_PASSWORD"));
-                    var statement = connection.createStatement()) {
-                statement.execute("DROP SCHEMA " + database.schemaName() + " CASCADE");
-            }
-        }
+        if (database != null) database.close();
     }
 
     @BeforeEach
     void clean() {
-        jdbc.update("DELETE FROM \"CV_MAPPING_ATTEMPTS\"");
+        jdbc.update("DELETE FROM \"MAPPING\".\"ATTEMPTS\"");
     }
 
     private static Map<String, String> valid(long jobId) {
@@ -150,7 +132,7 @@ class MappingAttemptsMigrationIntegrationTests {
 
     private static int insert(Map<String, String> row) {
         return jdbc.update(
-                "INSERT INTO \"CV_MAPPING_ATTEMPTS\" (\""
+                "INSERT INTO \"MAPPING\".\"ATTEMPTS\" (\""
                         + String.join("\",\"", row.keySet())
                         + "\") VALUES ("
                         + String.join(",", row.values())
@@ -169,7 +151,7 @@ class MappingAttemptsMigrationIntegrationTests {
     @Test
     void baselineRowAndEveryTerminalShapeAreAccepted() {
         assertThat(insert(valid(job))).isEqualTo(1);
-        jdbc.update("DELETE FROM \"CV_MAPPING_ATTEMPTS\"");
+        jdbc.update("DELETE FROM \"MAPPING\".\"ATTEMPTS\"");
         insert(accepted(valid(job)));
         insert(with(failed(valid(job)), "ATTEMPT_NO", "2"));
         insert(
@@ -187,7 +169,7 @@ class MappingAttemptsMigrationIntegrationTests {
                         "'LEASE_EXPIRED'"));
         assertThat(
                         jdbc.queryForObject(
-                                "SELECT count(*) FROM \"CV_MAPPING_ATTEMPTS\"", Integer.class))
+                                "SELECT count(*) FROM \"MAPPING\".\"ATTEMPTS\"", Integer.class))
                 .isEqualTo(3);
     }
 
@@ -278,7 +260,7 @@ class MappingAttemptsMigrationIntegrationTests {
                 .isInstanceOf(DataIntegrityViolationException.class);
         // Once the active attempt ends, the next attempt number may become ACTIVE.
         jdbc.update(
-                "UPDATE \"CV_MAPPING_ATTEMPTS\" SET \"STATUS\"='FAILED',\"FINISHED_AT\"="
+                "UPDATE \"MAPPING\".\"ATTEMPTS\" SET \"STATUS\"='FAILED',\"FINISHED_AT\"="
                         + FINISHED
                         + ",\"END_REASON\"='X',\"ERROR_CODE\"='Y'");
         insert(with(valid(job), "ATTEMPT_NO", "2"));
@@ -312,7 +294,7 @@ class MappingAttemptsMigrationIntegrationTests {
                                         with(
                                                 failed(valid(secondJob)),
                                                 "PUBLIC_ID",
-                                                "(SELECT \"PUBLIC_ID\" FROM \"CV_MAPPING_ATTEMPTS\" LIMIT 1)",
+                                                "(SELECT \"PUBLIC_ID\" FROM \"MAPPING\".\"ATTEMPTS\" LIMIT 1)",
                                                 "ATTEMPT_NO",
                                                 "9")))
                 .as("PUBLIC_ID unique")
@@ -325,11 +307,12 @@ class MappingAttemptsMigrationIntegrationTests {
     @Test
     void jobWithAttemptsCannotBeDeletedAndRequiredIndexesExist() {
         insert(valid(job));
-        assertThatThrownBy(() -> jdbc.update("DELETE FROM \"CV_MAPPING_JOBS\" WHERE \"ID\"=?", job))
+        assertThatThrownBy(
+                        () -> jdbc.update("DELETE FROM \"MAPPING\".\"JOBS\" WHERE \"ID\"=?", job))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(
                         jdbc.queryForList(
-                                "SELECT indexname FROM pg_indexes WHERE schemaname=current_schema() AND tablename='CV_MAPPING_ATTEMPTS'",
+                                "SELECT indexname FROM pg_indexes WHERE schemaname='MAPPING' AND tablename='ATTEMPTS'",
                                 String.class))
                 .contains("UQ_MAPPING_ACTIVE_ATTEMPT", "IX_MAPPING_ATTEMPT_EXPIRY");
     }

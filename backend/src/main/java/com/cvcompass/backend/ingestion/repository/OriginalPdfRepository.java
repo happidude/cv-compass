@@ -16,7 +16,7 @@ public class OriginalPdfRepository {
     public Optional<OriginalPdfMetadata> metadata(long id) {
         return jdbc
                 .query(
-                        "SELECT \"STORAGE_PATH\",\"FILE_SIZE\",\"MIME_TYPE\" FROM \"CV_DOCUMENTS\" WHERE \"ID\"=?",
+                        "SELECT \"STORAGE_PATH\",\"FILE_SIZE\",\"MIME_TYPE\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                         (rs, n) ->
                                 new OriginalPdfMetadata(
                                         rs.getString(1), rs.getLong(2), rs.getString(3)),

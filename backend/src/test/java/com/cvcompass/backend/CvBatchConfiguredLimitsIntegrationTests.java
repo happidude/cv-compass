@@ -55,14 +55,15 @@ class CvBatchConfiguredLimitsIntegrationTests {
 
     @Test
     void configuredCountAndByteBoundariesPreserveStandaloneUploads() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT current_schema()", String.class))
-                .isEqualTo(DATABASE.schemaName());
+        assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
+                .isEqualTo(DATABASE.databaseName());
         try (var client = HttpClient.newHttpClient()) {
             var rejected = upload(client, "/api/batches", "files", 3, 100);
             assertThat(rejected.statusCode()).isEqualTo(400);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Integer.class))
+                                    "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                    Integer.class))
                     .isZero();
             var accepted = upload(client, "/api/batches", "files", 2, 100);
             assertThat(accepted.statusCode()).isEqualTo(201);
@@ -81,11 +82,12 @@ class CvBatchConfiguredLimitsIntegrationTests {
             assertThat(json.readTree(standalone.body()).get("sizeBytes").asInt()).isEqualTo(101);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_IMPORT_BATCHES\"", Integer.class))
+                                    "SELECT count(*) FROM \"INGESTION\".\"IMPORT_BATCHES\"",
+                                    Integer.class))
                     .isEqualTo(2);
             assertThat(
                             jdbc.queryForObject(
-                                    "SELECT count(*) FROM \"CV_DOCUMENTS\" WHERE \"BATCH_ID\" IS NULL",
+                                    "SELECT count(*) FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"BATCH_ID\" IS NULL",
                                     Integer.class))
                     .isEqualTo(1);
         }

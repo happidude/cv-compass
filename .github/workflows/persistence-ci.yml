@@ -60,7 +60,7 @@ jobs:
               base_sha="$PUSH_BEFORE"
             fi
             if [ -n "$base_sha" ] && git rev-parse --verify --quiet "$base_sha^{commit}" >/dev/null; then
-              count=$(git diff --name-only "$base_sha..$head_sha" -- backend frontend/tests/fixtures/llm-remote worker/design .github/workflows/persistence-ci.yml scripts/ci | wc -l)
+              count=$(git diff --name-only "$base_sha..$head_sha" -- backend frontend/tests/fixtures/llm-remote worker/design .github/workflows/persistence-ci.yml scripts/ci docs/db .tbls.yml | wc -l)
               echo "changed relevant paths: $count"
               if [ "$count" -eq 0 ]; then run=false; fi
             fi
@@ -131,6 +131,38 @@ jobs:
         run: chmod +x gradlew
       - name: Verify persistence foundation
         run: ./gradlew check
+      - name: Apply migrations for schema docs
+        # Same algorithm as docs/VERIFICATION.md: plain psql in version order, not Flyway.
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD="$TEST_DB_PASSWORD"
+          psql -h localhost -U cvcompass_ci -d cv_compass_ci -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tbls_doc'
+          for f in $(ls backend/src/main/resources/db/migration | grep -E '^V[0-9]+__.*\.sql$' | sort -V); do
+            psql -h localhost -U cvcompass_ci -d tbls_doc -v ON_ERROR_STOP=1 -1 -q -f "backend/src/main/resources/db/migration/$f"
+          done
+      - name: Install tbls (pinned)
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSLo tbls.tar.gz https://github.com/k1LoW/tbls/releases/download/v1.96.1/tbls_v1.96.1_linux_amd64.tar.gz
+          echo "18285eef0ba7d917214e8bd7dd6a22afe5fea021eed52e7149100a3d10a2af95  tbls.tar.gz" | sha256sum -c -
+          mkdir tbls-bin
+          tar -xzf tbls.tar.gz -C tbls-bin tbls
+          echo "$RUNNER_TEMP/tbls-bin" >> "$GITHUB_PATH"
+      - name: Check schema docs are current
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TBLS_DSN="postgres://${TEST_DB_USERNAME}:${TEST_DB_PASSWORD}@localhost:5432/tbls_doc?sslmode=disable"
+          if ! tbls diff -c .tbls.yml; then
+            echo "::error::docs/db is out of date. Regenerate with 'tbls doc --force -c .tbls.yml' (see docs/VERIFICATION.md) and commit."
+            exit 1
+          fi
       - name: Upload failure evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

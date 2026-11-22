@@ -35,7 +35,7 @@ public class MappingRepository {
         var existing =
                 jdbc.query(
                         """
-                SELECT "ID" FROM "CV_MAPPING_CONFIGS" WHERE "REVISION"=? AND "DEFINITION"=?::jsonb
+                SELECT "ID" FROM "MAPPING"."CONFIGS" WHERE "REVISION"=? AND "DEFINITION"=?::jsonb
                 """,
                         (rs, n) -> rs.getLong(1),
                         revision,
@@ -43,7 +43,7 @@ public class MappingRepository {
         if (!existing.isEmpty()) return existing.getFirst();
         return jdbc.queryForObject(
                 """
-                INSERT INTO "CV_MAPPING_CONFIGS" ("REVISION","DEFINITION","CONTENT_SHA256","VALIDATION_STATE")
+                INSERT INTO "MAPPING"."CONFIGS" ("REVISION","DEFINITION","CONTENT_SHA256","VALIDATION_STATE")
                 VALUES (?,?::jsonb,?,'TESTED') RETURNING "ID"
                 """,
                 Long.class,
@@ -55,7 +55,7 @@ public class MappingRepository {
     public String definitionJson(long id) {
         return jdbc.queryForObject(
                 """
-                SELECT "DEFINITION"::text FROM "CV_MAPPING_CONFIGS" WHERE "ID"=?
+                SELECT "DEFINITION"::text FROM "MAPPING"."CONFIGS" WHERE "ID"=?
                 """,
                 String.class,
                 id);
@@ -64,7 +64,7 @@ public class MappingRepository {
     public long[] lockSettings() {
         return jdbc.queryForObject(
                 """
-                SELECT "ACTIVE_CONFIG_ID","SCAN_AFTER_ID","SCAN_UPPER_ID" FROM "CV_MAPPING_SETTINGS" WHERE "ID"=1 FOR UPDATE
+                SELECT "ACTIVE_CONFIG_ID","SCAN_AFTER_ID","SCAN_UPPER_ID" FROM "MAPPING"."SETTINGS" WHERE "ID"=1 FOR UPDATE
                 """,
                 (rs, n) -> new long[] {rs.getLong(1), rs.getLong(2), rs.getLong(3)});
     }
@@ -72,7 +72,7 @@ public class MappingRepository {
     public void activate(long id, String digest) {
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_CONFIGS" SET "ACTIVATED_AT"=clock_timestamp(),
+                UPDATE "MAPPING"."CONFIGS" SET "ACTIVATED_AT"=clock_timestamp(),
                 "CONTENT_SHA256"=?,"VALIDATION_STATE"='ACTIVE'
                 WHERE "ID"=? AND "ACTIVATED_AT" IS NULL
                 """,
@@ -80,7 +80,7 @@ public class MappingRepository {
                 id);
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_SETTINGS" SET "ACTIVE_CONFIG_ID"=?,"SCAN_AFTER_ID"=0,"SCAN_UPPER_ID"=NULL
+                UPDATE "MAPPING"."SETTINGS" SET "ACTIVE_CONFIG_ID"=?,"SCAN_AFTER_ID"=0,"SCAN_UPPER_ID"=NULL
                 WHERE "ID"=1 AND "ACTIVE_CONFIG_ID" IS DISTINCT FROM ?
                 """,
                 id,
@@ -89,7 +89,7 @@ public class MappingRepository {
 
     public void cursor(long id, Long upperId) {
         jdbc.update(
-                "UPDATE \"CV_MAPPING_SETTINGS\" SET \"SCAN_AFTER_ID\"=?,\"SCAN_UPPER_ID\"=? WHERE \"ID\"=1",
+                "UPDATE \"MAPPING\".\"SETTINGS\" SET \"SCAN_AFTER_ID\"=?,\"SCAN_UPPER_ID\"=? WHERE \"ID\"=1",
                 id,
                 upperId);
     }
@@ -102,7 +102,7 @@ public class MappingRepository {
         int inserted =
                 jdbc.update(
                         """
-                INSERT INTO "CV_MAPPING_JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
+                INSERT INTO "MAPPING"."JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
                 VALUES (?,?,?,?) ON CONFLICT ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") DO NOTHING
                 """,
                         extractionId,
@@ -112,7 +112,7 @@ public class MappingRepository {
         if (inserted == 1) {
             long jobId =
                     jdbc.queryForObject(
-                            "SELECT \"ID\" FROM \"CV_MAPPING_JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=? AND \"ENGINE_VERSION\"=?",
+                            "SELECT \"ID\" FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=? AND \"CONFIG_ID\"=? AND \"ENGINE_VERSION\"=?",
                             Long.class,
                             extractionId,
                             configId,
@@ -131,7 +131,7 @@ public class MappingRepository {
     /** Read only identity metadata for operational logs. */
     public long documentId(long jobId) {
         return jdbc.queryForObject(
-                "SELECT e.\"CV_DOCUMENT_ID\" FROM \"CV_MAPPING_JOBS\" j JOIN \"CV_EXTRACTIONS\" e ON e.\"ID\"=j.\"EXTRACTION_ID\" WHERE j.\"ID\"=?",
+                "SELECT e.\"CV_DOCUMENT_ID\" FROM \"MAPPING\".\"JOBS\" j JOIN \"INGESTION\".\"EXTRACTIONS\" e ON e.\"ID\"=j.\"EXTRACTION_ID\" WHERE j.\"ID\"=?",
                 Long.class,
                 jobId);
     }
@@ -238,8 +238,8 @@ public class MappingRepository {
         var ids =
                 jdbc.query(
                         """
-                SELECT "ID" FROM "CV_MAPPING_JOBS" WHERE "STATUS"='PENDING'
-                AND "ENGINE_VERSION" IN (?,?,?,?,?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1','personal-info-mapping/3.2','personal-info-mapping/3.3','personal-info-mapping/3.4','personal-info-mapping/3.5') OR EXISTS(SELECT 1 FROM "CV_MAPPING_CONFIGS" c WHERE c."ID"="CV_MAPPING_JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="CV_MAPPING_JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
+                SELECT "ID" FROM "MAPPING"."JOBS" WHERE "STATUS"='PENDING'
+                AND "ENGINE_VERSION" IN (?,?,?,?,?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1','personal-info-mapping/3.2','personal-info-mapping/3.3','personal-info-mapping/3.4','personal-info-mapping/3.5') OR EXISTS(SELECT 1 FROM "MAPPING"."CONFIGS" c WHERE c."ID"="MAPPING"."JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="MAPPING"."JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
                 ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
@@ -257,7 +257,7 @@ public class MappingRepository {
         jdbc.update(
                 """
                 WITH timing AS MATERIALIZED (SELECT clock_timestamp() AS now)
-                UPDATE "CV_MAPPING_JOBS" SET "STATUS"='PROCESSING',"ATTEMPTS"="ATTEMPTS"+1,
+                UPDATE "MAPPING"."JOBS" SET "STATUS"='PROCESSING',"ATTEMPTS"="ATTEMPTS"+1,
                 "TOKEN"=?,"LEASE_EXPIRES_AT"=timing.now+?*interval '1 millisecond',
                 "HARD_DEADLINE_AT"=timing.now+?*interval '1 millisecond',"ERROR_CODE"=NULL FROM timing WHERE "ID"=?
                 """,
@@ -272,7 +272,7 @@ public class MappingRepository {
         return jdbc.queryForObject(
                 """
                 SELECT j.*,c."REVISION",c."DEFINITION"::text AS definition
-                FROM "CV_MAPPING_JOBS" j JOIN "CV_MAPPING_CONFIGS" c ON c."ID"=j."CONFIG_ID"
+                FROM "MAPPING"."JOBS" j JOIN "MAPPING"."CONFIGS" c ON c."ID"=j."CONFIG_ID"
                 WHERE j."ID"=?
                 """,
                 (rs, n) -> claimRow(rs),
@@ -297,7 +297,7 @@ public class MappingRepository {
     public Job lockJob(long id) {
         return jdbc.queryForObject(
                 """
-                SELECT "STATUS","TOKEN","LEASE_EXPIRES_AT","ATTEMPTS","HARD_DEADLINE_AT","MAX_ATTEMPTS" FROM "CV_MAPPING_JOBS" WHERE "ID"=? FOR UPDATE
+                SELECT "STATUS","TOKEN","LEASE_EXPIRES_AT","ATTEMPTS","HARD_DEADLINE_AT","MAX_ATTEMPTS" FROM "MAPPING"."JOBS" WHERE "ID"=? FOR UPDATE
                 """,
                 (rs, n) ->
                         new Job(
@@ -317,7 +317,7 @@ public class MappingRepository {
 
     public String digest(long id) {
         return jdbc.queryForObject(
-                "SELECT \"DIGEST\" FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                "SELECT \"DIGEST\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                 String.class,
                 id);
     }
@@ -325,7 +325,7 @@ public class MappingRepository {
     public Optional<String> result(long id) {
         return jdbc
                 .query(
-                        "SELECT \"RESULT\"::text FROM \"CV_MAPPING_RESULTS\" WHERE \"JOB_ID\"=?",
+                        "SELECT \"RESULT\"::text FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                         (rs, n) -> rs.getString(1),
                         id)
                 .stream()
@@ -335,7 +335,7 @@ public class MappingRepository {
     public void finish(long id, int schemaVersion, String digest, String quality, String result) {
         jdbc.update(
                 """
-                INSERT INTO "CV_MAPPING_RESULTS" ("JOB_ID","SCHEMA_VERSION","QUALITY","DIGEST","RESULT")
+                INSERT INTO "MAPPING"."RESULTS" ("JOB_ID","SCHEMA_VERSION","QUALITY","DIGEST","RESULT")
                 VALUES (?,?,?,?,?::jsonb)
                 """,
                 id,
@@ -345,7 +345,7 @@ public class MappingRepository {
                 result);
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_JOBS" SET "STATUS"='COMPLETED',"COMPLETED_AT"=clock_timestamp() WHERE "ID"=?
+                UPDATE "MAPPING"."JOBS" SET "STATUS"='COMPLETED',"COMPLETED_AT"=clock_timestamp() WHERE "ID"=?
                 """,
                 id);
     }
@@ -353,7 +353,7 @@ public class MappingRepository {
     public List<Long> expired(int limit) {
         return jdbc.query(
                 """
-                SELECT "ID" FROM "CV_MAPPING_JOBS"
+                SELECT "ID" FROM "MAPPING"."JOBS"
                 WHERE "STATUS"='PROCESSING' AND "ENGINE_VERSION"<>'llm-extraction/1.0' AND "LEASE_EXPIRES_AT"<=clock_timestamp()
                 ORDER BY "LEASE_EXPIRES_AT","ID" LIMIT ? FOR UPDATE SKIP LOCKED
                 """,
@@ -364,7 +364,7 @@ public class MappingRepository {
     public boolean pinInput(long id, String digest) {
         return jdbc.update(
                         """
-                UPDATE "CV_MAPPING_JOBS" SET "INPUT_SHA256"=COALESCE("INPUT_SHA256",?)
+                UPDATE "MAPPING"."JOBS" SET "INPUT_SHA256"=COALESCE("INPUT_SHA256",?)
                 WHERE "ID"=? AND ("INPUT_SHA256" IS NULL OR "INPUT_SHA256"=?)
                 """,
                         digest,
@@ -383,7 +383,7 @@ public class MappingRepository {
         boolean terminal = !retryable || attempts >= maxAttempts;
         jdbc.update(
                 """
-                UPDATE "CV_MAPPING_JOBS" SET "STATUS"=?,"TOKEN"=NULL,"LEASE_EXPIRES_AT"=NULL,
+                UPDATE "MAPPING"."JOBS" SET "STATUS"=?,"TOKEN"=NULL,"LEASE_EXPIRES_AT"=NULL,
                 "NEXT_ATTEMPT_AT"=clock_timestamp()+?*interval '1 millisecond',"ERROR_CODE"=?,
                 "COMPLETED_AT"=CASE WHEN ? THEN clock_timestamp() ELSE NULL END WHERE "ID"=?
                 """,

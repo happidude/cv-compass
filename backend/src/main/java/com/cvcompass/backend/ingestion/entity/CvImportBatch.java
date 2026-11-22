@@ -15,7 +15,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "\"CV_IMPORT_BATCHES\"")
+@Table(schema = "\"INGESTION\"", name = "\"IMPORT_BATCHES\"")
 public class CvImportBatch extends BaseEntity {
 
     @Column(name = "\"TOTAL_FILES\"", nullable = false)

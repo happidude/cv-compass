@@ -20,52 +20,34 @@ class OcrMigrationIntegrationTests {
                             properties.get("spring.datasource.url").toString(),
                             properties.get("spring.datasource.username").toString(),
                             properties.get("spring.datasource.password").toString());
-            Flyway.configure()
-                    .dataSource(source)
-                    .defaultSchema(database.schemaName())
-                    .schemas(database.schemaName())
-                    .target("5")
-                    .load()
-                    .migrate();
+            Flyway.configure().dataSource(source).target("5").load().migrate();
             var jdbc = new JdbcTemplate(source);
-            jdbc.execute("SET search_path TO " + database.schemaName());
-            // JdbcTemplate obtains fresh connections, so qualify the isolated schema explicitly.
-            String prefix = database.schemaName() + ".";
             long document =
                     jdbc.queryForObject(
                             "INSERT INTO "
-                                    + prefix
                                     + "\"CV_DOCUMENTS\" (\"ORIGINAL_FILENAME\",\"STORAGE_PATH\",\"FILE_SIZE\",\"MIME_TYPE\",\"SHA256\",\"STATUS\") VALUES ('synthetic.pdf','synthetic.pdf',1,'application/pdf',?,'COMPLETED') RETURNING \"ID\"",
                             Long.class,
                             "a".repeat(64));
             long job =
                     jdbc.queryForObject(
                             "INSERT INTO "
-                                    + prefix
                                     + "\"CV_PROCESSING_JOBS\" (\"CV_DOCUMENT_ID\",\"STATUS\",\"RETRY_COUNT\",\"ERROR_MESSAGE\") VALUES (?,'COMPLETED',7,'legacy marker') RETURNING \"ID\"",
                             Long.class,
                             document);
             long extraction =
                     jdbc.queryForObject(
                             "INSERT INTO "
-                                    + prefix
                                     + "\"CV_EXTRACTIONS\" (\"CV_DOCUMENT_ID\",\"PROCESSING_JOB_ID\",\"RAW_TEXT\",\"STRUCTURED_DATA\",\"EXTRACTION_METHOD\") VALUES (?,?,'Synthetic legacy','{}'::jsonb,'TEXT_EXTRACTION') RETURNING \"ID\"",
                             Long.class,
                             document,
                             job);
-            Flyway finalFlyway =
-                    Flyway.configure()
-                            .dataSource(source)
-                            .defaultSchema(database.schemaName())
-                            .schemas(database.schemaName())
-                            .load();
-            assertThat(finalFlyway.migrate().migrationsExecuted).isEqualTo(8);
+            Flyway finalFlyway = Flyway.configure().dataSource(source).load();
+            assertThat(finalFlyway.migrate().migrationsExecuted).isEqualTo(9);
             finalFlyway.validate();
             assertThat(
                             jdbc.queryForMap(
                                     "SELECT \"RETRY_COUNT\",\"ERROR_MESSAGE\",\"PROFILE_REVISION\" FROM "
-                                            + prefix
-                                            + "\"CV_PROCESSING_JOBS\" WHERE \"ID\"=?",
+                                            + "\"INGESTION\".\"PROCESSING_JOBS\" WHERE \"ID\"=?",
                                     job))
                     .containsEntry("RETRY_COUNT", 7)
                     .containsEntry("ERROR_MESSAGE", "legacy marker")
@@ -73,8 +55,7 @@ class OcrMigrationIntegrationTests {
             assertThat(
                             jdbc.queryForMap(
                                     "SELECT \"RAW_TEXT\",\"STRUCTURED_DATA\"::text,\"ATTEMPT_ID\",\"OCR_RESULT\" FROM "
-                                            + prefix
-                                            + "\"CV_EXTRACTIONS\" WHERE \"ID\"=?",
+                                            + "\"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?",
                                     extraction))
                     .containsEntry("RAW_TEXT", "Synthetic legacy")
                     .containsEntry("STRUCTURED_DATA", "{}")
@@ -84,7 +65,7 @@ class OcrMigrationIntegrationTests {
                             jdbc.queryForObject(
                                     "SELECT count(*) FROM pg_constraint WHERE connamespace=?::regnamespace AND conname='FK_EXTRACTION_JOB_DOCUMENT'",
                                     Integer.class,
-                                    database.schemaName()))
+                                    "\"INGESTION\""))
                     .isEqualTo(1);
         }
     }
