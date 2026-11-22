@@ -70,7 +70,9 @@ class TrimTests(unittest.TestCase):
         doc = document('One\nTwo\nThree\n2\nFour\nFive\nSix')
         self.assertIn('\n2\n', trim_spans(split_lines(doc.pages))[1])
         doc = document('© example.vn\nBody\n+--+\nΩ')
-        self.assertEqual(trim_spans(split_lines(doc.pages), phrases=('© EXAMPLE.VN',))[1], 'Body\nΩ')
+        self.assertEqual(
+            trim_spans(split_lines(doc.pages), phrases=('© EXAMPLE.VN',))[1], 'Body\nΩ'
+        )
 
     def test_phrase_matching_preserves_internal_whitespace_for_exact_match(self):
         doc = document('Private  and Confidential\nPrivate and Confidential')
