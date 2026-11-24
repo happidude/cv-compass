@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -28,13 +29,18 @@ class CandidateIdentityArchitectureTests {
         for (var type : CLASSES) {
             Class<?> actual = type.reflect();
             if (type.getSimpleName().equals("package-info")) {
-                if (actual.getPackageName().equals(BASE + "candidate.catalogapi")) {
+                var namedInterfaces =
+                        Map.of(
+                                BASE + "candidate.catalogapi", "catalog-links",
+                                BASE + "candidate.events", "events",
+                                BASE + "candidate.metrics", "metrics");
+                if (namedInterfaces.containsKey(actual.getPackageName())) {
                     assertThat(
                                     actual.getAnnotation(
                                                     org.springframework.modulith.NamedInterface
                                                             .class)
                                             .value())
-                            .containsExactly("catalog-links");
+                            .containsExactly(namedInterfaces.get(actual.getPackageName()));
                     continue;
                 }
                 assertThat(
@@ -60,11 +66,15 @@ class CandidateIdentityArchitectureTests {
                                         "config",
                                         "exception",
                                         "mapper",
-                                        "catalogapi"))
+                                        "catalogapi",
+                                        "events",
+                                        "metrics"))
                         .as(type.getName())
                         .contains(layer);
             if (actual.isRecord())
-                assertLayer(actual, layer.equals("catalogapi") ? "catalogapi" : "dto");
+                assertLayer(
+                        actual,
+                        Set.of("catalogapi", "events", "metrics").contains(layer) ? layer : "dto");
             if (actual.getSimpleName().endsWith("Mapper"))
                 assertLayer(actual, pkg.equals(BASE + "candidate.mapping") ? "mapping" : "mapper");
             if (actual.isAnnotationPresent(RestController.class)) assertLayer(actual, "controller");

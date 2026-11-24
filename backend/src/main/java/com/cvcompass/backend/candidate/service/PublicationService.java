@@ -1,5 +1,6 @@
 package com.cvcompass.backend.candidate.service;
 
+import com.cvcompass.backend.candidate.events.CandidateChanged;
 import com.cvcompass.backend.candidate.mapper.CandidateValueMapper;
 import com.cvcompass.backend.candidate.mapping.PersonalInfoMapper;
 import com.cvcompass.backend.candidate.repository.CandidateProfileRepository;
@@ -10,12 +11,14 @@ import com.cvcompass.backend.web.OperationalLog;
 import java.util.HashMap;
 import java.util.UUID;
 import org.slf4j.event.Level;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class PublicationService {
+    private final ApplicationEventPublisher events;
     private final PublicationRepository publications;
     private final CandidateProfileRepository repository;
     private final CompletedMappings mappings;
@@ -33,7 +36,9 @@ public class PublicationService {
             CandidateQueryService queries,
             CandidateRevisionService revisions,
             CandidateExperienceService experiences,
-            ObjectMapper json) {
+            ObjectMapper json,
+            ApplicationEventPublisher events) {
+        this.events = events;
         this.publications = publications;
         this.repository = repository;
         this.mappings = mappings;
@@ -145,6 +150,7 @@ public class PublicationService {
                 id,
                 json.createObjectNode().put("schemaVersion", 1).set("mapping", body).toString());
         revisions.revision(id, version, "SYSTEM", "PUBLISH_MAPPING", before, queries.detail(id));
+        events.publishEvent(new CandidateChanged(id));
         return true;
     }
 

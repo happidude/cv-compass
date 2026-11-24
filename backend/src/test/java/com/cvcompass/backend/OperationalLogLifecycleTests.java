@@ -195,7 +195,8 @@ class OperationalLogLifecycleTests {
                         mock(CandidateQueryService.class),
                         mock(CandidateRevisionService.class),
                         mock(CandidateExperienceService.class),
-                        MappingRemoteFixtures.JSON);
+                        MappingRemoteFixtures.JSON,
+                        event -> {});
         assertThat(service.publish(30)).isTrue();
         assertThat(commitOne())
                 .containsEntry("event", "CANDIDATE_PUBLICATION_RECORDED")
@@ -409,7 +410,8 @@ class OperationalLogLifecycleTests {
                         mock(CandidateQueryService.class, RETURNS_DEEP_STUBS),
                         mock(CandidateRevisionService.class),
                         mock(CandidateExperienceService.class),
-                        MappingRemoteFixtures.JSON);
+                        MappingRemoteFixtures.JSON,
+                        event -> {});
         assertThat(service.publish(30)).isTrue();
         assertThat(commitOne())
                 .containsEntry("documentId", "12")

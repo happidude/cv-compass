@@ -13,8 +13,8 @@ import java.util.regex.Pattern;
  * source (pre- and post-2025 units both resolve to their own name); the grammar never converts a
  * former province into the unit it was merged into, because that would be inferred data.
  */
-final class PersonalInfoProvinces {
-    record Match(String canonical, int start, int end) {}
+public final class PersonalInfoProvinces {
+    public record Match(String canonical, int start, int end) {}
 
     private record Alias(String canonical, Pattern pattern, int length) {}
 
@@ -111,7 +111,7 @@ final class PersonalInfoProvinces {
     private PersonalInfoProvinces() {}
 
     /** Returns the province named last in the text (addresses end with the widest unit). */
-    static Match find(String text) {
+    public static Match find(String text) {
         var folded = fold(text);
         Match best = null;
         int bestLength = 0;

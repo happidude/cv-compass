@@ -143,7 +143,9 @@ class LlmRemoteSerializationTests {
                         })
                 .when(profiles)
                 .revision(eq(1L), anyLong(), anyString(), anyString(), anyString(), anyString());
-        var queries = new CandidateQueryService(profiles, documents);
+        var queries =
+                new CandidateQueryService(
+                        profiles, documents, new CandidateExperienceTotals(profiles, documents));
         var revisions = new CandidateRevisionService(profiles, queries, json);
         var publication =
                 new PublicationService(
@@ -154,7 +156,8 @@ class LlmRemoteSerializationTests {
                         queries,
                         revisions,
                         new CandidateExperienceService(profiles, new CandidateValueMapper()),
-                        json);
+                        json,
+                        event -> {});
         var softly = new org.assertj.core.api.SoftAssertions();
         for (boolean subsequent : List.of(false, true)) {
             long resultId = subsequent ? 102 : 101;

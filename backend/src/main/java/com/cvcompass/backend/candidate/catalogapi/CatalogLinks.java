@@ -11,6 +11,17 @@ public interface CatalogLinks {
 
     Optional<ProfileLink> profile(long candidateId);
 
+    /** Locks the same profile row as HR writers before reading an index snapshot. */
+    Optional<IndexProfile> lockIndexProfile(long candidateId);
+
+    void metrics(long candidateId, ProfileLink metrics);
+
+    long lastCandidateId();
+
+    List<Long> indexCandidates(long after, long through, int limit, boolean ongoingOnly);
+
+    record IndexProfile(String fullName, String location, String summary) {}
+
     /** Updates only the selected, non-deleted experience of this candidate. */
     boolean normalize(long candidateId, UUID experienceId, Normalization normalization);
 
