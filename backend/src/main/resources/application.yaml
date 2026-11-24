@@ -33,6 +33,13 @@ logging:
 
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
+  catalog:
+    import:
+      max-entries: ${CV_CATALOG_IMPORT_MAX_ENTRIES:10000}
+      max-aliases-per-entry: ${CV_CATALOG_IMPORT_MAX_ALIASES_PER_ENTRY:50}
+    taxonomy:
+      resource-path: ${CV_CATALOG_TAXONOMY_RESOURCE_PATH:classpath:catalog/taxonomy-v0.json}
+      version-label: ${CV_CATALOG_TAXONOMY_VERSION_LABEL:cv-taxonomy/0}
   candidate:
     publication:
       enabled: ${CV_CANDIDATE_PUBLICATION_ENABLED:false}

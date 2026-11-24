@@ -18,14 +18,18 @@
 | [MAPPING.SETTINGS](MAPPING.SETTINGS.md) | 4 | Cấu hình ánh xạ đang hoạt động và con trỏ quét bền vững. | BASE TABLE |
 | [MAPPING.JOBS](MAPPING.JOBS.md) | 15 | Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên bản bộ máy. | BASE TABLE |
 | [MAPPING.RESULTS](MAPPING.RESULTS.md) | 7 | Kết quả ánh xạ bất biến cùng phiên bản cấu trúc và chất lượng. | BASE TABLE |
-| [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | 13 | Hồ sơ ứng viên có phiên bản và trạng thái xác nhận thông tin. | BASE TABLE |
-| [CANDIDATE.EXPERIENCES](CANDIDATE.EXPERIENCES.md) | 21 | Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nhận. | BASE TABLE |
+| [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | 19 | Hồ sơ ứng viên có phiên bản và trạng thái xác nhận thông tin. | BASE TABLE |
+| [CANDIDATE.EXPERIENCES](CANDIDATE.EXPERIENCES.md) | 27 | Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nhận. | BASE TABLE |
 | [CANDIDATE.PUBLICATIONS](CANDIDATE.PUBLICATIONS.md) | 8 | Sổ công bố kết quả ánh xạ vào hồ sơ ứng viên. | BASE TABLE |
 | [CANDIDATE.PROPOSALS](CANDIDATE.PROPOSALS.md) | 9 | Đề xuất cập nhật hồ sơ từ kết quả ánh xạ và quyết định xử lý. | BASE TABLE |
 | [CANDIDATE.HISTORY](CANDIDATE.HISTORY.md) | 8 | Lịch sử thay đổi hồ sơ ứng viên theo phiên bản. | BASE TABLE |
 | [CANDIDATE.PUBLICATION_SETTINGS](CANDIDATE.PUBLICATION_SETTINGS.md) | 3 | Con trỏ quét bền vững phục vụ công bố hồ sơ. | BASE TABLE |
 | [IDENTITY.USERS](IDENTITY.USERS.md) | 4 | Tài khoản người dùng cùng vai trò và trạng thái hoạt động. | BASE TABLE |
 | [MAPPING.ATTEMPTS](MAPPING.ATTEMPTS.md) | 19 | Lần thực hiện ánh xạ từ xa cùng thời hạn thuê và kết quả kết thúc. | BASE TABLE |
+| [CATALOG.TAXONOMY_CODES](CATALOG.TAXONOMY_CODES.md) | 5 | Bảng mã phân loại theo phiên bản đã duyệt. | BASE TABLE |
+| [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | 14 | Danh mục công ty và chức danh chuẩn hóa theo loại. | BASE TABLE |
+| [CATALOG.ALIASES](CATALOG.ALIASES.md) | 6 | Bí danh công ty và chức danh duy nhất theo loại và chuỗi đã bỏ dấu. | BASE TABLE |
+| [SEARCH.CANDIDATE_INDEX](SEARCH.CANDIDATE_INDEX.md) | 14 | Bản chỉ mục tìm kiếm tổng hợp theo ứng viên. | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -33,6 +37,41 @@
 | ---- | ------- | ------- | ---- |
 | public.protect_mapping_config | trigger |  | FUNCTION |
 | public.protect_mapping_result | trigger |  | FUNCTION |
+| public.unaccent | text | regdictionary, text | FUNCTION |
+| public.unaccent | text | text | FUNCTION |
+| public.unaccent_init | internal | internal | FUNCTION |
+| public.unaccent_lexize | internal | internal, internal, internal, internal | FUNCTION |
+| public.set_limit | float4 | real | FUNCTION |
+| public.show_limit | float4 |  | FUNCTION |
+| public.show_trgm | _text | text | FUNCTION |
+| public.similarity | float4 | text, text | FUNCTION |
+| public.similarity_op | bool | text, text | FUNCTION |
+| public.word_similarity | float4 | text, text | FUNCTION |
+| public.word_similarity_op | bool | text, text | FUNCTION |
+| public.word_similarity_commutator_op | bool | text, text | FUNCTION |
+| public.similarity_dist | float4 | text, text | FUNCTION |
+| public.word_similarity_dist_op | float4 | text, text | FUNCTION |
+| public.word_similarity_dist_commutator_op | float4 | text, text | FUNCTION |
+| public.gtrgm_in | gtrgm | cstring | FUNCTION |
+| public.gtrgm_out | cstring | gtrgm | FUNCTION |
+| public.gtrgm_consistent | bool | internal, text, smallint, oid, internal | FUNCTION |
+| public.gtrgm_distance | float8 | internal, text, smallint, oid, internal | FUNCTION |
+| public.gtrgm_compress | internal | internal | FUNCTION |
+| public.gtrgm_decompress | internal | internal | FUNCTION |
+| public.gtrgm_penalty | internal | internal, internal, internal | FUNCTION |
+| public.gtrgm_picksplit | internal | internal, internal | FUNCTION |
+| public.gtrgm_union | gtrgm | internal, internal | FUNCTION |
+| public.gtrgm_same | internal | gtrgm, gtrgm, internal | FUNCTION |
+| public.gin_extract_value_trgm | internal | text, internal | FUNCTION |
+| public.gin_extract_query_trgm | internal | text, internal, smallint, internal, internal, internal, internal | FUNCTION |
+| public.gin_trgm_consistent | bool | internal, smallint, text, integer, internal, internal, internal, internal | FUNCTION |
+| public.gin_trgm_triconsistent | char | internal, smallint, text, integer, internal, internal, internal | FUNCTION |
+| public.strict_word_similarity | float4 | text, text | FUNCTION |
+| public.strict_word_similarity_op | bool | text, text | FUNCTION |
+| public.strict_word_similarity_commutator_op | bool | text, text | FUNCTION |
+| public.strict_word_similarity_dist_op | float4 | text, text | FUNCTION |
+| public.strict_word_similarity_dist_commutator_op | float4 | text, text | FUNCTION |
+| public.gtrgm_options | void | internal | FUNCTION |
 
 ## Relations
 
@@ -56,9 +95,13 @@ erDiagram
 "MAPPING.JOBS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
 "MAPPING.RESULTS" |o--|| "MAPPING.JOBS" : "FOREIGN KEY (#quot;JOB_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;JOBS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PROFILES" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;)"
+"CANDIDATE.PROFILES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;CURRENT_COMPANY_ID#quot;, #quot;CURRENT_COMPANY_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CANDIDATE.PROFILES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;CURRENT_TITLE_ID#quot;, #quot;CURRENT_TITLE_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "INGESTION.DOCUMENTS" : "FOREIGN KEY (#quot;DOCUMENT_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;DOCUMENTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--o| "MAPPING.RESULTS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;RESULTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.EXPERIENCES" }o--|| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;COMPANY_ID#quot;, #quot;COMPANY_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CANDIDATE.EXPERIENCES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;TITLE_ID#quot;, #quot;TITLE_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
 "CANDIDATE.PUBLICATIONS" }o--|| "INGESTION.DOCUMENTS" : "FOREIGN KEY (#quot;DOCUMENT_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;DOCUMENTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PUBLICATIONS" |o--|| "MAPPING.RESULTS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;RESULTS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PUBLICATIONS" }o--o| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
@@ -67,6 +110,9 @@ erDiagram
 "CANDIDATE.PROPOSALS" }o--|| "CANDIDATE.PUBLICATIONS" : "FOREIGN KEY (#quot;RESULT_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PUBLICATIONS#quot;(#quot;RESULT_ID#quot;)"
 "CANDIDATE.HISTORY" }o--|| "CANDIDATE.PROFILES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;PROFILES#quot;(#quot;CANDIDATE_ID#quot;)"
 "MAPPING.ATTEMPTS" }o--|| "MAPPING.JOBS" : "FOREIGN KEY (#quot;JOB_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;JOBS#quot;(#quot;ID#quot;)"
+"CATALOG.ENTRIES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;PARENT_ID#quot;, #quot;PARENT_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
+"CATALOG.ALIASES" }o--|| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;ENTRY_ID#quot;, #quot;KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;) ON DELETE CASCADE"
+"SEARCH.CANDIDATE_INDEX" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;) ON DELETE CASCADE"
 
 "public.event_publication" {
   uuid id
@@ -262,6 +308,12 @@ erDiagram
   jsonb EXTENSIONS
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone UPDATED_AT
+  varchar_64_ LOCATION_PROVINCE
+  integer TOTAL_EXPERIENCE_MONTHS
+  bigint CURRENT_COMPANY_ID FK
+  varchar_8_ CURRENT_COMPANY_KIND FK
+  bigint CURRENT_TITLE_ID FK
+  varchar_8_ CURRENT_TITLE_KIND FK
 }
 "CANDIDATE.EXPERIENCES" {
   uuid ID
@@ -285,6 +337,12 @@ erDiagram
   bigint DOCUMENT_ID FK
   bigint RESULT_ID FK
   boolean DELETED
+  bigint COMPANY_ID FK
+  varchar_8_ COMPANY_KIND FK
+  bigint TITLE_ID FK
+  varchar_8_ TITLE_KIND FK
+  varchar_64_ SCOPE_CODE
+  varchar_8_ NORMALIZATION_ORIGIN
 }
 "CANDIDATE.PUBLICATIONS" {
   bigint RESULT_ID FK
@@ -348,6 +406,53 @@ erDiagram
   character_64_ OUTCOME_SHA256
   jsonb PROVENANCE
   timestamp_with_time_zone CREATED_AT
+}
+"CATALOG.TAXONOMY_CODES" {
+  varchar_16_ KIND
+  varchar_64_ CODE
+  text LABEL_VI
+  varchar_32_ TAXONOMY_VERSION
+  boolean ACTIVE
+}
+"CATALOG.ENTRIES" {
+  bigint ID
+  varchar_8_ KIND
+  text NAME
+  text NAME_FOLDED
+  bigint PARENT_ID FK
+  varchar_8_ PARENT_KIND FK
+  varchar_64_ INDUSTRY_CODE
+  text__ FUNCTION_CODES
+  varchar_64_ SENIORITY_CODE
+  varchar_64_ SCOPE_CODE
+  text PROPOSED_LABEL
+  varchar_8_ ORIGIN
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
+}
+"CATALOG.ALIASES" {
+  bigint ID
+  varchar_8_ KIND FK
+  text ALIAS_FOLDED
+  bigint ENTRY_ID FK
+  text ALIAS_RAW
+  varchar_8_ ORIGIN
+}
+"SEARCH.CANDIDATE_INDEX" {
+  bigint CANDIDATE_ID FK
+  text SEARCH_TEXT
+  tsvector SEARCH_TSV
+  bigint__ COMPANY_IDS
+  bigint__ PARENT_COMPANY_IDS
+  bigint__ TITLE_IDS
+  text__ FUNCTION_CODES
+  text__ SENIORITY_CODES
+  text__ INDUSTRY_CODES
+  text__ SCOPE_CODES
+  varchar_64_ LOCATION_PROVINCE
+  integer TOTAL_EXPERIENCE_MONTHS
+  boolean HAS_AI_NORMALIZATION
+  timestamp_with_time_zone UPDATED_AT
 }
 ```
 

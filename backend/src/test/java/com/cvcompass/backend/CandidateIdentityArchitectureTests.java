@@ -28,6 +28,15 @@ class CandidateIdentityArchitectureTests {
         for (var type : CLASSES) {
             Class<?> actual = type.reflect();
             if (type.getSimpleName().equals("package-info")) {
+                if (actual.getPackageName().equals(BASE + "candidate.catalogapi")) {
+                    assertThat(
+                                    actual.getAnnotation(
+                                                    org.springframework.modulith.NamedInterface
+                                                            .class)
+                                            .value())
+                            .containsExactly("catalog-links");
+                    continue;
+                }
                 assertThat(
                                 actual.isAnnotationPresent(
                                         org.springframework.modulith.ApplicationModule.class))
@@ -37,6 +46,8 @@ class CandidateIdentityArchitectureTests {
             }
             String pkg = actual.getPackageName();
             String layer = pkg.substring(pkg.lastIndexOf('.') + 1);
+            if (layer.equals("catalogapi"))
+                assertThat(pkg).as(type.getName()).isEqualTo(BASE + "candidate.catalogapi");
             if (layer.equals("mapping"))
                 assertThat(pkg).as(type.getName()).isEqualTo(BASE + "candidate.mapping");
             else
@@ -48,10 +59,12 @@ class CandidateIdentityArchitectureTests {
                                         "dto",
                                         "config",
                                         "exception",
-                                        "mapper"))
+                                        "mapper",
+                                        "catalogapi"))
                         .as(type.getName())
                         .contains(layer);
-            if (actual.isRecord()) assertLayer(actual, "dto");
+            if (actual.isRecord())
+                assertLayer(actual, layer.equals("catalogapi") ? "catalogapi" : "dto");
             if (actual.getSimpleName().endsWith("Mapper"))
                 assertLayer(actual, pkg.equals(BASE + "candidate.mapping") ? "mapping" : "mapper");
             if (actual.isAnnotationPresent(RestController.class)) assertLayer(actual, "controller");
@@ -76,6 +89,7 @@ class CandidateIdentityArchitectureTests {
                         "..candidate.controller..",
                         "..identity.controller..",
                         "..candidate.mapper..",
+                        "..candidate.catalogapi..",
                         BASE + "candidate.mapping",
                         "..identity.mapper..",
                         "..identity.config..")
@@ -131,6 +145,23 @@ class CandidateIdentityArchitectureTests {
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..ingestion.repository..", "..mapping.repository..")
+                .check(CLASSES);
+        noClasses()
+                .that()
+                .resideInAnyPackage("..candidate.catalogapi..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "..candidate.repository..",
+                        "..candidate.service..",
+                        "..candidate.controller..")
+                .check(CLASSES);
+        noClasses()
+                .that()
+                .resideInAnyPackage("..candidate..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage("..catalog..")
                 .check(CLASSES);
     }
 

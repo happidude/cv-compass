@@ -107,7 +107,7 @@ class SchemaReorganizationMigrationIntegrationTests {
             var sequencesBefore = identitySequences(jdbc);
             assertThat(sequencesBefore).hasSize(15);
 
-            var flyway = Flyway.configure().dataSource(source).load();
+            var flyway = Flyway.configure().dataSource(source).target("14").load();
             assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
             flyway.validate();
             // OIDs, ownership and identity defaults survive the table moves.

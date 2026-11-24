@@ -43,6 +43,8 @@ public class UserSecurity {
                         auth ->
                                 auth.requestMatchers("/api/auth/csrf", "/api/auth/login")
                                         .permitAll()
+                                        .requestMatchers("/api/admin/**")
+                                        .hasRole("ADMIN")
                                         .anyRequest()
                                         .hasAnyRole("USER", "ADMIN"))
                 .requestCache(cache -> cache.disable())

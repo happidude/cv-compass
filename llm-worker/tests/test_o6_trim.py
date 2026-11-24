@@ -69,8 +69,10 @@ class TrimTests(unittest.TestCase):
                 )
         doc = document('One\nTwo\nThree\n2\nFour\nFive\nSix')
         self.assertIn('\n2\n', trim_spans(split_lines(doc.pages))[1])
-        doc = document('© topcv.vn\nBody\n+--+\nΩ')
-        self.assertEqual(trim_spans(split_lines(doc.pages), phrases=('© TOPCV.VN',))[1], 'Body\nΩ')
+        doc = document('© example.vn\nBody\n+--+\nΩ')
+        self.assertEqual(
+            trim_spans(split_lines(doc.pages), phrases=('© EXAMPLE.VN',))[1], 'Body\nΩ'
+        )
 
     def test_phrase_matching_preserves_internal_whitespace_for_exact_match(self):
         doc = document('Private  and Confidential\nPrivate and Confidential')
@@ -522,13 +524,13 @@ class ConfigTests(unittest.TestCase):
             path.write_text(
                 'CVC_LLM_PROVIDER=ollama\nCVC_LLM_MODEL=synthetic\n'
                 'CVC_LLM_TRIM_INPUT=true\nCVC_LLM_TRIM_SECTIONS=true\n'
-                'CVC_LLM_TRIM_PHRASES= Private | © topcv.vn ||\n',
+                'CVC_LLM_TRIM_PHRASES= Private | © example.vn ||\n',
                 encoding='utf-8',
             )
             loaded = load_bench_config(path, {'CVC_LLM_TRIM_INPUT': 'false'})
             self.assertTrue(loaded.trim_input)
             self.assertTrue(loaded.trim_sections)
-            self.assertEqual(loaded.trim_phrases, ('Private', '© topcv.vn'))
+            self.assertEqual(loaded.trim_phrases, ('Private', '© example.vn'))
             loaded = load_config({'trim_input': 'false'}, {}, path, env_file_explicit=True)
             self.assertFalse(loaded.trim_input)
             self.assertEqual(prompt_version('blocks', loaded), prompt_version('blocks'))

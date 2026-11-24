@@ -89,6 +89,12 @@ erDiagram
   jsonb EXTENSIONS
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone UPDATED_AT
+  varchar_64_ LOCATION_PROVINCE
+  integer TOTAL_EXPERIENCE_MONTHS
+  bigint CURRENT_COMPANY_ID FK
+  varchar_8_ CURRENT_COMPANY_KIND FK
+  bigint CURRENT_TITLE_ID FK
+  varchar_8_ CURRENT_TITLE_KIND FK
 }
 "INGESTION.DOCUMENTS" {
   bigint ID

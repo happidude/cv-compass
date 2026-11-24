@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "cv-taxonomy/0-draft",
+  "note": "ĐỀ XUẤT đã được chủ dự án đồng ý hướng 21/11/2026 (danh sách gọn). Mỗi chức danh: tối đa 2 nhóm nghề, đúng 1 cấp bậc, scope tùy chọn. Mỗi công ty: 1 ngành chính. Không khớp mã nào → OTHER + proposedLabel; admin định kỳ xem nhóm OTHER để thêm mã (tăng phiên bản taxonomy). canonicalCompany: giữ tên như CV (bỏ hậu tố pháp nhân/quốc gia/mô tả), KHÔNG suy luận/dịch/thêm dấu; tập đoàn mẹ chỉ ghi khi CV có nêu, dạng 'Tên (Tập đoàn mẹ)'.",
+  "functions": {
+    "GENERAL_MANAGEMENT": "Điều hành / quản lý chung (CEO, GM, COO, Phó TGĐ)",
+    "STRATEGY_BD": "Chiến lược / phát triển kinh doanh / đối tác",
+    "FINANCE_ACCOUNTING": "Tài chính – kế toán – kiểm soát",
+    "AUDIT_RISK": "Kiểm toán / rủi ro / kiểm soát nội bộ",
+    "INVESTMENT": "Đầu tư / quản lý quỹ",
+    "HR": "Nhân sự / đào tạo",
+    "SALES": "Kinh doanh / bán hàng / key account",
+    "MARKETING": "Marketing / thương hiệu / truyền thông / trade marketing",
+    "ECOMMERCE": "Thương mại điện tử / thương mại số",
+    "MERCHANDISING": "Ngành hàng / category / merchandise",
+    "RETAIL_OPERATIONS": "Vận hành cửa hàng / chuỗi bán lẻ",
+    "SUPPLY_CHAIN": "Chuỗi cung ứng / kế hoạch / mua hàng / logistics / kho",
+    "PRODUCTION": "Sản xuất / vận hành nhà máy / bảo trì",
+    "ENGINEERING": "Kỹ thuật / R&D / cải tiến (lean, industrial)",
+    "QUALITY": "Chất lượng (QA/QC)",
+    "IT": "Công nghệ thông tin",
+    "PROJECT_MANAGEMENT": "Quản lý dự án / chương trình",
+    "ADMIN_LEGAL": "Hành chính / pháp chế / lễ tân",
+    "CONSULTING": "Tư vấn / cố vấn",
+    "OTHER": "Khác — kèm proposedLabel (nhãn đề xuất) để admin xem xét bổ sung mã mới"
+  },
+  "seniority": {
+    "STAFF": "Nhân viên / chuyên viên / kỹ sư / trợ lý / điều phối",
+    "SENIOR": "Chuyên viên cao cấp (Senior …, Audit Senior)",
+    "SUPERVISOR": "Giám sát / trưởng nhóm / trưởng ca / trưởng bộ phận nhỏ",
+    "MANAGER": "Quản lý / trưởng phòng / phó phòng (Manager, Assistant Manager)",
+    "HEAD": "Trưởng khối / Senior Manager / Head of … / Financial Controller",
+    "DIRECTOR": "Giám đốc chức năng / GĐ khu vực / Phó GĐ (Director, AGM, Vice Director)",
+    "EXECUTIVE": "Cấp điều hành công ty (CEO, COO, CFO, CMO, GM công ty, Phó TGĐ, HĐQT, Founder)"
+  },
+  "industries": {
+    "FMCG": "Hàng tiêu dùng nhanh (kể cả thuốc lá)",
+    "FOOD_BEVERAGE": "Thực phẩm – đồ uống (sản xuất / chuỗi F&B)",
+    "RETAIL": "Bán lẻ (chuỗi, siêu thị, mẹ & bé)",
+    "FASHION_LUXURY": "Thời trang / trang sức / hàng cao cấp / mỹ phẩm",
+    "ECOMMERCE_TECH": "Thương mại điện tử / công nghệ / nền tảng số",
+    "HEALTHCARE_PHARMA": "Y tế / dược / nhà thuốc / thẩm mỹ",
+    "MANUFACTURING": "Sản xuất công nghiệp (điện tử, ô tô, thép, nội thất, bao bì, vật liệu)",
+    "CONSTRUCTION_REAL_ESTATE": "Xây dựng / bất động sản",
+    "FINANCE_INVESTMENT": "Ngân hàng / quản lý quỹ / đầu tư / bảo hiểm",
+    "PROFESSIONAL_SERVICES": "Kiểm toán / tư vấn / dịch vụ doanh nghiệp",
+    "MEDIA_ADVERTISING": "Truyền thông / quảng cáo / agency",
+    "LOGISTICS": "Logistics / vận tải / phân phối",
+    "HOSPITALITY": "Khách sạn / du lịch",
+    "AGRICULTURE": "Nông nghiệp",
+    "CHEMICALS_ENERGY": "Hóa chất / năng lượng",
+    "OTHER": "Khác — kèm proposedLabel (nhãn đề xuất) để admin xem xét bổ sung mã mới"
+  },
+  "scopes": {
+    "COMPANY": "Phạm vi toàn công ty/tập đoàn",
+    "BUSINESS_UNIT": "Một mảng/khối/ngành hàng/division",
+    "REGION": "Một vùng/khu vực",
+    "null": "Không xác định hoặc không áp dụng"
+  }
+}
