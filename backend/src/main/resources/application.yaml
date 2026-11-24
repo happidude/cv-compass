@@ -34,6 +34,18 @@ logging:
 # Explicit provider selection and root are mandatory; no production storage default.
 cv:
   catalog:
+    normalization:
+      enabled: ${CV_CATALOG_NORMALIZATION_ENABLED:false}
+      lease-duration: ${CV_CATALOG_NORMALIZATION_LEASE_DURATION:120s}
+      retry-backoff: ${CV_CATALOG_NORMALIZATION_RETRY_BACKOFF:30s}
+      backfill-delay: ${CV_CATALOG_NORMALIZATION_BACKFILL_DELAY:15m}
+      batch-size: ${CV_CATALOG_NORMALIZATION_BATCH_SIZE:100}
+      max-body-bytes: ${CV_CATALOG_NORMALIZATION_MAX_BODY_BYTES:65536}
+      claim-max-items: ${CV_CATALOG_NORMALIZATION_CLAIM_MAX_ITEMS:50}
+      max-field-code-points: ${CV_CATALOG_NORMALIZATION_MAX_FIELD_CODE_POINTS:255}
+      candidate-scan-page-size: ${CV_CATALOG_NORMALIZATION_CANDIDATE_SCAN_PAGE_SIZE:100}
+      max-attempts: ${CV_CATALOG_NORMALIZATION_MAX_ATTEMPTS:3}
+      workers: {}
     import:
       max-entries: ${CV_CATALOG_IMPORT_MAX_ENTRIES:10000}
       max-aliases-per-entry: ${CV_CATALOG_IMPORT_MAX_ALIASES_PER_ENTRY:50}

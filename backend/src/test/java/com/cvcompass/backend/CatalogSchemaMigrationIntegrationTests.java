@@ -20,7 +20,105 @@ import tools.jackson.databind.ObjectMapper;
 
 class CatalogSchemaMigrationIntegrationTests {
     @Test
-    void v15PreservesV14ProfilesAndExperiencesAndAddsNullableLinks() throws Exception {
+    void v16KeepsExistingAliasesDoneWithoutChangingTheirIdentityOrOwnership() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).target("15").load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long entry =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic existing','synthetic existing','SEED') RETURNING \"ID\"",
+                            Long.class);
+            for (String origin : List.of("SEED", "AI", "USER")) {
+                jdbc.update(
+                        "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ENTRY_ID\",\"ALIAS_RAW\",\"ORIGIN\") VALUES ('COMPANY',?,?,?,?)",
+                        "synthetic " + origin,
+                        entry,
+                        "Synthetic " + origin,
+                        origin);
+            }
+            var before =
+                    jdbc.queryForList(
+                            "SELECT to_jsonb(a)::text FROM \"CATALOG\".\"ALIASES\" a ORDER BY \"ID\"",
+                            String.class);
+            var flyway = Flyway.configure().dataSource(source).load();
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            flyway.validate();
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT (to_jsonb(a)-ARRAY['CONTEXT_COMPANY','STATE','ATTEMPTS','MAX_ATTEMPTS','TOKEN','LEASE_EXPIRES_AT','NEXT_ATTEMPT_AT','ERROR_CODE','COMPLETED_AT'])::text FROM \"CATALOG\".\"ALIASES\" a ORDER BY \"ID\"",
+                                    String.class))
+                    .isEqualTo(before);
+            assertThat(
+                            jdbc.queryForList(
+                                    "SELECT \"STATE\" FROM \"CATALOG\".\"ALIASES\"", String.class))
+                    .hasSize(3)
+                    .containsOnly("DONE");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"STATE\" IN ('PENDING','LEASED')",
+                                    Integer.class))
+                    .isZero();
+        }
+    }
+
+    @Test
+    void aliasQueueChecksRequireDoneExactlyWhenLinkedAndAnOriginForEveryLink() throws Exception {
+        try (var database = new IsolatedPostgresSchema()) {
+            var source = source(database);
+            Flyway.configure().dataSource(source).load().migrate();
+            var jdbc = new JdbcTemplate(source);
+            long entry =
+                    jdbc.queryForObject(
+                            "INSERT INTO \"CATALOG\".\"ENTRIES\" (\"KIND\",\"NAME\",\"NAME_FOLDED\",\"ORIGIN\") VALUES ('COMPANY','Synthetic checks','synthetic checks','SEED') RETURNING \"ID\"",
+                            Long.class);
+            for (String state : List.of("PENDING", "LEASED", "FAILED")) {
+                jdbc.update(
+                        "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\") VALUES ('COMPANY',?,'Synthetic pending',?)",
+                        state,
+                        state);
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "UPDATE \"CATALOG\".\"ALIASES\" SET \"ENTRY_ID\"=?,\"ORIGIN\"='AI' WHERE \"STATE\"=?",
+                                                entry,
+                                                state))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='DONE'"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='DONE',\"ENTRY_ID\"=?",
+                                            entry))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            jdbc.update(
+                    "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='DONE',\"ENTRY_ID\"=?,\"ORIGIN\"='AI'",
+                    entry);
+            assertThatThrownBy(
+                            () -> jdbc.update("UPDATE \"CATALOG\".\"ALIASES\" SET \"ORIGIN\"=NULL"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"ENTRY_ID\"=NULL"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            jdbc.update(
+                    "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\",\"CONTEXT_COMPANY\") VALUES ('TITLE','synthetic context','Synthetic context','PENDING','Synthetic company')");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT \"CONTEXT_COMPANY\" FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='TITLE'",
+                                    String.class))
+                    .isEqualTo("Synthetic company");
+        }
+    }
+
+    @Test
+    void v16PreservesV14ProfilesAndExperiencesAndAddsNullableLinks() throws Exception {
         try (var database = new IsolatedPostgresSchema()) {
             var source = source(database);
             Flyway.configure().dataSource(source).target("14").load().migrate();
@@ -38,9 +136,9 @@ class CatalogSchemaMigrationIntegrationTests {
                             String.class,
                             experience);
             var flyway = Flyway.configure().dataSource(source).load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
             flyway.validate();
-            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("15");
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
             assertThat(
                             jdbc.queryForObject(
                                     "SELECT (to_jsonb(p)-ARRAY['LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID','CURRENT_COMPANY_KIND','CURRENT_TITLE_KIND'])::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",
@@ -86,6 +184,40 @@ class CatalogSchemaMigrationIntegrationTests {
             for (String table : List.of("TAXONOMY_CODES", "ENTRIES", "ALIASES"))
                 comments(jdbc, "CATALOG", table);
             comments(jdbc, "SEARCH", "CANDIDATE_INDEX");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM pg_indexes WHERE schemaname='CATALOG' AND tablename='ALIASES' AND indexdef LIKE '%(\"STATE\", \"NEXT_ATTEMPT_AT\")%' AND indexdef LIKE '%WHERE%' AND indexdef LIKE '%PENDING%' AND indexdef LIKE '%LEASED%' AND indexdef NOT LIKE '%DONE%' AND indexdef NOT LIKE '%FAILED%'",
+                                    Integer.class))
+                    .isEqualTo(1);
+            jdbc.update(
+                    "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\") VALUES ('COMPANY','synthetic queue','Synthetic Queue','PENDING'),('TITLE','synthetic queue','Synthetic Queue','PENDING')");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"STATE\"='PENDING' AND \"ATTEMPTS\"=0 AND \"MAX_ATTEMPTS\"=3 AND \"TOKEN\" IS NULL AND \"LEASE_EXPIRES_AT\" IS NULL AND \"NEXT_ATTEMPT_AT\" IS NOT NULL AND \"ENTRY_ID\" IS NULL AND \"ORIGIN\" IS NULL AND \"COMPLETED_AT\" IS NULL",
+                                    Integer.class))
+                    .isEqualTo(2);
+            for (String values :
+                    List.of(
+                            "'COMPANY','synthetic queue','duplicate','PENDING'",
+                            "'INVALID','synthetic invalid','Synthetic Invalid','PENDING'")) {
+                assertThatThrownBy(
+                                () ->
+                                        jdbc.update(
+                                                "INSERT INTO \"CATALOG\".\"ALIASES\" (\"KIND\",\"ALIAS_FOLDED\",\"ALIAS_RAW\",\"STATE\") VALUES ("
+                                                        + values
+                                                        + ")"))
+                        .isInstanceOf(DataIntegrityViolationException.class);
+            }
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"STATE\"='INVALID'"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE \"CATALOG\".\"ALIASES\" SET \"CONTEXT_COMPANY\"='Synthetic Context' WHERE \"KIND\"='COMPANY'"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
             assertThat(
                             jdbc.queryForList(
                                     """
