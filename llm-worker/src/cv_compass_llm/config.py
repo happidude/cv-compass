@@ -45,6 +45,9 @@ ENV_KEYS = {
     'max_http_attempts': 'CVC_LLM_MAX_HTTP_ATTEMPTS',
     'log_level': 'CVC_LLM_LOG_LEVEL',
 }
+NORM_BATCH_KEY = 'CVC_NORM_BATCH'
+NORM_MAX_BODY_BYTES = 65536
+NORM_MAX_FIELD_CODEPOINTS = 255
 MAX_ENV_BYTES = 64 * 1024
 # Keep benchmark overrides separate from pull credentials and transport settings.
 BENCH_ENV_KEYS = frozenset(
@@ -156,10 +159,10 @@ def _read_env(
                 if len(value) < 2 or value[-1] != value[0]:
                     raise ValueError
                 value = value[1:-1].strip()
-            if key.startswith('CVC_LLM_'):
+            if key.startswith(('CVC_LLM_', 'CVC_NORM_')):
                 if key == 'CVC_LLM_WORKER_TOKEN':
                     raise PullConfigError(key, 'TOKEN_IN_ENV_FILE')
-                if key not in ENV_KEYS.values() or key in values:
+                if (key not in ENV_KEYS.values() and key != NORM_BATCH_KEY) or key in values:
                     raise ValueError
                 values[key] = value
         return values
@@ -364,6 +367,28 @@ class PullConfig:
     worker_name: str = field(default_factory=default_worker_name)
 
 
+@dataclass(frozen=True, repr=False)
+class NormConfig:
+    transport: PullConfig
+    batch: int = 50
+
+
+def load_norm_config(environ, env_file, *, env_file_explicit, cli=None) -> NormConfig:
+    """Share pull authentication and polling, reading one dotenv snapshot."""
+    values = _read_env(env_file or default_env_file(), env_file_explicit)
+    merged = values | dict(environ)
+    transport = load_pull_config(
+        merged, env_file, env_file_explicit=env_file_explicit, cli=cli, _file_values=values
+    )
+    try:
+        batch = _integer(
+            merged.get(NORM_BATCH_KEY, '50'), 'INVALID_NORM_BATCH', minimum=1, maximum=50
+        )
+    except ValueError:
+        raise PullConfigError(NORM_BATCH_KEY, 'INVALID_NORM_BATCH') from None
+    return NormConfig(transport, batch)
+
+
 def validate_backend_url(value: str) -> str:
     """Allow plaintext only for the three explicitly approved loopback hosts."""
     try:
@@ -395,10 +420,11 @@ def load_pull_config(
     *,
     env_file_explicit: bool,
     cli: Mapping[str, str | None] | None = None,
+    _file_values: Mapping[str, str] | None = None,
 ) -> PullConfig:
     """Extend the shared dotenv parser; credentials come only from the process."""
     path = env_file if env_file is not None else default_env_file()
-    values = _read_env(path, env_file_explicit)
+    values = _read_env(path, env_file_explicit) if _file_values is None else _file_values
 
     def value(name: str, default: str = '') -> str:
         key = ENV_KEYS[name]
