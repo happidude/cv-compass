@@ -17,6 +17,6 @@ public class SearchNightlyJob {
             cron =
                     "#{@'cv.search-com.cvcompass.backend.search.config.SearchProperties'.nightlyCron}")
     public void rebuild() {
-        service.rebuildOngoing();
+        service.rebuildAll();
     }
 }

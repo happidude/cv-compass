@@ -96,12 +96,16 @@ final class LlmRemoteContractFixtures {
     }
 
     static void assertFixture(String name, JsonNode response) throws Exception {
+        assertFixture(name, response, FIXTURES);
+    }
+
+    static void assertFixture(String name, JsonNode response, Path fixtures) throws Exception {
         var actual = normalize(JSON.readTree(JSON.writeValueAsString(response)));
         Path generated = Path.of("build/llm-remote-fixtures", name + ".json");
         Files.createDirectories(generated.getParent());
         Files.writeString(
                 generated, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(actual) + "\n");
-        Path expected = FIXTURES.resolve(name + ".json");
+        Path expected = fixtures.resolve(name + ".json");
         assertThat(Files.exists(expected))
                 .withFailMessage(
                         "Thiếu fixture %s; kiểm tra JSON sinh tại %s rồi cập nhật frontend/tests/fixtures/llm-remote bằng output backend.",

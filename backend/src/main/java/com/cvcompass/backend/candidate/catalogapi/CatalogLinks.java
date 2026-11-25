@@ -18,7 +18,7 @@ public interface CatalogLinks {
 
     long lastCandidateId();
 
-    List<Long> indexCandidates(long after, long through, int limit, boolean ongoingOnly);
+    List<Long> indexCandidates(long after, long through, int limit);
 
     record IndexProfile(String fullName, String location, String summary) {}
 

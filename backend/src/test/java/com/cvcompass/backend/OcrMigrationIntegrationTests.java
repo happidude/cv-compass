@@ -42,7 +42,7 @@ class OcrMigrationIntegrationTests {
                             document,
                             job);
             Flyway finalFlyway = Flyway.configure().dataSource(source).load();
-            assertThat(finalFlyway.migrate().migrationsExecuted).isEqualTo(11);
+            assertThat(finalFlyway.migrate().migrationsExecuted).isEqualTo(12);
             finalFlyway.validate();
             assertThat(
                             jdbc.queryForMap(

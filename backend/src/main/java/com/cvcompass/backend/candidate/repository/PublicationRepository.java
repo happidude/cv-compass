@@ -43,6 +43,18 @@ public class PublicationRepository {
                 id);
     }
 
+    public boolean publishedDocument(long candidateId, long documentId) {
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        """
+                SELECT EXISTS(SELECT 1 FROM "CANDIDATE"."PUBLICATIONS"
+                  WHERE "CANDIDATE_ID"=? AND "DOCUMENT_ID"=? AND "STATUS"='PUBLISHED')
+                """,
+                        Boolean.class,
+                        candidateId,
+                        documentId));
+    }
+
     public void propose(UUID key, long id, CompletedMappings.Result result, JsonNode experience) {
         jdbc.update(
                 "INSERT INTO \"CANDIDATE\".\"PROPOSALS\" (\"ID\",\"CANDIDATE_ID\",\"RESULT_ID\",\"DOCUMENT_ID\",\"DATA\") VALUES (?,?,?,?,?::jsonb)",

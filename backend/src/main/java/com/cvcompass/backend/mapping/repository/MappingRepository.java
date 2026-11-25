@@ -95,6 +95,16 @@ public class MappingRepository {
     }
 
     public void enqueue(long extractionId, long configId, String engine, int maxAttempts) {
+        enqueue(extractionId, configId, engine, maxAttempts, 0, null);
+    }
+
+    public boolean enqueue(
+            long extractionId,
+            long configId,
+            String engine,
+            int maxAttempts,
+            int priority,
+            Long remapRunId) {
         if (!com.cvcompass.backend.mapping.dto.MappingVersions.config(
                         definitionJson(configId), json)
                 .engineCompatibility()
@@ -102,13 +112,15 @@ public class MappingRepository {
         int inserted =
                 jdbc.update(
                         """
-                INSERT INTO "MAPPING"."JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS")
-                VALUES (?,?,?,?) ON CONFLICT ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") DO NOTHING
+                INSERT INTO "MAPPING"."JOBS" ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION","MAX_ATTEMPTS","PRIORITY","REMAP_RUN_ID")
+                VALUES (?,?,?,?,?,?) ON CONFLICT ("EXTRACTION_ID","CONFIG_ID","ENGINE_VERSION") DO NOTHING
                 """,
                         extractionId,
                         configId,
                         engine,
-                        maxAttempts);
+                        maxAttempts,
+                        priority,
+                        remapRunId);
         if (inserted == 1) {
             long jobId =
                     jdbc.queryForObject(
@@ -126,6 +138,7 @@ public class MappingRepository {
                             "jobId", jobId,
                             "extractionId", extractionId));
         }
+        return inserted == 1;
     }
 
     /** Read only identity metadata for operational logs. */
@@ -240,7 +253,7 @@ public class MappingRepository {
                         """
                 SELECT "ID" FROM "MAPPING"."JOBS" WHERE "STATUS"='PENDING'
                 AND "ENGINE_VERSION" IN (?,?,?,?,?,?,?,?) AND ("ENGINE_VERSION" NOT IN ('personal-info-mapping/3.0','personal-info-mapping/3.1','personal-info-mapping/3.2','personal-info-mapping/3.3','personal-info-mapping/3.4','personal-info-mapping/3.5') OR EXISTS(SELECT 1 FROM "MAPPING"."CONFIGS" c WHERE c."ID"="MAPPING"."JOBS"."CONFIG_ID" AND c."DEFINITION"->>'engineCompatibility'="MAPPING"."JOBS"."ENGINE_VERSION")) AND "NEXT_ATTEMPT_AT"<=clock_timestamp() AND "ATTEMPTS"<"MAX_ATTEMPTS"
-                ORDER BY "NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
+                ORDER BY "PRIORITY","NEXT_ATTEMPT_AT","ID" LIMIT 1 FOR UPDATE SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1),
                         engine,

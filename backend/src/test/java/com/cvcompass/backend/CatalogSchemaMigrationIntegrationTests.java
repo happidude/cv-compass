@@ -42,7 +42,7 @@ class CatalogSchemaMigrationIntegrationTests {
                             "SELECT to_jsonb(a)::text FROM \"CATALOG\".\"ALIASES\" a ORDER BY \"ID\"",
                             String.class);
             var flyway = Flyway.configure().dataSource(source).load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
             flyway.validate();
             assertThat(
                             jdbc.queryForList(
@@ -136,9 +136,9 @@ class CatalogSchemaMigrationIntegrationTests {
                             String.class,
                             experience);
             var flyway = Flyway.configure().dataSource(source).load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3);
             flyway.validate();
-            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
+            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("17");
             assertThat(
                             jdbc.queryForObject(
                                     "SELECT (to_jsonb(p)-ARRAY['LOCATION_PROVINCE','TOTAL_EXPERIENCE_MONTHS','CURRENT_COMPANY_ID','CURRENT_TITLE_ID','CURRENT_COMPANY_KIND','CURRENT_TITLE_KIND'])::text FROM \"CANDIDATE\".\"PROFILES\" p WHERE \"CANDIDATE_ID\"=?",

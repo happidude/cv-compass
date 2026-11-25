@@ -424,7 +424,7 @@ class SearchIndexIntegrationTests {
     }
 
     @Test
-    void nightlyRecomputesOnlyActiveOngoingCandidatesUsingImportDates() {
+    void nightlyRepairsAllCandidatesUsingImportDates() {
         long ongoing = candidate();
         document(ongoing, "2026-11-22T00:00:00Z");
         candidates.editExperience(ongoing, 0, null, experience(true), "SAVE", "synthetic-editor");
@@ -453,11 +453,14 @@ class SearchIndexIntegrationTests {
                 "UPDATE \"SEARCH\".\"CANDIDATE_INDEX\" SET \"TOTAL_EXPERIENCE_MONTHS\"=999 WHERE \"CANDIDATE_ID\"=?",
                 ongoing);
         nightly.rebuild();
-        verify(links, atLeastOnce()).indexCandidates(anyLong(), anyLong(), eq(2), eq(true));
+        verify(links, atLeastOnce()).indexCandidates(anyLong(), anyLong(), eq(2));
         assertTotals(ongoing, 10);
         assertThat(indexVersion(ongoing)).isNotEqualTo(ongoingVersion);
-        assertThat(indexVersion(ended)).isEqualTo(endedVersion);
-        assertThat(indexVersion(deleted)).isEqualTo(deletedVersion);
+        // Nightly rebuild also repairs ended and deleted-only profiles.
+        assertThat(indexVersion(ended)).isNotEqualTo(endedVersion);
+        assertThat(indexVersion(deleted)).isNotEqualTo(deletedVersion);
+        assertTotals(ended, 3);
+        assertTotals(deleted, 0);
     }
 
     @Test
@@ -492,7 +495,7 @@ class SearchIndexIntegrationTests {
         assertThat(json.readTree(result.body()).path("failed").asLong()).isZero();
         assertThat(properties.getRebuildBatchSize()).isEqualTo(2);
         verify(links, times(Math.toIntExact((total + 1) / 2 + 1)))
-                .indexCandidates(anyLong(), anyLong(), eq(2), eq(false));
+                .indexCandidates(anyLong(), anyLong(), eq(2));
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\"", Long.class))
@@ -518,6 +521,38 @@ class SearchIndexIntegrationTests {
         }
         assertThat(indexCount(bad)).isZero();
         assertThat(indexCount(good)).isEqualTo(1);
+    }
+
+    @Test
+    void indexFailureRollsBackItsSavepointWhileHrEditCommitsAndRebuildRepairsIt() {
+        assertThat(transactions)
+                .isInstanceOf(org.springframework.orm.jpa.JpaTransactionManager.class);
+        assertThat(
+                        ((org.springframework.orm.jpa.JpaTransactionManager) transactions)
+                                .isNestedTransactionAllowed())
+                .isTrue();
+        long id = candidate();
+        poisonTrigger();
+        try {
+            var changed =
+                    candidates.basic(
+                            id,
+                            0,
+                            json.readTree("{\"fullName\":\"Synthetic poison marker\"}"),
+                            false,
+                            "synthetic-editor");
+            assertThat(changed.basic().path("fullName").asString())
+                    .isEqualTo("Synthetic poison marker");
+            assertThat(queries.detail(id).version()).isEqualTo(1);
+            assertThat(indexCount(id)).isZero();
+            // The metrics write precedes the poisoned index write and must roll back too.
+            assertThat(links.profile(id).orElseThrow().totalExperienceMonths()).isNull();
+        } finally {
+            dropPoisonTrigger();
+        }
+        assertThat(rebuild.rebuildAll().failed()).isZero();
+        assertThat(indexCount(id)).isEqualTo(1);
+        assertThat(text(id)).contains("synthetic poison marker");
     }
 
     /** Makes the index write fail for synthetic poisoned rows, like a real per-candidate fault. */

@@ -247,11 +247,16 @@ class MappingRemoteIntegrationTests {
                                 .andReturn()
                                 .getResponse();
                 var payload = json.readTree(response.getContentAsString());
-                if (endpoint.equals("proposals"))
-                    assertThat(payload.size()).isEqualTo(subsequent ? 6 : 0);
+                if (endpoint.equals("proposals")) assertThat(payload.size()).isZero();
                 if (endpoint.equals("profile"))
                     assertThat(payload.path("experiences").size()).isEqualTo(5);
-                LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
+                // D7 refreshes this document's unreviewed profile instead of proposing it.
+                if (subsequent)
+                    LlmRemoteContractFixtures.assertFixture(
+                            prefix + endpoint,
+                            payload,
+                            java.nio.file.Path.of("src/test/resources/mapping/remap-llm"));
+                else LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
             }
         }
     }

@@ -1,7 +1,6 @@
 package com.cvcompass.backend.search.service;
 
 import com.cvcompass.backend.candidate.catalogapi.CatalogLinks;
-import com.cvcompass.backend.candidate.events.CandidateChanged;
 import com.cvcompass.backend.candidate.metrics.ExperienceMetrics;
 import com.cvcompass.backend.candidate.metrics.ExperienceMonths;
 import com.cvcompass.backend.catalog.api.CatalogLookup;
@@ -14,7 +13,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,13 +35,7 @@ public class SearchIndexer {
         this.experienceMetrics = experienceMetrics;
     }
 
-    @EventListener
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void changed(CandidateChanged event) {
-        rebuild(event.candidateId());
-    }
-
-    @Transactional
+    @Transactional(propagation = Propagation.NESTED)
     public void rebuild(long candidateId) {
         // The profile lock serializes scheduled rebuilds with publication and HR edits.
         var profile = candidates.lockIndexProfile(candidateId).orElse(null);

@@ -45,7 +45,7 @@ class BackendApplicationTests {
         assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
                 .isEqualTo(DATABASE.databaseName());
         flyway.validate();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("17");
         assertThat(
                         jdbc.queryForList(
                                 "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank",
