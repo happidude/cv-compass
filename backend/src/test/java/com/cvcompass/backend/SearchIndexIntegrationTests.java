@@ -559,6 +559,12 @@ class SearchIndexIntegrationTests {
         assertThat(rebuild.rebuildAll().failed()).isZero();
         assertThat(indexCount(id)).isEqualTo(1);
         assertThat(text(id)).contains("synthetic poison marker");
+        // The class shares one database: drop the marker so later poisoned rebuilds count
+        // only their own candidate.
+        jdbc.update(
+                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"FULL_NAME\"='Synthetic repaired profile' WHERE \"CANDIDATE_ID\"=?",
+                id);
+        indexer.rebuild(id);
     }
 
     /** Makes the index write fail for synthetic poisoned rows, like a real per-candidate fault. */

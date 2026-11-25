@@ -23,6 +23,8 @@ Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên b�
 | CREATED_AT | timestamp with time zone | CURRENT_TIMESTAMP | false |  |  |  |
 | COMPLETED_AT | timestamp with time zone |  | true |  |  |  |
 | MAX_ATTEMPTS | integer | 3 | false |  |  |  |
+| PRIORITY | smallint | 0 | false |  |  | Số nhỏ được lấy trước; CV mới mặc định bằng không, chạy lại lớn hơn không. |
+| REMAP_RUN_ID | bigint |  | true |  | [MAPPING.REMAP_RUNS](MAPPING.REMAP_RUNS.md) | Lượt chạy lại tạo job; để trống với scan thông thường. |
 
 ## Constraints
 
@@ -35,10 +37,12 @@ Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên b�
 | CK_MAPPING_TERMINAL | CHECK | CHECK (((("STATUS")::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = ("COMPLETED_AT" IS NOT NULL))) |
 | CV_MAPPING_JOBS_INPUT_SHA256_check | CHECK | CHECK ((("INPUT_SHA256" IS NULL) OR (("INPUT_SHA256")::text ~ '^[0-9a-f]{64}$'::text))) |
 | CV_MAPPING_JOBS_STATUS_check | CHECK | CHECK ((("STATUS")::text = ANY ((ARRAY['PENDING'::character varying, 'PROCESSING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))) |
+| JOBS_PRIORITY_check | CHECK | CHECK (("PRIORITY" >= 0)) |
 | CV_MAPPING_JOBS_EXTRACTION_ID_fkey | FOREIGN KEY | FOREIGN KEY ("EXTRACTION_ID") REFERENCES "INGESTION"."EXTRACTIONS"("ID") |
 | CV_MAPPING_JOBS_CONFIG_ID_fkey | FOREIGN KEY | FOREIGN KEY ("CONFIG_ID") REFERENCES "MAPPING"."CONFIGS"("ID") |
 | CV_MAPPING_JOBS_pkey | PRIMARY KEY | PRIMARY KEY ("ID") |
 | UQ_MAPPING_INPUT | UNIQUE | UNIQUE ("EXTRACTION_ID", "CONFIG_ID", "ENGINE_VERSION") |
+| JOBS_REMAP_RUN_ID_fkey | FOREIGN KEY | FOREIGN KEY ("REMAP_RUN_ID") REFERENCES "MAPPING"."REMAP_RUNS"("ID") |
 
 ## Indexes
 
@@ -46,8 +50,9 @@ Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên b�
 | ---- | ---------- |
 | CV_MAPPING_JOBS_pkey | CREATE UNIQUE INDEX "CV_MAPPING_JOBS_pkey" ON "MAPPING"."JOBS" USING btree ("ID") |
 | UQ_MAPPING_INPUT | CREATE UNIQUE INDEX "UQ_MAPPING_INPUT" ON "MAPPING"."JOBS" USING btree ("EXTRACTION_ID", "CONFIG_ID", "ENGINE_VERSION") |
-| IX_MAPPING_READY | CREATE INDEX "IX_MAPPING_READY" ON "MAPPING"."JOBS" USING btree ("NEXT_ATTEMPT_AT", "ID") WHERE (("STATUS")::text = 'PENDING'::text) |
 | IX_MAPPING_EXPIRY | CREATE INDEX "IX_MAPPING_EXPIRY" ON "MAPPING"."JOBS" USING btree ("LEASE_EXPIRES_AT", "ID") WHERE (("STATUS")::text = 'PROCESSING'::text) |
+| IX_MAPPING_READY | CREATE INDEX "IX_MAPPING_READY" ON "MAPPING"."JOBS" USING btree ("PRIORITY", "NEXT_ATTEMPT_AT", "ID") WHERE (("STATUS")::text = 'PENDING'::text) |
+| IX_MAPPING_REMAP_RUN | CREATE INDEX "IX_MAPPING_REMAP_RUN" ON "MAPPING"."JOBS" USING btree ("REMAP_RUN_ID", "STATUS") WHERE ("REMAP_RUN_ID" IS NOT NULL) |
 
 ## Relations
 
@@ -58,6 +63,7 @@ erDiagram
 "MAPPING.ATTEMPTS" }o--|| "MAPPING.JOBS" : "FOREIGN KEY (#quot;JOB_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;JOBS#quot;(#quot;ID#quot;)"
 "MAPPING.JOBS" }o--|| "INGESTION.EXTRACTIONS" : "FOREIGN KEY (#quot;EXTRACTION_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;EXTRACTIONS#quot;(#quot;ID#quot;)"
 "MAPPING.JOBS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
+"MAPPING.JOBS" }o--o| "MAPPING.REMAP_RUNS" : "FOREIGN KEY (#quot;REMAP_RUN_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;REMAP_RUNS#quot;(#quot;ID#quot;)"
 
 "MAPPING.JOBS" {
   bigint ID
@@ -75,6 +81,8 @@ erDiagram
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone COMPLETED_AT
   integer MAX_ATTEMPTS
+  smallint PRIORITY
+  bigint REMAP_RUN_ID FK
 }
 "MAPPING.RESULTS" {
   bigint ID
@@ -128,6 +136,22 @@ erDiagram
   timestamp_with_time_zone ACTIVATED_AT
   character_64_ CONTENT_SHA256
   varchar_10_ VALIDATION_STATE
+}
+"MAPPING.REMAP_RUNS" {
+  bigint ID
+  varchar_16_ SCOPE_KIND
+  jsonb SCOPE_VALUE
+  bigint CONFIG_ID FK
+  varchar_16_ STATE
+  bigint CURSOR_EXTRACTION_ID
+  bigint UPPER_EXTRACTION_ID
+  bigint SELECTED
+  bigint QUEUED
+  bigint SKIPPED
+  varchar_128_ CREATED_BY
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
+  timestamp_with_time_zone FINISHED_AT
 }
 ```
 

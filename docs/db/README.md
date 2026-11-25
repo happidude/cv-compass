@@ -16,7 +16,7 @@
 | [INGESTION.OCR_ATTEMPTS](INGESTION.OCR_ATTEMPTS.md) | 18 | Lần thực hiện OCR cùng thời hạn thuê và kết quả kết thúc. | BASE TABLE |
 | [MAPPING.CONFIGS](MAPPING.CONFIGS.md) | 7 | Phiên bản cấu hình ánh xạ và trạng thái kiểm định. | BASE TABLE |
 | [MAPPING.SETTINGS](MAPPING.SETTINGS.md) | 4 | Cấu hình ánh xạ đang hoạt động và con trỏ quét bền vững. | BASE TABLE |
-| [MAPPING.JOBS](MAPPING.JOBS.md) | 15 | Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên bản bộ máy. | BASE TABLE |
+| [MAPPING.JOBS](MAPPING.JOBS.md) | 17 | Công việc ánh xạ kết quả trích xuất theo cấu hình và phiên bản bộ máy. | BASE TABLE |
 | [MAPPING.RESULTS](MAPPING.RESULTS.md) | 7 | Kết quả ánh xạ bất biến cùng phiên bản cấu trúc và chất lượng. | BASE TABLE |
 | [CANDIDATE.PROFILES](CANDIDATE.PROFILES.md) | 19 | Hồ sơ ứng viên có phiên bản và trạng thái xác nhận thông tin. | BASE TABLE |
 | [CANDIDATE.EXPERIENCES](CANDIDATE.EXPERIENCES.md) | 27 | Kinh nghiệm ứng viên cùng nguồn bằng chứng và trạng thái xác nhận. | BASE TABLE |
@@ -30,6 +30,7 @@
 | [CATALOG.ENTRIES](CATALOG.ENTRIES.md) | 14 | Danh mục công ty và chức danh chuẩn hóa theo loại. | BASE TABLE |
 | [CATALOG.ALIASES](CATALOG.ALIASES.md) | 15 | Ánh xạ cách viết bí danh tới mục danh mục và hàng đợi chuẩn hóa; ENTRY_ID để trống khi bí danh đang chờ chuẩn hóa. | BASE TABLE |
 | [SEARCH.CANDIDATE_INDEX](SEARCH.CANDIDATE_INDEX.md) | 14 | Bản chỉ mục tìm kiếm tổng hợp theo ứng viên. | BASE TABLE |
+| [MAPPING.REMAP_RUNS](MAPPING.REMAP_RUNS.md) | 14 | Lượt chạy lại mapping theo phạm vi và cấu hình được chốt khi tạo. | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -93,6 +94,7 @@ erDiagram
 "MAPPING.SETTINGS" }o--o| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;ACTIVE_CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
 "MAPPING.JOBS" }o--|| "INGESTION.EXTRACTIONS" : "FOREIGN KEY (#quot;EXTRACTION_ID#quot;) REFERENCES #quot;INGESTION#quot;.#quot;EXTRACTIONS#quot;(#quot;ID#quot;)"
 "MAPPING.JOBS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
+"MAPPING.JOBS" }o--o| "MAPPING.REMAP_RUNS" : "FOREIGN KEY (#quot;REMAP_RUN_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;REMAP_RUNS#quot;(#quot;ID#quot;)"
 "MAPPING.RESULTS" |o--|| "MAPPING.JOBS" : "FOREIGN KEY (#quot;JOB_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;JOBS#quot;(#quot;ID#quot;)"
 "CANDIDATE.PROFILES" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;)"
 "CANDIDATE.PROFILES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;CURRENT_COMPANY_ID#quot;, #quot;CURRENT_COMPANY_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
@@ -113,6 +115,7 @@ erDiagram
 "CATALOG.ENTRIES" }o--o| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;PARENT_ID#quot;, #quot;PARENT_KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;)"
 "CATALOG.ALIASES" }o--|| "CATALOG.ENTRIES" : "FOREIGN KEY (#quot;ENTRY_ID#quot;, #quot;KIND#quot;) REFERENCES #quot;CATALOG#quot;.#quot;ENTRIES#quot;(#quot;ID#quot;, #quot;KIND#quot;) ON DELETE CASCADE"
 "SEARCH.CANDIDATE_INDEX" |o--|| "CANDIDATE.CANDIDATES" : "FOREIGN KEY (#quot;CANDIDATE_ID#quot;) REFERENCES #quot;CANDIDATE#quot;.#quot;CANDIDATES#quot;(#quot;ID#quot;) ON DELETE CASCADE"
+"MAPPING.REMAP_RUNS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
 
 "public.event_publication" {
   uuid id
@@ -284,6 +287,8 @@ erDiagram
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone COMPLETED_AT
   integer MAX_ATTEMPTS
+  smallint PRIORITY
+  bigint REMAP_RUN_ID FK
 }
 "MAPPING.RESULTS" {
   bigint ID
@@ -462,6 +467,22 @@ erDiagram
   integer TOTAL_EXPERIENCE_MONTHS
   boolean HAS_AI_NORMALIZATION
   timestamp_with_time_zone UPDATED_AT
+}
+"MAPPING.REMAP_RUNS" {
+  bigint ID
+  varchar_16_ SCOPE_KIND
+  jsonb SCOPE_VALUE
+  bigint CONFIG_ID FK
+  varchar_16_ STATE
+  bigint CURSOR_EXTRACTION_ID
+  bigint UPPER_EXTRACTION_ID
+  bigint SELECTED
+  bigint QUEUED
+  bigint SKIPPED
+  varchar_128_ CREATED_BY
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
+  timestamp_with_time_zone FINISHED_AT
 }
 ```
 

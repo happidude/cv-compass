@@ -114,6 +114,8 @@ erDiagram
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone COMPLETED_AT
   integer MAX_ATTEMPTS
+  smallint PRIORITY
+  bigint REMAP_RUN_ID FK
 }
 ```
 
