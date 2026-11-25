@@ -15,6 +15,7 @@ import com.cvcompass.backend.search.exception.SearchFailure;
 import com.cvcompass.backend.search.repository.CandidateSearchRepository;
 import com.cvcompass.backend.search.repository.CandidateSearchRepository.Criteria;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,19 +50,22 @@ public class CandidateSearchService {
         if (min != null && max != null && min > max)
             throw new SearchFailure("maxYears", "Must be greater than or equal to minYears");
         var cursor = SearchCursor.decode(request.cursor());
-        var codes =
-                Map.of(
-                        "FUNCTION",
-                        request.function(),
-                        "SENIORITY",
-                        request.seniority(),
-                        "SCOPE",
-                        request.scope(),
-                        "INDUSTRY",
-                        request.industry());
+        Map<String, List<String>> codes = new LinkedHashMap<>();
+        codes.put("FUNCTION", request.function());
+        codes.put("SENIORITY", request.seniority());
+        codes.put("SCOPE", request.scope());
+        codes.put("INDUSTRY", request.industry());
+        var activeCodes =
+                repository.activeCodes(
+                        codes.entrySet().stream()
+                                .filter(group -> !group.getValue().isEmpty())
+                                .map(Map.Entry::getKey)
+                                .toList());
         for (var group : codes.entrySet()) {
             if (!group.getValue().isEmpty()
-                    && !repository.activeCodes(group.getKey()).containsAll(group.getValue())) {
+                    && !activeCodes
+                            .getOrDefault(group.getKey(), List.of())
+                            .containsAll(group.getValue())) {
                 throw new SearchFailure(
                         group.getKey().toLowerCase(Locale.ROOT),
                         "Must contain active codes of the requested kind");
@@ -181,7 +185,7 @@ public class CandidateSearchService {
                 throw new SearchFailure(kind.toLowerCase(Locale.ROOT), "Invalid catalog id");
             }
         }
-        return repository.resolve(kind, value, properties.getQuery().getTrigramThreshold());
+        return repository.resolve(kind, value, properties.getQuery());
     }
 
     private static String textFilter(String value) {

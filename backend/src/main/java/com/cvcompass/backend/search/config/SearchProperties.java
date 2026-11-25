@@ -41,10 +41,19 @@ public class SearchProperties {
         @Max(50)
         private int suggestLimit = 10;
 
+        @Min(1)
+        @Max(50)
+        private int resolveLimit = 5;
+
         @NotNull
         @DecimalMin(value = "0", inclusive = false)
         @DecimalMax("1")
         private BigDecimal trigramThreshold = new BigDecimal("0.3");
+
+        @NotNull
+        @DecimalMin(value = "0", inclusive = false)
+        @DecimalMax("1")
+        private BigDecimal keywordTrigramThreshold = new BigDecimal("0.5");
 
         @Valid @NotNull private Weights weights = new Weights();
 
@@ -68,6 +77,10 @@ public class SearchProperties {
         @NotNull
         @DecimalMin("0")
         private BigDecimal titleCatalog = new BigDecimal("200");
+
+        @NotNull
+        @DecimalMin("0")
+        private BigDecimal titleCatalogBonus = new BigDecimal("30");
 
         @NotNull
         @DecimalMin("0")
@@ -100,6 +113,7 @@ public class SearchProperties {
                         companyDirect,
                         companyParent,
                         titleCatalog,
+                        titleCatalogBonus,
                         companyText,
                         titleText,
                         companyCurrent,
@@ -113,6 +127,7 @@ public class SearchProperties {
             var bonuses =
                     companyText
                             .add(titleText)
+                            .add(titleCatalogBonus)
                             .add(companyCurrent)
                             .add(titleCurrent)
                             .add(keywordText)

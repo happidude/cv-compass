@@ -18,7 +18,9 @@ import org.springframework.test.context.DynamicPropertySource;
             "cv.search.query.weights.title-current=60",
             "cv.search.query.default-limit=1",
             "cv.search.query.max-limit=3",
-            "cv.search.query.suggest-limit=2"
+            "cv.search.query.suggest-limit=2",
+            "cv.search.query.resolve-limit=2",
+            "cv.search.query.keyword-trigram-threshold=1"
         })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CandidateSearchWeightsIntegrationTests extends CandidateSearchTestSupport {
@@ -52,5 +54,37 @@ class CandidateSearchWeightsIntegrationTests extends CandidateSearchTestSupport 
         var suggestions = get("/api/candidates/search/companies?q=zzbonussuggestion");
         assertThat(suggestions.statusCode()).isEqualTo(200);
         assertThat(json.readTree(suggestions.body()).size()).isEqualTo(2);
+    }
+
+    @Test
+    void keywordThresholdIsIndependentFromCatalogResolution() throws Exception {
+        login();
+        String marker = unique("thresholdmarker");
+        String name = unique("Independent Threshold Company");
+        long company = company(name, null, "USER");
+        long id = candidate(marker + " zzthresholdquang", company, null, null, null, null, null, 0);
+        assertThat(resultIds(search("q=zzthresholdquagn"))).isEmpty();
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + encode(name + "x"))))
+                .containsExactly(id);
+    }
+
+    @Test
+    void resolveLimitOverrideBoundsFuzzyCompanyMatches() throws Exception {
+        login();
+        String marker = unique("resolvelimitmarker");
+        String query = unique("Bounded Fuzzy Company");
+        for (int i = 0; i < 4; i++) {
+            long company = company(query + " variant" + i, null, "USER");
+            candidate(marker, company, null, null, null, null, null, 0);
+        }
+        assertThat(
+                        resultIds(
+                                search(
+                                        "q="
+                                                + encode(marker)
+                                                + "&company="
+                                                + encode(query)
+                                                + "&limit=3")))
+                .hasSize(2);
     }
 }

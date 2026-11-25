@@ -44,7 +44,7 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
 
     @Test
     void tenThousandSyntheticProfilesUseGinIndexesAndReportTimings() throws Exception {
-        long company = company("Synthetic Performance Company", null, "USER");
+        long company = company("Syntheticneedle", null, "USER");
         jdbc.update(
                 """
                 WITH inserted AS (
@@ -56,8 +56,8 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                 )
                 INSERT INTO "SEARCH"."CANDIDATE_INDEX" ("CANDIDATE_ID","SEARCH_TEXT","SEARCH_TSV",
                   "COMPANY_IDS","FUNCTION_CODES","UPDATED_AT")
-                SELECT "CANDIDATE_ID", CASE WHEN "CANDIDATE_ID"%100=0 THEN 'syntheticneedle' ELSE 'synthetic ordinary ' || "CANDIDATE_ID" END,
-                  to_tsvector('simple',CASE WHEN "CANDIDATE_ID"%100=0 THEN 'syntheticneedle' ELSE 'synthetic ordinary ' || "CANDIDATE_ID" END),
+                SELECT "CANDIDATE_ID", CASE WHEN "CANDIDATE_ID"%100=0 THEN 'syntheticneedle' ELSE 'ordinary profile ' || "CANDIDATE_ID" END,
+                  to_tsvector('simple',CASE WHEN "CANDIDATE_ID"%100=0 THEN 'syntheticneedle' ELSE 'ordinary profile ' || "CANDIDATE_ID" END),
                   CASE WHEN "CANDIDATE_ID"%100=0 THEN ARRAY[?]::bigint[] ELSE '{}'::bigint[] END,
                   CASE WHEN "CANDIDATE_ID"%100=0 THEN '{IT}'::text[] ELSE '{SALES}'::text[] END,now()
                 FROM profiles
@@ -94,7 +94,7 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                         false,
                         List.of(company),
                         List.of(),
-                        Map.of("FUNCTION", List.of("IT")),
+                        Map.of(),
                         List.of(),
                         null,
                         null,
@@ -103,14 +103,30 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
         explain(
                 "keyword",
                 keyword,
-                List.of("IDX_CANDIDATE_INDEX_SEARCH_TSV", "IDX_CANDIDATE_INDEX_SEARCH_TEXT"));
+                "IDX_CANDIDATE_INDEX_SEARCH_TSV",
+                "IDX_CANDIDATE_INDEX_SEARCH_TEXT");
         explain(
                 "arrays",
                 arrays,
-                List.of(
-                        "IDX_CANDIDATE_INDEX_COMPANY_IDS",
-                        "IDX_CANDIDATE_INDEX_PARENT_COMPANY_IDS",
-                        "IDX_CANDIDATE_INDEX_FUNCTION_CODES"));
+                "IDX_CANDIDATE_INDEX_COMPANY_IDS",
+                "IDX_CANDIDATE_INDEX_PARENT_COMPANY_IDS");
+        var companyByName =
+                new Criteria(
+                        "",
+                        "syntheticneedle",
+                        "",
+                        true,
+                        false,
+                        repository.resolve("COMPANY", "syntheticneedle", properties.getQuery()),
+                        List.of(),
+                        Map.of(),
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        20);
+        assertThat(companyByName.companyIds()).containsExactly(company);
+        explain("company_name", companyByName, "IDX_CANDIDATE_INDEX_SEARCH_TEXT");
         login();
         long started = System.nanoTime();
         var result = search("q=syntheticneedle");
@@ -120,7 +136,7 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                 result.path("content").size(), (System.nanoTime() - started) / 1_000_000.0);
     }
 
-    private void explain(String name, Criteria criteria, List<String> expectedIndexes) {
+    private void explain(String name, Criteria criteria, String... requiredIndexes) {
         new TransactionTemplate(transactions)
                 .executeWithoutResult(
                         status -> {
@@ -129,6 +145,18 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                             long started = System.nanoTime();
                             var rows = repository.search(criteria, properties.getQuery());
                             double elapsed = (System.nanoTime() - started) / 1_000_000.0;
+                            if (!criteria.q().isEmpty()) {
+                                assertThat(
+                                                jdbc.queryForObject(
+                                                        """
+                                        SELECT count(*) FROM "SEARCH"."CANDIDATE_INDEX"
+                                        WHERE "SEARCH_TSV" @@ plainto_tsquery('simple',?) OR ? <% "SEARCH_TEXT"
+                                        """,
+                                                        Integer.class, criteria.q(), criteria.q()))
+                                        .as(
+                                                "keyword fixture must match only one percent of profiles")
+                                        .isEqualTo(100);
+                            }
                             String plan =
                                     String.join(
                                             "\n",
@@ -136,7 +164,7 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                                                     "EXPLAIN " + query.sql(),
                                                     query.parameters(),
                                                     String.class));
-                            boolean forced = expectedIndexes.stream().noneMatch(plan::contains);
+                            boolean forced = !usesRequiredIndex(plan, requiredIndexes);
                             if (forced) {
                                 // On small/selective synthetic distributions, cost estimates may
                                 // prefer a scan.
@@ -151,14 +179,20 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                                                         query.parameters(),
                                                         String.class));
                             }
-                            String finalPlan = plan;
-                            assertThat(expectedIndexes.stream().anyMatch(finalPlan::contains))
+                            assertThat(plan)
                                     .as("GIN index for %s", name)
-                                    .isTrue();
+                                    .containsAnyOf(requiredIndexes);
                             assertThat(rows).hasSize(21);
                             System.out.printf(
                                     "SEARCH_PERF kind=%s rows=%d elapsed_ms=%.3f forced_index=%s%n",
                                     name, rows.size(), elapsed, forced);
                         });
+    }
+
+    private boolean usesRequiredIndex(String plan, String[] requiredIndexes) {
+        for (String index : requiredIndexes) {
+            if (plan.contains(index)) return true;
+        }
+        return false;
     }
 }

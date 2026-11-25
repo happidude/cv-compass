@@ -24,22 +24,36 @@ public class CandidateSearchRepository {
         this.jdbc = new NamedParameterJdbcTemplate(jdbc);
     }
 
-    public List<Long> resolve(String kind, String text, BigDecimal threshold) {
+    public List<Long> resolve(String kind, String text, Query properties) {
         return jdbc.queryForList(
                 """
-                SELECT e."ID" FROM "CATALOG"."ENTRIES" e
-                WHERE e."KIND"=:kind AND (e."NAME_FOLDED"=:text
-                  OR similarity(e."NAME_FOLDED",:text)>=:threshold
-                  OR EXISTS (SELECT 1 FROM "CATALOG"."ALIASES" a
+                WITH exact AS (
+                  SELECT e."ID",CASE WHEN e."NAME_FOLDED"=:text THEN 2 ELSE 1 END AS relevance
+                  FROM "CATALOG"."ENTRIES" e
+                  WHERE e."KIND"=:kind AND (e."NAME_FOLDED"=:text OR EXISTS (
+                    SELECT 1 FROM "CATALOG"."ALIASES" a
                     WHERE a."KIND"=:kind AND a."STATE"='DONE' AND a."ENTRY_ID"=e."ID"
                       AND a."ALIAS_FOLDED"=:text))
-                ORDER BY (e."NAME_FOLDED"=:text) DESC,
-                  EXISTS (SELECT 1 FROM "CATALOG"."ALIASES" a
-                    WHERE a."KIND"=:kind AND a."STATE"='DONE' AND a."ENTRY_ID"=e."ID"
-                      AND a."ALIAS_FOLDED"=:text) DESC,
-                  similarity(e."NAME_FOLDED",:text) DESC,e."ID" DESC
+                ), fuzzy AS (
+                  SELECT e."ID",similarity(e."NAME_FOLDED",:text) AS relevance
+                  FROM "CATALOG"."ENTRIES" e
+                  WHERE e."KIND"=:kind AND NOT EXISTS (SELECT 1 FROM exact)
+                    AND similarity(e."NAME_FOLDED",:text)>=:threshold
+                  ORDER BY relevance DESC,e."ID" DESC LIMIT :limit
+                )
+                SELECT "ID" FROM (
+                  SELECT "ID",relevance FROM exact UNION ALL SELECT "ID",relevance FROM fuzzy
+                ) resolved ORDER BY relevance DESC,"ID" DESC
                 """,
-                Map.of("kind", kind, "text", text, "threshold", threshold),
+                Map.of(
+                        "kind",
+                        kind,
+                        "text",
+                        text,
+                        "threshold",
+                        properties.getTrigramThreshold(),
+                        "limit",
+                        properties.getResolveLimit()),
                 Long.class);
     }
 
@@ -98,20 +112,28 @@ public class CandidateSearchRepository {
         return result;
     }
 
-    public List<String> activeCodes(String kind) {
-        return jdbc.queryForList(
+    public Map<String, List<String>> activeCodes(List<String> kinds) {
+        if (kinds.isEmpty()) return Map.of();
+        return jdbc.query(
                 """
-                SELECT "CODE" FROM "CATALOG"."TAXONOMY_CODES" WHERE "KIND"=:kind AND "ACTIVE"
+                SELECT "KIND","CODE" FROM "CATALOG"."TAXONOMY_CODES"
+                WHERE "KIND" IN (:kinds) AND "ACTIVE"
                 """,
-                Map.of("kind", kind),
-                String.class);
+                Map.of("kinds", kinds),
+                rs -> {
+                    Map<String, List<String>> result = new LinkedHashMap<>();
+                    while (rs.next())
+                        result.computeIfAbsent(rs.getString("KIND"), key -> new ArrayList<>())
+                                .add(rs.getString("CODE"));
+                    return result;
+                });
     }
 
     public List<Row> search(Criteria criteria, Query properties) {
         // Transaction-local settings keep pooled connections and concurrent searches independent.
         jdbc.queryForObject(
                 "SELECT set_config('pg_trgm.word_similarity_threshold',:threshold,true)",
-                Map.of("threshold", properties.getTrigramThreshold().toPlainString()),
+                Map.of("threshold", properties.getKeywordTrigramThreshold().toPlainString()),
                 String.class);
         var plan = prepare(criteria, properties);
         return jdbc.query(
@@ -160,8 +182,8 @@ public class CandidateSearchRepository {
         var p =
                 new MapSqlParameterSource()
                         .addValue("q", c.q())
-                        .addValue("companyText", c.company())
-                        .addValue("titleText", c.title())
+                        .addValue("companyText", escapeLike(c.company()))
+                        .addValue("titleText", escapeLike(c.title()))
                         .addValue("companies", c.companyIds().toArray(Long[]::new))
                         .addValue("titles", c.titleIds().toArray(Long[]::new))
                         .addValue("limit", c.limit() + 1);
@@ -171,10 +193,10 @@ public class CandidateSearchRepository {
                     "(i.\"SEARCH_TSV\" @@ plainto_tsquery('simple',:q) OR :q <% i.\"SEARCH_TEXT\")");
         if (c.companyPresent())
             predicates.add(
-                    "(i.\"COMPANY_IDS\" && CAST(:companies AS bigint[]) OR i.\"PARENT_COMPANY_IDS\" && CAST(:companies AS bigint[]) OR (:companyText<>'' AND strpos(i.\"SEARCH_TEXT\",:companyText)>0))");
+                    "(i.\"COMPANY_IDS\" && CAST(:companies AS bigint[]) OR i.\"PARENT_COMPANY_IDS\" && CAST(:companies AS bigint[]) OR (:companyText<>'' AND i.\"SEARCH_TEXT\" LIKE '%' || :companyText || '%' ESCAPE '\\'))");
         if (c.titlePresent())
             predicates.add(
-                    "(i.\"TITLE_IDS\" && CAST(:titles AS bigint[]) OR (:titleText<>'' AND strpos(i.\"SEARCH_TEXT\",:titleText)>0))");
+                    "(i.\"TITLE_IDS\" && CAST(:titles AS bigint[]) OR (:titleText<>'' AND i.\"SEARCH_TEXT\" LIKE '%' || :titleText || '%' ESCAPE '\\'))");
         for (String field : List.of("FUNCTION", "SENIORITY", "SCOPE", "INDUSTRY")) {
             List<String> codes = c.codes().getOrDefault(field, List.of());
             if (!codes.isEmpty()) {
@@ -204,12 +226,12 @@ public class CandidateSearchRepository {
                 SELECT i.*,p."FULL_NAME",p."CURRENT_COMPANY_ID",p."CURRENT_TITLE_ID",
                   i."COMPANY_IDS" && CAST(:companies AS bigint[]) AS company_direct,
                   i."PARENT_COMPANY_IDS" && CAST(:companies AS bigint[]) AS company_parent,
-                  (:companyText<>'' AND strpos(i."SEARCH_TEXT",:companyText)>0) AS company_text,
+                  (:companyText<>'' AND i."SEARCH_TEXT" LIKE '%' || :companyText || '%' ESCAPE '\\') AS company_text,
                   COALESCE(p."CURRENT_COMPANY_ID"=ANY(CAST(:companies AS bigint[])) OR EXISTS (
                     SELECT 1 FROM "CATALOG"."ENTRIES" e WHERE e."ID"=p."CURRENT_COMPANY_ID"
                       AND e."PARENT_ID"=ANY(CAST(:companies AS bigint[]))),false) AS company_current,
                   i."TITLE_IDS" && CAST(:titles AS bigint[]) AS title_catalog,
-                  (:titleText<>'' AND strpos(i."SEARCH_TEXT",:titleText)>0) AS title_text,
+                  (:titleText<>'' AND i."SEARCH_TEXT" LIKE '%' || :titleText || '%' ESCAPE '\\') AS title_text,
                   COALESCE(p."CURRENT_TITLE_ID"=ANY(CAST(:titles AS bigint[])),false) AS title_current,
                 """
                         + rank
@@ -221,6 +243,7 @@ public class CandidateSearchRepository {
         p.addValue("wd", w.getCompanyDirect())
                 .addValue("wp", w.getCompanyParent())
                 .addValue("wt", w.getTitleCatalog())
+                .addValue("wtb", w.getTitleCatalogBonus())
                 .addValue("wct", w.getCompanyText())
                 .addValue("wtt", w.getTitleText())
                 .addValue("wcc", w.getCompanyCurrent())
@@ -240,6 +263,7 @@ public class CandidateSearchRepository {
                   SELECT flags.*,text_rank>0 AS keyword_text,
                     round(CAST(CASE WHEN company_direct THEN :wd WHEN company_parent THEN :wp
                       WHEN title_catalog THEN :wt ELSE 0 END
+                      + CASE WHEN title_catalog AND (company_direct OR company_parent) THEN :wtb ELSE 0 END
                       + CASE WHEN company_text THEN :wct ELSE 0 END
                       + CASE WHEN title_text THEN :wtt ELSE 0 END
                       + CASE WHEN company_current THEN :wcc ELSE 0 END
@@ -252,6 +276,10 @@ public class CandidateSearchRepository {
                         + after
                         + " ORDER BY score DESC,\"CANDIDATE_ID\" DESC LIMIT :limit";
         return new PreparedSearch(sql, p);
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     public record Criteria(

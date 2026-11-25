@@ -2,6 +2,8 @@ package com.cvcompass.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.cvcompass.backend.search.config.SearchProperties;
+import com.cvcompass.backend.search.repository.CandidateSearchRepository;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -10,6 +12,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -22,6 +25,8 @@ import tools.jackson.databind.JsonNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
     private static final IsolatedPostgresSchema DATABASE = new IsolatedPostgresSchema();
+    @Autowired CandidateSearchRepository searchRepository;
+    @Autowired SearchProperties searchProperties;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws Exception {
@@ -129,6 +134,144 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
         var fixture = positionBonusFixture();
         assertThat(resultIds(search(fixture.query())))
                 .containsExactly(fixture.currentCompany(), fixture.currentTitle());
+    }
+
+    @Test
+    void catalogTitleOutranksTextTitleInBothCompanyTiers() throws Exception {
+        String marker = unique("catalogbonusmarker");
+        long company = company(unique("Catalog Bonus Company"), null, "USER");
+        long child = company(unique("Catalog Bonus Child"), company, "USER");
+        String titleName = unique("Catalog Bonus Title");
+        long title = title(titleName);
+        long directCatalog = candidate(marker, company, null, title, null, null, null, 0);
+        long directText =
+                candidate(marker + " " + titleName, company, null, null, null, null, null, 0);
+        long parentCatalog = candidate(marker, child, company, title, null, null, null, 0);
+        long parentText =
+                candidate(marker + " " + titleName, child, company, null, null, null, null, 0);
+        var result =
+                search(
+                        "q="
+                                + encode(marker)
+                                + "&company="
+                                + company
+                                + "&title="
+                                + encode(titleName));
+        assertThat(resultIds(result))
+                .containsExactly(directCatalog, directText, parentCatalog, parentText);
+        assertThat(reasons(result.path("content").get(0)))
+                .contains("TITLE_CATALOG")
+                .doesNotContain("TITLE_TEXT");
+        assertThat(reasons(result.path("content").get(1)))
+                .contains("TITLE_TEXT")
+                .doesNotContain("TITLE_CATALOG");
+        assertThat(result.path("content").get(0).path("score").decimalValue())
+                .isGreaterThan(result.path("content").get(1).path("score").decimalValue());
+        assertThat(result.path("content").get(2).path("score").decimalValue())
+                .isGreaterThan(result.path("content").get(3).path("score").decimalValue());
+    }
+
+    @Test
+    void exactNamesAndDoneAliasesDoNotResolveSimilarCatalogEntries() throws Exception {
+        String marker = unique("exactmarker");
+        String companyName = unique("Exact Company");
+        long company = company(companyName, null, "USER");
+        long similarCompany = company(companyName + " Labs", null, "USER");
+        String titleName = unique("Exact Title");
+        long title = title(titleName);
+        long similarTitle = title(titleName + " Labs");
+        String companyAlias = companyName + " Lab";
+        String titleAlias = titleName + " Lab";
+        alias("COMPANY", companyAlias, company, "DONE");
+        alias("TITLE", titleAlias, title, "DONE");
+        long exact = candidate(marker, company, null, title, null, null, null, 0);
+        candidate(marker, similarCompany, null, similarTitle, null, null, null, 0);
+        for (String filter : List.of(companyName, companyAlias)) {
+            var result = search("q=" + encode(marker) + "&company=" + encode(filter));
+            assertThat(resultIds(result)).containsExactly(exact);
+            assertThat(reasons(result.path("content").get(0))).contains("COMPANY_DIRECT");
+        }
+        for (String filter : List.of(titleName, titleAlias)) {
+            assertThat(resultIds(search("q=" + encode(marker) + "&title=" + encode(filter))))
+                    .containsExactly(exact);
+        }
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + Long.MAX_VALUE)))
+                .isEmpty();
+    }
+
+    @Test
+    void fuzzyResolutionIsBoundedAndOrderedBySimilarity() {
+        String query = unique("Bounded Resolve");
+        var inserted = new ArrayList<Long>();
+        for (int i = 1; i <= 8; i++)
+            inserted.add(company(query + " " + "variants".substring(0, i), null, "USER"));
+        var ids =
+                searchRepository.resolve(
+                        "COMPANY",
+                        com.cvcompass.backend.catalog.api.CatalogText.fold(query),
+                        searchProperties.getQuery());
+        assertThat(ids)
+                .hasSize(searchProperties.getQuery().getResolveLimit())
+                .doesNotHaveDuplicates();
+        assertThat(inserted).containsAll(ids);
+        var similarities =
+                ids.stream()
+                        .map(
+                                id ->
+                                        jdbc.queryForObject(
+                                                "SELECT similarity(\"NAME_FOLDED\",?) FROM \"CATALOG\".\"ENTRIES\" WHERE \"ID\"=?",
+                                                Double.class,
+                                                com.cvcompass.backend.catalog.api.CatalogText.fold(
+                                                        query),
+                                                id))
+                        .toList();
+        assertThat(similarities).isSortedAccordingTo(java.util.Comparator.reverseOrder());
+    }
+
+    @Test
+    void companyAndTitleTextTreatWildcardAndEscapeCharactersLiterally() throws Exception {
+        String marker = unique("literalmarker");
+        String company = unique("Literal Company") + "%_branch\\office";
+        String title = unique("Literal Title") + "%_role\\desk";
+        long literal =
+                candidate(
+                        marker + " " + company + " " + title,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0);
+        for (String special : List.of("%", "_", "\\")) {
+            candidate(
+                    marker
+                            + " "
+                            + company.replace(special, "x")
+                            + " "
+                            + title.replace(special, "x"),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    0);
+        }
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + encode(company))))
+                .containsExactly(literal);
+        assertThat(resultIds(search("q=" + encode(marker) + "&title=" + encode(title))))
+                .containsExactly(literal);
+        var both =
+                search(
+                        "q="
+                                + encode(marker)
+                                + "&company="
+                                + encode(company)
+                                + "&title="
+                                + encode(title));
+        assertThat(resultIds(both)).containsExactly(literal);
+        assertThat(reasons(both.path("content").get(0))).contains("COMPANY_TEXT", "TITLE_TEXT");
     }
 
     @Test
@@ -268,6 +411,38 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
     }
 
     @Test
+    void keysetPreservesFractionalFullTextScoresAcrossManyPages() throws Exception {
+        String marker = unique("fractionalrank");
+        for (int i = 1; i <= 12; i++) {
+            candidate((marker + " ").repeat(i), null, null, null, null, null, null, 0);
+        }
+        String query = "q=" + encode(marker);
+        var all = search(query + "&limit=50");
+        var scores = new java.util.HashSet<java.math.BigDecimal>();
+        for (var row : all.path("content")) {
+            var score = row.path("score").decimalValue();
+            assertThat(score.remainder(java.math.BigDecimal.ONE)).isPositive();
+            scores.add(score);
+        }
+        assertThat(scores.size()).isGreaterThan(1);
+        var seen = new ArrayList<Long>();
+        String cursor = null;
+        for (int page = 0; page < 12; page++) {
+            var result = search(query + "&limit=2" + (cursor == null ? "" : "&cursor=" + cursor));
+            seen.addAll(resultIds(result));
+            if (!result.path("hasNext").asBoolean()) {
+                assertThat(result.path("nextCursor").isNull()).isTrue();
+                break;
+            }
+            cursor = result.path("nextCursor").asString();
+        }
+        assertThat(seen)
+                .hasSize(12)
+                .doesNotHaveDuplicates()
+                .containsExactlyElementsOf(resultIds(all));
+    }
+
+    @Test
     void invalidParametersReturnSafeFieldViolations() throws Exception {
         jdbc.update(
                 """
@@ -283,6 +458,12 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
                     {"function=INVALID", "function"},
                     {"function=MANAGER", "function"},
                     {"function=TEST_INACTIVE", "function"},
+                    {
+                        "function=INVALID&seniority=INVALID&scope=INVALID&industry=INVALID",
+                        "function"
+                    },
+                    {"function=IT&seniority=INVALID&scope=INVALID&industry=INVALID", "seniority"},
+                    {"function=IT&seniority=MANAGER&scope=INVALID&industry=INVALID", "scope"},
                     {"seniority=IT", "seniority"},
                     {"scope=IT", "scope"},
                     {"industry=IT", "industry"},
@@ -345,6 +526,18 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
                             HttpResponse.BodyHandlers.ofString());
             assertThat(anonymous.statusCode()).isEqualTo(401);
         }
+    }
+
+    @Test
+    void oneCharacterSuggestionsUsePrefixMatchingAndRemainBounded() throws Exception {
+        long exact = company("X", null, "USER");
+        company(unique("X synthetic suggestion"), null, "USER");
+        var response = get("/api/candidates/search/companies?q=x");
+        assertThat(response.statusCode()).isEqualTo(200);
+        var results = json.readTree(response.body());
+        assertThat(results.size()).isBetween(2, searchProperties.getQuery().getSuggestLimit());
+        assertThat(results.get(0).path("id").asLong()).isEqualTo(exact);
+        assertThat(get("/api/candidates/search/companies?q=x").body()).isEqualTo(response.body());
     }
 
     private List<String> reasons(JsonNode row) {
