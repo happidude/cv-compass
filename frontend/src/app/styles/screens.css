@@ -245,6 +245,49 @@
   background: var(--c-surface-sunken);
 }
 /* ---- Candidate profile ----------------------------------------------- */
+.candidate-search {
+  margin-bottom: var(--sp-5);
+}
+.candidate-search .panel__body {
+  display: grid;
+  gap: var(--sp-4);
+}
+.candidate-search__fields,
+.candidate-search__groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+.candidate-search__group {
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+}
+.candidate-search__group legend {
+  padding-inline: var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+.candidate-search__choices {
+  display: grid;
+  gap: var(--sp-2);
+  max-height: 12rem;
+  overflow-y: auto;
+}
+.candidate-search__suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.candidate-search__suggestions .btn {
+  height: auto;
+  white-space: normal;
+  text-align: left;
+}
 .candidate-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 42%);

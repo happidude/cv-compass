@@ -187,6 +187,28 @@ const notFound = () =>
     { status: 404 },
   );
 export const candidateHandlers = [
+  http.get(`${base}/candidates/search/options`, () =>
+    HttpResponse.json(candidateSearchOptions),
+  ),
+  http.get(`${base}/candidates/search/companies`, async ({ request }) => {
+    await delay(80);
+    const q = new URL(request.url).searchParams.get("q")?.trim().toLowerCase();
+    return HttpResponse.json(
+      q
+        ? candidateCompanySuggestions.filter((company) =>
+            company.name.toLowerCase().includes(q),
+          )
+        : [],
+    );
+  }),
+  http.get(`${base}/candidates/search`, async ({ request }) => {
+    await delay(100);
+    return HttpResponse.json(
+      new URL(request.url).searchParams.has("cursor")
+        ? candidateSearchNextPage
+        : candidateSearchPage,
+    );
+  }),
   http.get(`${base}/candidates`, async () => {
     await delay(150);
     return HttpResponse.json(candidatePage);
@@ -223,3 +245,79 @@ export const candidateHandlers = [
     }),
   ),
 ];
+
+export const candidateSearchOptions = {
+  FUNCTION: [
+    { code: "IT", label: "Công nghệ thông tin" },
+    { code: "ENGINEERING", label: "Kỹ thuật" },
+  ],
+  SENIORITY: [
+    { code: "SENIOR", label: "Chuyên viên cao cấp" },
+    { code: "MANAGER", label: "Quản lý" },
+  ],
+  SCOPE: [
+    { code: "COMPANY", label: "Toàn công ty/tập đoàn" },
+    { code: "REGION", label: "Vùng/khu vực" },
+  ],
+  INDUSTRY: [
+    { code: "LOGISTICS", label: "Logistics / vận tải / phân phối" },
+    { code: "MANUFACTURING", label: "Sản xuất công nghiệp" },
+  ],
+  provinces: ["Hà Nội", "Hồ Chí Minh"],
+};
+export const candidateCompanySuggestions = [
+  { id: 22, name: "Synthetic Logistics", parentName: "Synthetic Group" },
+  { id: 23, name: "Synthetic Group", parentName: null },
+];
+export const candidateSearchPage = {
+  content: [
+    {
+      id: 1,
+      fullName: "Synthetic An Nguyen",
+      currentTitle: { id: 11, name: "Kỹ sư phần mềm", aiNormalized: true },
+      currentCompany: { ...candidateCompanySuggestions[0], aiNormalized: true },
+      province: "Hà Nội",
+      totalExperienceMonths: 59,
+      experienceEstimated: true,
+      score: 640,
+      matchReasons: ["COMPANY_PARENT", "COMPANY_CURRENT", "TITLE_CATALOG"],
+      matchedCompany: { id: 23, name: "Synthetic Group" },
+    },
+    {
+      id: 8,
+      fullName: "Synthetic Binh Tran",
+      currentTitle: {
+        id: 12,
+        name: "Chuyên viên kỹ thuật",
+        aiNormalized: false,
+      },
+      currentCompany: null,
+      province: "Hồ Chí Minh",
+      totalExperienceMonths: 8,
+      experienceEstimated: true,
+      score: 200,
+      matchReasons: ["TITLE_CATALOG", "KEYWORD_FUZZY"],
+      matchedCompany: null,
+    },
+  ],
+  nextCursor: "NjQwLjAwMDAwMHw4",
+  hasNext: true,
+};
+export const candidateSearchNextPage = {
+  content: [
+    {
+      id: 3,
+      fullName: null,
+      currentTitle: null,
+      currentCompany: null,
+      province: null,
+      totalExperienceMonths: null,
+      experienceEstimated: true,
+      score: 10,
+      matchReasons: ["KEYWORD_TEXT", "FUTURE_REASON"],
+      matchedCompany: null,
+    },
+  ],
+  nextCursor: null,
+  hasNext: false,
+};

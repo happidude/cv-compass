@@ -1,5 +1,109 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+test("candidate filters persist on reload, show matches and load the next search page", async ({
+  page,
+}) => {
+  await page.goto("/candidates");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Hồ sơ ứng viên",
+  );
+  await expect(page.getByText("Dữ liệu mẫu", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Trang tiếp" })).toBeVisible();
+  await page.getByLabel("Từ khóa").fill("ky su");
+  await page.getByLabel("Công nghệ thông tin", { exact: true }).check();
+  await page.getByLabel("Kỹ thuật", { exact: true }).check();
+  await page.getByLabel("Công ty", { exact: true }).fill("Synthetic");
+  await page
+    .getByRole("button", {
+      name: "Synthetic Logistics (Synthetic Group)",
+      exact: true,
+    })
+    .click();
+  await page.getByLabel("Số năm tối thiểu").fill("0");
+  await page.getByLabel("Số năm tối đa").fill("6");
+  await expect(
+    page.getByRole("columnheader", { name: "Lý do khớp" }),
+  ).toBeVisible();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("maxYears"))
+    .toBe("6");
+  const params = new URL(page.url()).searchParams;
+  expect(params.getAll("function")).toEqual(["IT", "ENGINEERING"]);
+  expect(params.get("company")).toBe("22");
+  expect(params.get("companyName")).toBe("Synthetic Logistics");
+  await page.reload();
+  await expect(page.getByLabel("Từ khóa")).toHaveValue("ky su");
+  await expect(page.getByLabel("Công ty", { exact: true })).toHaveValue(
+    "Synthetic Logistics",
+  );
+  await expect(page.getByLabel("Kỹ thuật", { exact: true })).toBeChecked();
+  await expect(
+    page.getByLabel("Công nghệ thông tin", { exact: true }),
+  ).toBeChecked();
+  await expect(page.getByLabel("Số năm tối đa")).toHaveValue("6");
+  await expect(
+    page.getByText(/Từng làm tại Synthetic Group \(tập đoàn mẹ\)/),
+  ).toBeVisible();
+  await expect(page.getByText("AI đề xuất", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("~4 năm")).toHaveAttribute(
+    "title",
+    "Tính từ các mốc thời gian trong CV, có thể chưa chính xác",
+  );
+  await page.getByRole("button", { name: "Tải thêm", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Ứng viên #3" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tải thêm", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("FUTURE_REASON", { exact: true })).toHaveCount(0);
+  for (const code of ["IT", "ENGINEERING", "SENIOR", "COMPANY"])
+    await expect(page.getByText(code, { exact: true })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.getByLabel("Số năm tối thiểu").fill("7");
+  await expect(page.getByRole("alert")).toContainText(
+    "Số năm tối thiểu phải nhỏ hơn hoặc bằng số năm tối đa.",
+  );
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await page.getByRole("button", { name: "Xóa lọc", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Trang tiếp" })).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+});
+test("candidate typing debounces search and replaces URL history", async ({
+  page,
+}) => {
+  await page.goto("/candidates");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Hồ sơ ứng viên",
+  );
+  await page.getByLabel("Kỹ thuật", { exact: true }).check();
+  await expect(
+    page.getByRole("link", { name: "Synthetic An Nguyen", exact: true }),
+  ).toBeVisible();
+  const searchRequests: URL[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/candidates/search") searchRequests.push(url);
+  });
+  await page.getByLabel("Từ khóa").pressSequentially("keyword");
+  await expect(page.getByLabel("Từ khóa")).toHaveValue("keyword");
+  await expect.poll(() => searchRequests.length).toBe(1);
+  expect(searchRequests[0].searchParams.get("q")).toBe("keyword");
+  await page.goBack();
+  await expect(
+    page.getByRole("columnheader", { name: "Thông tin cơ bản" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+  await page.getByLabel("Công ty", { exact: true }).pressSequentially("24h");
+  await expect(page.getByLabel("Công ty", { exact: true })).toHaveValue("24h");
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("company"))
+    .toBe("24h");
+  await expect
+    .poll(() =>
+      searchRequests.some((url) => url.searchParams.get("company") === "24h"),
+    )
+    .toBe(true);
+  expect(new URL(page.url()).searchParams.has("companyName")).toBe(false);
+});
 const screens = [
   ["/", "Tổng quan"],
   ["/candidates", "Hồ sơ ứng viên"],
