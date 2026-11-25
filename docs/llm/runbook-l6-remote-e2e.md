@@ -30,7 +30,7 @@ revision `llm-extraction-v1-r1` (đối chiếu SQL bên dưới), engine `llm-e
 
 ## 3. Chạy worker và E2E
 
-Worker chạy trong WSL: xem thêm [Chạy toàn hệ thống local](../LOCAL_DEV.md#2-chạy-llm-worker) (sinh token bằng bash, `git pull` bản clone WSL, lệnh `check`, đọc log).
+Worker chạy trong WSL: xem thêm [Chạy local](../RUN_LOCAL.md#3-bật--tắt) (sinh token bằng bash, `git pull` bản clone WSL, lệnh `check`, đọc log).
 
 Từ `llm-worker/`, tạo `.env` từ `.env.example` nếu chưa có; theo
 [README L5](../../llm-worker/README.md#l5--worker-kéo-việc-từ-backend).
