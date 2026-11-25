@@ -1,5 +1,6 @@
 @org.springframework.modulith.ApplicationModule(
         allowedDependencies = {
+            "web",
             "candidate::catalog-links",
             "candidate::metrics",
             "candidate::events",
