@@ -96,16 +96,28 @@ function SearchResultRow({ row }: { row: SearchResult }) {
 export function CandidateSearchResults({
   filters,
   valid,
+  invalidMessage = "Điều chỉnh khoảng kinh nghiệm để tìm kiếm.",
 }: {
   filters: string;
   valid: boolean;
+  invalidMessage?: string;
 }) {
   const query = useCandidateSearch(filters, valid);
+  const seenIds = new Set<string>();
+  const rows =
+    query.data?.pages
+      .flatMap((page) => page.content)
+      .filter((row) => {
+        if (seenIds.has(row.id)) return false;
+        seenIds.add(row.id);
+        return true;
+      }) ?? [];
   return (
     <Panel
       title="Kết quả tìm kiếm"
       footer={
         valid &&
+        !query.isPlaceholderData &&
         query.hasNextPage && (
           <Button
             variant="secondary"
@@ -118,7 +130,7 @@ export function CandidateSearchResults({
       }
     >
       {!valid ? (
-        <Empty>Điều chỉnh khoảng kinh nghiệm để tìm kiếm.</Empty>
+        <Empty>{invalidMessage}</Empty>
       ) : (
         <>
           {query.error && (
@@ -131,7 +143,7 @@ export function CandidateSearchResults({
             <Loading rows={6} />
           ) : (
             query.data &&
-            (query.data.pages[0].content.length === 0 ? (
+            (rows.length === 0 ? (
               <Empty>Không tìm thấy ứng viên phù hợp.</Empty>
             ) : (
               <div className="table-scroll">
@@ -149,11 +161,9 @@ export function CandidateSearchResults({
                     </tr>
                   </thead>
                   <tbody>
-                    {query.data.pages
-                      .flatMap((page) => page.content)
-                      .map((row) => (
-                        <SearchResultRow key={row.id} row={row} />
-                      ))}
+                    {rows.map((row) => (
+                      <SearchResultRow key={row.id} row={row} />
+                    ))}
                   </tbody>
                 </table>
               </div>

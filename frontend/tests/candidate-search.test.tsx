@@ -171,31 +171,189 @@ describe("candidate search filters", () => {
     expect(
       new URLSearchParams(router.state.location.search).get("company"),
     ).toBe("22");
+    expect(
+      new URLSearchParams(router.state.location.search).get("companyName"),
+    ).toBe("Synthetic Logistics");
     expect(company).toHaveValue("Synthetic Logistics");
     await waitFor(() => expect(searches).toContain("22"));
     await user.clear(company);
     await user.type(company, "Other");
+    expect(company).toHaveValue("Other");
+    await waitFor(() => expect(searches).toContain("Other"));
     expect(
       new URLSearchParams(router.state.location.search).get("company"),
     ).toBe("Other");
-    await waitFor(() => expect(searches).toContain("Other"));
+    expect(
+      new URLSearchParams(router.state.location.search).has("companyName"),
+    ).toBe(false);
   });
 
-  it("keeps a shared company ID active without displaying the ID as a name", async () => {
-    const { router, user } = renderPage("/candidates?company=22");
+  it("restores the selected company name from a shared URL while sending only the ID", async () => {
+    const searches: URL[] = [];
+    server.use(
+      http.get("/api/candidates/search", ({ request }) => {
+        searches.push(new URL(request.url));
+        return HttpResponse.json(candidateSearchPage);
+      }),
+    );
+    const { router, user } = renderPage(
+      "/candidates?company=22&companyName=Synthetic+Logistics",
+    );
     await screen.findByRole("link", { name: "Synthetic An Nguyen" });
     expect(
       new URLSearchParams(router.state.location.search).get("company"),
     ).toBe("22");
-    expect(screen.getByLabelText("Công ty", { exact: true })).toHaveAttribute(
-      "placeholder",
-      "Đã chọn công ty từ danh mục",
+    expect(screen.getByLabelText("Công ty", { exact: true })).toHaveValue(
+      "Synthetic Logistics",
     );
+    expect(searches[0].searchParams.get("company")).toBe("22");
+    expect(searches[0].searchParams.has("companyName")).toBe(false);
     expect(screen.queryByText("22")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Bỏ chọn công ty" }));
     expect(
       new URLSearchParams(router.state.location.search).has("company"),
     ).toBe(false);
+    expect(
+      new URLSearchParams(router.state.location.search).has("companyName"),
+    ).toBe(false);
+  });
+
+  it("keeps a typed company name with digits intact and sends it as free text", async () => {
+    const searches: URL[] = [];
+    server.use(
+      http.get("/api/candidates/search", ({ request }) => {
+        searches.push(new URL(request.url));
+        return HttpResponse.json(candidateSearchPage);
+      }),
+    );
+    const { router, user } = renderPage();
+    const input = screen.getByLabelText("Công ty", { exact: true });
+    await user.type(input, "24h");
+    expect(input).toHaveValue("24h");
+    expect(searches).toHaveLength(0);
+    await waitFor(() => expect(searches).toHaveLength(1));
+    expect(searches[0].searchParams.get("company")).toBe("24h");
+    expect(
+      new URLSearchParams(router.state.location.search).has("companyName"),
+    ).toBe(false);
+  });
+
+  it("keeps all-numeric free text visible and requires catalog selection instead of searching it as an ID", async () => {
+    const searches: URL[] = [];
+    server.use(
+      http.get("/api/candidates/search", ({ request }) => {
+        searches.push(new URL(request.url));
+        return HttpResponse.json(candidateSearchPage);
+      }),
+      http.get("/api/candidates/search/companies", () =>
+        HttpResponse.json([{ id: 42, name: "1080", parentName: null }]),
+      ),
+    );
+    const { router, user } = renderPage();
+    const input = screen.getByLabelText("Công ty", { exact: true });
+    await user.type(input, "1080");
+    expect(input).toHaveValue("1080");
+    expect(screen.getByText(/Tên công ty chỉ có chữ số/)).toBeVisible();
+    const option = await screen.findByRole("button", {
+      name: "1080",
+    });
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(router.state.location.search).get("company"),
+      ).toBe("1080"),
+    );
+    expect(searches).toHaveLength(0);
+    await user.click(option);
+    await waitFor(() => expect(searches).toHaveLength(1));
+    expect(searches[0].searchParams.get("company")).toBe("42");
+    expect(searches[0].searchParams.has("companyName")).toBe(false);
+    expect(input).toHaveValue("1080");
+    expect(screen.queryByText(/Tên công ty chỉ có chữ số/)).toBeNull();
+  });
+
+  it("debounces typing to one search and replaces history while preserving back navigation", async () => {
+    const searches: URL[] = [];
+    server.use(
+      http.get("/api/candidates/search", ({ request }) => {
+        searches.push(new URL(request.url));
+        return HttpResponse.json(candidateSearchPage);
+      }),
+    );
+    const { router, user } = renderPage();
+    await act(() => router.navigate("/candidates?q=seed"));
+    await screen.findByRole("link", { name: "Synthetic An Nguyen" });
+    const input = screen.getByLabelText("Từ khóa");
+    await user.clear(input);
+    await user.type(input, "keyword");
+    expect(input).toHaveValue("keyword");
+    expect(new URLSearchParams(router.state.location.search).get("q")).toBe(
+      "seed",
+    );
+    expect(searches).toHaveLength(1);
+    await waitFor(() => expect(searches).toHaveLength(2));
+    expect(searches[1].searchParams.get("q")).toBe("keyword");
+    expect(router.state.historyAction).toBe("REPLACE");
+    await act(() => router.navigate(-1));
+    expect(router.state.location.search).toBe("");
+    expect(input).toHaveValue("");
+  });
+
+  it.each([
+    ["Chức danh", "title", "Engineer"],
+    ["Số năm tối thiểu", "minYears", "12"],
+    ["Số năm tối đa", "maxYears", "24"],
+  ])(
+    "updates %s locally before committing it to the URL",
+    async (label, name, value) => {
+      const searches: URL[] = [];
+      server.use(
+        http.get("/api/candidates/search", ({ request }) => {
+          searches.push(new URL(request.url));
+          return HttpResponse.json(candidateSearchPage);
+        }),
+      );
+      const { router, user } = renderPage();
+      const input = screen.getByLabelText(label, { exact: true });
+      await user.type(input, value);
+      expect(input).toHaveValue(value);
+      expect(new URLSearchParams(router.state.location.search).has(name)).toBe(
+        false,
+      );
+      expect(searches).toHaveLength(0);
+      await waitFor(() => expect(searches).toHaveLength(1));
+      expect(searches[0].searchParams.get(name)).toBe(value);
+      expect(router.state.historyAction).toBe("REPLACE");
+    },
+  );
+
+  it("commits pending typing with checkbox selection and cancels it on clear", async () => {
+    const { router, user } = renderPage();
+    await user.type(screen.getByLabelText("Từ khóa"), "pending");
+    await user.click(await screen.findByLabelText("Kỹ thuật"));
+    expect(new URLSearchParams(router.state.location.search).get("q")).toBe(
+      "pending",
+    );
+    expect(
+      new URLSearchParams(router.state.location.search).getAll("function"),
+    ).toEqual(["ENGINEERING"]);
+    await user.type(
+      screen.getByLabelText("Chức danh", { exact: true }),
+      "draft",
+    );
+    await user.click(screen.getByRole("button", { name: "Xóa lọc" }));
+    await screen.findByRole("button", { name: "Trang tiếp" });
+    expect(router.state.location.search).toBe("");
+    expect(screen.getByLabelText("Chức danh", { exact: true })).toHaveValue("");
+    // A later edit must not resurrect a pending draft from before the reset.
+    await user.type(screen.getByLabelText("Từ khóa"), "new");
+    await waitFor(() =>
+      expect(new URLSearchParams(router.state.location.search).get("q")).toBe(
+        "new",
+      ),
+    );
+    expect(new URLSearchParams(router.state.location.search).has("title")).toBe(
+      false,
+    );
   });
 
   it("shows loading or safe labels, including missing and unknown taxonomy options", async () => {
@@ -215,6 +373,7 @@ describe("candidate search filters", () => {
       "/candidates?function=IT&function=ENGINEERING&seniority=FUTURE_LEVEL",
     );
     expect(screen.getAllByText("Đang tải…")).toHaveLength(5);
+    expect(screen.queryByText(/Một lựa chọn chưa có nhãn/)).toBeNull();
     for (const code of ["IT", "ENGINEERING", "FUTURE_LEVEL"])
       expect(screen.queryByText(code, { exact: true })).toBeNull();
     expect(await screen.findByLabelText("Kỹ thuật")).toBeChecked();
@@ -223,6 +382,33 @@ describe("candidate search filters", () => {
       expect(screen.queryByText(code, { exact: true })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Xóa lọc" }));
     expect(screen.getByLabelText("Kỹ thuật")).not.toBeChecked();
+  });
+
+  it("stops showing loading hints when options fail and never displays raw selected codes", async () => {
+    server.use(
+      http.get("/api/candidates/search/options", () =>
+        HttpResponse.json(
+          {
+            code: "OPTIONS_UNAVAILABLE",
+            message: "synthetic raw error",
+            correlationId: null,
+            details: [],
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    renderPage("/candidates?function=UNKNOWN_FUNCTION&scope=UNKNOWN_SCOPE");
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.getAllByText("Không tải được lựa chọn.")).toHaveLength(5);
+    expect(screen.queryByText("Đang tải…")).toBeNull();
+    expect(screen.queryByText(/Một lựa chọn chưa có nhãn/)).toBeNull();
+    for (const code of [
+      "UNKNOWN_FUNCTION",
+      "UNKNOWN_SCOPE",
+      "synthetic raw error",
+    ])
+      expect(screen.queryByText(code, { exact: true })).toBeNull();
   });
 
   it.each([
@@ -304,10 +490,88 @@ describe("candidate search results", () => {
     await user.type(screen.getByLabelText("Chức danh", { exact: true }), "x");
     await waitFor(() => expect(requests).toHaveLength(3));
     expect(requests[2].searchParams.has("cursor")).toBe(false);
-    expect(screen.queryByRole("link", { name: "Ứng viên #3" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Ứng viên #3" })).toBeNull(),
+    );
     expect(
       new URLSearchParams(router.state.location.search).has("cursor"),
     ).toBe(false);
+  });
+
+  it("keeps the previous results visible while a new filter is loading", async () => {
+    let releaseResponse = () => {};
+    const responseReady = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const searches: URL[] = [];
+    server.use(
+      http.get("/api/candidates/search", async ({ request }) => {
+        const url = new URL(request.url);
+        searches.push(url);
+        if (url.searchParams.get("q") === "after") {
+          await responseReady;
+          return HttpResponse.json({
+            content: [
+              {
+                ...candidateSearchPage.content[0],
+                fullName: "Synthetic Updated Result",
+              },
+            ],
+            hasNext: false,
+            nextCursor: null,
+          });
+        }
+        return HttpResponse.json(candidateSearchPage);
+      }),
+    );
+    const { user } = renderPage("/candidates?q=before");
+    await screen.findByRole("link", { name: "Synthetic An Nguyen" });
+    await user.clear(screen.getByLabelText("Từ khóa"));
+    await user.type(screen.getByLabelText("Từ khóa"), "after");
+    try {
+      await waitFor(() => expect(searches).toHaveLength(2));
+      expect(
+        screen.getByRole("link", { name: "Synthetic An Nguyen" }),
+      ).toBeVisible();
+      expect(screen.queryByText("Đang tải dữ liệu…")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Tải thêm" })).toBeNull();
+    } finally {
+      releaseResponse();
+    }
+    await screen.findByRole("link", { name: "Synthetic Updated Result" });
+  });
+
+  it("keeps the first occurrence when two search pages contain the same candidate ID", async () => {
+    server.use(
+      http.get("/api/candidates/search", ({ request }) =>
+        HttpResponse.json(
+          new URL(request.url).searchParams.has("cursor")
+            ? {
+                ...candidateSearchNextPage,
+                content: [
+                  {
+                    ...candidateSearchPage.content[0],
+                    fullName: "Synthetic Duplicate Later",
+                  },
+                  ...candidateSearchNextPage.content,
+                ],
+              }
+            : candidateSearchPage,
+        ),
+      ),
+    );
+    const { user } = renderPage("/candidates?q=duplicate");
+    await screen.findByRole("link", { name: "Synthetic An Nguyen" });
+    await user.click(screen.getByRole("button", { name: "Tải thêm" }));
+    await screen.findByRole("link", { name: "Ứng viên #3" });
+    expect(
+      within(screen.getByRole("table"))
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Synthetic An Nguyen", "Synthetic Binh Tran", "Ứng viên #3"]);
+    expect(
+      screen.queryByRole("link", { name: "Synthetic Duplicate Later" }),
+    ).toBeNull();
   });
 
   it("renders parent match reasons, AI badges beside each normalized value and estimated experience", async () => {
@@ -442,7 +706,7 @@ describe("search response boundaries and labels", () => {
     expect(
       searchFilters(
         new URLSearchParams(
-          "q=+&function=IT&function=ENGINEERING&beforeId=3&cursor=opaque&debug=1",
+          "q=+&function=IT&function=ENGINEERING&beforeId=3&cursor=opaque&debug=1&companyName=Synthetic",
         ),
       ).toString(),
     ).toBe("function=IT&function=ENGINEERING");

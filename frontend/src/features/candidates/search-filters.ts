@@ -13,6 +13,15 @@ export const textFilters = [
   "maxYears",
 ] as const;
 
+// A numeric free-text name cannot be distinguished from an ID by this API.
+// Only the UI selection marker lets us safely submit such a company filter.
+export function companyFilterNeedsSelection(params: URLSearchParams) {
+  return (
+    !params.get("companyName") &&
+    /^\d+$/.test(params.get("company")?.trim() ?? "")
+  );
+}
+
 // Whitelist only filters: list pagination and stale cursors never enter search.
 export function searchFilters(params: URLSearchParams) {
   const filters = new URLSearchParams();

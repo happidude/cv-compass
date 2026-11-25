@@ -1,4 +1,8 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 import {
   candidateKeys,
   getHistory,
@@ -23,6 +27,7 @@ export const useCandidateSearch = (filters: string, enabled: boolean) =>
     getNextPageParam: (page) =>
       page.hasNext ? (page.nextCursor ?? undefined) : undefined,
     enabled,
+    placeholderData: keepPreviousData,
   });
 export const useSearchOptions = () =>
   useQuery({

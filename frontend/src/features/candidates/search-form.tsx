@@ -4,32 +4,91 @@ import { Button, ErrorNotice, Panel } from "../../shared/ui";
 import { useCompanySuggestions, useSearchOptions } from "./queries";
 import {
   experienceFilterError,
+  companyFilterNeedsSelection,
   multiFilters,
   textFilters,
 } from "./search-filters";
 import { estimatedExperienceHint } from "./search-results";
 
+function readTextFilters(params: URLSearchParams) {
+  return {
+    q: params.get("q") ?? "",
+    company: params.get("company") ?? "",
+    companyName: params.get("companyName") ?? "",
+    title: params.get("title") ?? "",
+    minYears: params.get("minYears") ?? "",
+    maxYears: params.get("maxYears") ?? "",
+  };
+}
+type TextFilters = ReturnType<typeof readTextFilters>;
+function withTextFilters(params: URLSearchParams, draft: TextFilters) {
+  const next = new URLSearchParams(params);
+  for (const name of [...textFilters, "companyName"] as const) {
+    next.delete(name);
+    if (draft[name] !== "") next.set(name, draft[name]);
+  }
+  next.delete("cursor");
+  return next;
+}
+
 export function CandidateSearchForm() {
   const [params, setParams] = useSearchParams();
   const options = useSearchOptions();
-  const company = params.get("company") ?? "";
-  const [selectedCompany, setSelectedCompany] = useState({ id: "", name: "" });
-  const companyIsId = /^\d+$/.test(company);
-  const suggestionText = companyIsId ? "" : company;
+  const [draft, setDraft] = useState(() => readTextFilters(params));
+  const url = params.toString();
+  const [previousUrl, setPreviousUrl] = useState(url);
+  // Restore drafts on back/forward and shared links without remounting inputs.
+  if (previousUrl !== url) {
+    setPreviousUrl(url);
+    setDraft(readTextFilters(params));
+  }
+  const companySelected = !!draft.company && !!draft.companyName;
+  const suggestionText = companySelected ? "" : draft.company;
   const [debouncedCompany, setDebouncedCompany] = useState("");
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedCompany(suggestionText), 300);
     return () => clearTimeout(timer);
   }, [suggestionText]);
+  useEffect(() => {
+    if (
+      ([...textFilters, "companyName"] as const).every(
+        (name) => draft[name] === (params.get(name) ?? ""),
+      )
+    )
+      return;
+    const timer = setTimeout(() => {
+      setParams((current) => withTextFilters(current, draft), {
+        replace: true,
+        flushSync: true,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [draft, params, setParams]);
   const suggestions = useCompanySuggestions(debouncedCompany);
-  const error = experienceFilterError(params);
+  const draftParams = new URLSearchParams(draft);
+  const error = experienceFilterError(draftParams);
+  const companyNeedsSelection = companyFilterNeedsSelection(draftParams);
+
+  function handleTextChange(name: (typeof textFilters)[number], value: string) {
+    setDraft((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === "company" ? { companyName: "" } : {}),
+    }));
+  }
+  function handleCompanySelection(id = "", name = "") {
+    const nextDraft = { ...draft, company: id, companyName: name };
+    setDraft(nextDraft);
+    setParams((current) => withTextFilters(current, nextDraft), {
+      flushSync: true,
+    });
+  }
 
   function handleChange(name: string, values: string[]) {
-    // Commit URL changes synchronously so controlled inputs do not roll back
-    // while the router schedules a transition between keystrokes or clicks.
+    // Include pending text drafts when a discrete selection commits the URL.
     setParams(
       (current) => {
-        const next = new URLSearchParams(current);
+        const next = withTextFilters(current, draft);
         next.delete(name);
         next.delete("cursor");
         for (const value of values) if (value !== "") next.append(name, value);
@@ -39,11 +98,13 @@ export function CandidateSearchForm() {
     );
   }
   function handleClear() {
+    setDraft(readTextFilters(new URLSearchParams()));
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
         for (const name of [
           ...textFilters,
+          "companyName",
           ...multiFilters.map((filter) => filter.name),
           "cursor",
         ])
@@ -62,8 +123,8 @@ export function CandidateSearchForm() {
           <input
             className="input"
             name="q"
-            value={params.get("q") ?? ""}
-            onChange={(event) => handleChange("q", [event.target.value])}
+            value={draft.q}
+            onChange={(event) => handleTextChange("q", event.target.value)}
           />
         </label>
         <div className="field">
@@ -73,22 +134,26 @@ export function CandidateSearchForm() {
             className="input"
             name="company"
             autoComplete="off"
-            value={
-              companyIsId
-                ? selectedCompany.id === company
-                  ? selectedCompany.name
-                  : ""
-                : company
+            value={companySelected ? draft.companyName : draft.company}
+            placeholder="Gõ tên hoặc chọn gợi ý"
+            aria-describedby={
+              companyNeedsSelection
+                ? "company-selection-hint"
+                : companySelected
+                  ? "selected-company"
+                  : undefined
             }
-            placeholder={
-              companyIsId
-                ? "Đã chọn công ty từ danh mục"
-                : "Gõ tên hoặc chọn gợi ý"
+            onChange={(event) =>
+              handleTextChange("company", event.target.value)
             }
-            aria-describedby={companyIsId ? "selected-company" : undefined}
-            onChange={(event) => handleChange("company", [event.target.value])}
           />
-          {companyIsId && (
+          {companyNeedsSelection && (
+            <p id="company-selection-hint" className="field__hint">
+              Tên công ty chỉ có chữ số. Hãy chọn công ty từ danh mục để tìm
+              kiếm.
+            </p>
+          )}
+          {companySelected && (
             <>
               <span id="selected-company" className="field__hint">
                 Đã chọn công ty từ danh mục.
@@ -96,7 +161,7 @@ export function CandidateSearchForm() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleChange("company", [])}
+                onClick={() => handleCompanySelection()}
               >
                 Bỏ chọn công ty
               </Button>
@@ -124,8 +189,7 @@ export function CandidateSearchForm() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setSelectedCompany({ id: item.id, name: item.name });
-                          handleChange("company", [item.id]);
+                          handleCompanySelection(item.id, item.name);
                         }}
                       >
                         {item.name}
@@ -143,8 +207,8 @@ export function CandidateSearchForm() {
           <input
             className="input"
             name="title"
-            value={params.get("title") ?? ""}
-            onChange={(event) => handleChange("title", [event.target.value])}
+            value={draft.title}
+            onChange={(event) => handleTextChange("title", event.target.value)}
           />
         </label>
       </div>
@@ -167,14 +231,19 @@ export function CandidateSearchForm() {
           return (
             <fieldset key={name} className="candidate-search__group">
               <legend>{label}</legend>
-              {!options.data && <span>Đang tải…</span>}
-              {values.some(
-                (value) => !choices.some((choice) => choice.code === value),
-              ) && (
-                <span className="field__hint">
-                  Một lựa chọn chưa có nhãn. Bạn có thể xóa lọc để đặt lại.
-                </span>
+              {options.error ? (
+                <span>Không tải được lựa chọn.</span>
+              ) : (
+                !options.data && <span>Đang tải…</span>
               )}
+              {options.data &&
+                values.some(
+                  (value) => !choices.some((choice) => choice.code === value),
+                ) && (
+                  <span className="field__hint">
+                    Một lựa chọn chưa có nhãn. Bạn có thể xóa lọc để đặt lại.
+                  </span>
+                )}
               <div className="candidate-search__choices">
                 {choices.map((choice) => (
                   <label key={choice.code} className="checkbox">
@@ -203,7 +272,7 @@ export function CandidateSearchForm() {
           className="candidate-search__group"
           aria-describedby="experience-filter-hint"
         >
-          <legend title={estimatedExperienceHint}>Kinh nghiệm (dự tính)</legend>
+          <legend>Kinh nghiệm (dự tính)</legend>
           <div className="form-grid">
             {(
               [
@@ -218,12 +287,14 @@ export function CandidateSearchForm() {
                   name={name}
                   type="text"
                   inputMode="numeric"
-                  value={params.get(name) ?? ""}
+                  value={draft[name]}
                   aria-invalid={!!error}
                   aria-describedby={
                     error ? "experience-filter-error" : "experience-filter-hint"
                   }
-                  onChange={(event) => handleChange(name, [event.target.value])}
+                  onChange={(event) =>
+                    handleTextChange(name, event.target.value)
+                  }
                 />
               </label>
             ))}
