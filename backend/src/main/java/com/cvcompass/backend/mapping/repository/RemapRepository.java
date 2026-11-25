@@ -80,6 +80,19 @@ public class RemapRepository {
                 .isEmpty();
     }
 
+    public long lockPendingCapacity() {
+        // All remap writers share this transaction lock before counting/enqueueing across runs.
+        jdbc.query(
+                "SELECT pg_advisory_xact_lock(hashtextextended('mapping-remap-capacity',0))",
+                (org.springframework.jdbc.core.ResultSetExtractor<Void>) rs -> null);
+        return jdbc.queryForObject(
+                """
+                SELECT count(*) FROM "MAPPING"."JOBS"
+                WHERE "REMAP_RUN_ID" IS NOT NULL AND "STATUS" IN ('PENDING','PROCESSING')
+                """,
+                Long.class);
+    }
+
     public void state(long id, String state) {
         jdbc.update(
                 "UPDATE \"MAPPING\".\"REMAP_RUNS\" SET \"STATE\"=?,\"UPDATED_AT\"=clock_timestamp() WHERE \"ID\"=? AND \"STATE\"<>'DONE'",
@@ -105,7 +118,7 @@ public class RemapRepository {
                 id);
     }
 
-    /** Same extraction population and ID bounds as OcrExtractionReader.scanAfter; only scope filters differ. */
+    /** Remap only previously mapped inputs and the latest extraction of each document. */
     public List<Long> select(RemapRun run, int limit) {
         String filter = "";
         var args = new ArrayList<Object>();
@@ -146,6 +159,9 @@ public class RemapRepository {
                 SELECT e."ID" FROM "INGESTION"."EXTRACTIONS" e
                 JOIN "INGESTION"."DOCUMENTS" d ON d."ID"=e."CV_DOCUMENT_ID"
                 WHERE e."ID">? AND e."ID"<=?
+                  AND EXISTS (SELECT 1 FROM "MAPPING"."JOBS" previous WHERE previous."EXTRACTION_ID"=e."ID")
+                  AND NOT EXISTS (SELECT 1 FROM "INGESTION"."EXTRACTIONS" newer
+                    WHERE newer."CV_DOCUMENT_ID"=e."CV_DOCUMENT_ID" AND newer."ID">e."ID")
                 """
                         + filter
                         + " ORDER BY e.\"ID\" LIMIT ?",

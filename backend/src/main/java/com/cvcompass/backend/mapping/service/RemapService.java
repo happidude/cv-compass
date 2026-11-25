@@ -18,6 +18,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class RemapService {
+    // Mapping engines have no shared issue-code catalog; include their codes here and accept
+    // worker-owned codes already persisted in results through hasIssueCode.
     private static final Set<String> ISSUE_CODES =
             Set.of(
                     "INVALID_PHONE",
@@ -132,7 +134,7 @@ public class RemapService {
         if (!runs.lock(id)) return;
         var run = get(id);
         if (!"RUNNING".equals(run.state())) return;
-        int capacity = (int) Math.max(0, properties.getMaxPending() - run.pending());
+        int capacity = (int) Math.max(0, properties.getMaxPending() - runs.lockPendingCapacity());
         if (capacity == 0) return;
         int limit = Math.min(properties.getBatchSize(), capacity);
         var ids = runs.select(run, limit);

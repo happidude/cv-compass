@@ -38,10 +38,11 @@ ISSUE xét result có ID mới nhất của từng extraction; tìm mã trong m�
 trong result. Mã lạ, thiếu tham số và khoảng ngày ngược trả 400 `ApiError`.
 Batch không có extraction phù hợp tạo lượt chạy rỗng.
 
-Tập extraction giống scan `OcrExtractionReader`: mọi extraction đã lưu (kể cả
-legacy/lỗi OCR; engine phân loại đầu vào), thêm điều kiện phạm vi. Run chốt config
-và cận ID extraction khi tạo. Extraction có ID lớn hơn cận này chờ lượt khác;
-bộ lọc ISSUE được đánh giá khi quét từng lô.
+Chỉ chọn extraction mới nhất của mỗi tài liệu và đã có ít nhất một job mapping.
+Extraction chưa từng có job để scan thường xếp với priority 0, không bị remap hạ
+ưu tiên. Legacy/lỗi OCR vẫn do engine phân loại như scan thường. Run chốt config
+và cận ID extraction khi tạo; extraction mới hơn cận này chờ lượt khác. Điều kiện
+extraction mới nhất và bộ lọc ISSUE được đánh giá khi quét từng lô.
 
 ## Theo dõi, dừng và tiếp tục
 
@@ -69,12 +70,13 @@ Properties `cv.mapping.remap.*` (có validation, mặc định):
 | enabled | true | Cho phép scheduler xếp lô |
 | delay | 30s | Khoảng cách lượt scheduler, 1ms–1 ngày |
 | batch-size | 100 | Tối đa extraction mỗi lô, 1–10000 |
-| max-pending | 500 | Trần PENDING+PROCESSING mỗi run, 1–100000 |
+| max-pending | 500 | Trần PENDING+PROCESSING của mọi run cộng lại, 1–100000 |
 | priority | 10 | Độ ưu tiên thấp hơn CV mới, 1–32767 |
 | list-limit | 20 | Số run gần nhất trả về, 1–1000 |
 
 Scheduler chỉ chạy khi `cv.mapping.enabled=true` và remap enabled. Lô bị giới hạn
-thêm bởi chỗ trống dưới max-pending. API vẫn dùng được khi scheduler tắt.
+thêm bởi chỗ trống dưới max-pending; job của run PAUSED/DONE vẫn tính vào trần này.
+Các lượt xếp lô dùng chung khóa giao dịch khi kiểm tra trần. API vẫn dùng được khi scheduler tắt.
 
 Chạy lại cùng phạm vi và cùng config không tạo job trùng nhờ unique
 `EXTRACTION_ID + CONFIG_ID + ENGINE_VERSION`; chỉ tăng skipped. Thay engine nhưng
@@ -83,7 +85,9 @@ remap không sửa unique hay reset cursor scan. Đổi config sau khi tạo run
 đổi config của run đó.
 
 Kết quả cùng tài liệu cập nhật basic UNVERIFIED/MAPPING và thay bộ kinh nghiệm
-chưa được HR sửa/xác nhận. Nếu có kinh nghiệm được HR bảo vệ trong bộ đó, toàn
+chưa được HR sửa/xác nhận. Kiểm tra cả dòng đã xóa: tombstone do HR và liên kết
+catalog có NORMALIZATION_ORIGIN=USER đều bảo vệ cả bộ. Dòng được hệ thống thay
+thế giữ nguồn MAPPING để không chặn lần chạy sau. Nếu có kinh nghiệm được HR bảo vệ, toàn
 bộ kinh nghiệm mới thành đề xuất. Basic đã sửa/xác nhận thành đề xuất độc lập.
 CV thứ hai vẫn thành đề xuất. Revision/history, chuẩn hóa và sự kiện index chạy
 như luồng publish thông thường.
@@ -102,7 +106,7 @@ và không thuộc USER được đưa về PENDING, reset attempts/lỗi/lease/
 thúc và cho thử ngay. Trả `{"requeued":n}`; gọi lại khi không có lỗi mới trả 0.
 Worker chuẩn hóa phải được bật để xử lý tiếp.
 
-Lỗi index được rollback bằng savepoint JDBC trên JpaTransactionManager, log WARN
+Lỗi index được rollback bằng savepoint JDBC trên connection của JpaTransactionManager, log WARN
 chỉ candidateId và lớp lỗi; publish/HR edit vẫn commit. Index có thể thiếu hoặc
 cũ đến lần rebuild thành công. Job đêm dựng lại toàn bộ ứng viên, kể cả ứng viên
 không có kinh nghiệm ongoing. Endpoint rebuild trả `rebuilt`/`failed`; nếu failed

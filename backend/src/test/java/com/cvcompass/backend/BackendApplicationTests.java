@@ -41,7 +41,7 @@ class BackendApplicationTests {
     @Autowired Flyway flyway;
 
     @Test
-    void contextStartsWithV1ThroughV16AndValidatedMappings() {
+    void contextStartsWithV1ThroughV17AndValidatedMappings() {
         assertThat(jdbc.queryForObject("SELECT current_database()", String.class))
                 .isEqualTo(DATABASE.databaseName());
         flyway.validate();
@@ -52,7 +52,7 @@ class BackendApplicationTests {
                                 String.class))
                 .containsExactly(
                         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
-                        "15", "16");
+                        "15", "16", "17");
         assertThat(entityManager.getMetamodel().getEntities())
                 .extracting(e -> e.getName())
                 .contains(

@@ -55,6 +55,27 @@ public class PublicationRepository {
                         documentId));
     }
 
+    public boolean canReplaceMappedExperiences(long candidateId, long documentId) {
+        // Include tombstones: HR deletion and catalog choices protect the whole document's set.
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        """
+                SELECT NOT EXISTS(SELECT 1 FROM "CANDIDATE"."EXPERIENCES"
+                WHERE "CANDIDATE_ID"=? AND "DOCUMENT_ID"=?
+                  AND ("STATE"<>'UNVERIFIED' OR "ORIGIN"<>'MAPPING' OR "NORMALIZATION_ORIGIN"='USER'))
+                """,
+                        Boolean.class,
+                        candidateId,
+                        documentId));
+    }
+
+    public void supersedeMappedExperience(UUID experienceId) {
+        // System supersession keeps mapping provenance, unlike HR's DELETE action.
+        jdbc.update(
+                "UPDATE \"CANDIDATE\".\"EXPERIENCES\" SET \"DELETED\"=true WHERE \"ID\"=?",
+                experienceId);
+    }
+
     public void propose(UUID key, long id, CompletedMappings.Result result, JsonNode experience) {
         jdbc.update(
                 "INSERT INTO \"CANDIDATE\".\"PROPOSALS\" (\"ID\",\"CANDIDATE_ID\",\"RESULT_ID\",\"DOCUMENT_ID\",\"DATA\") VALUES (?,?,?,?,?::jsonb)",

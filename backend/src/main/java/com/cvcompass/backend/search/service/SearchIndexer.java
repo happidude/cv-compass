@@ -14,7 +14,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -35,8 +34,13 @@ public class SearchIndexer {
         this.experienceMetrics = experienceMetrics;
     }
 
-    @Transactional(propagation = Propagation.NESTED)
+    @Transactional
     public void rebuild(long candidateId) {
+        rebuildInCurrentTransaction(candidateId);
+    }
+
+    // The listener owns its JDBC savepoint; no REQUIRED interceptor may mark rollback-only first.
+    void rebuildInCurrentTransaction(long candidateId) {
         // The profile lock serializes scheduled rebuilds with publication and HR edits.
         var profile = candidates.lockIndexProfile(candidateId).orElse(null);
         if (profile == null) {

@@ -312,14 +312,6 @@ class PersonalInfoPublicationIntegrationTests {
                                                             List.of("RETAIL"),
                                                             "MANAGER")))
                                     .isTrue();
-                            // Manual normalization is retained once HR confirms the experience.
-                            candidates.editExperience(
-                                    id,
-                                    queries.detail(id).version(),
-                                    experienceId,
-                                    null,
-                                    "CONFIRM",
-                                    "synthetic-reviewer");
                             assertThat(publication.publish(nextMappingId)).isTrue();
                             events.publishEvent(
                                     new com.cvcompass.backend.candidate.events.CandidateChanged(
@@ -390,7 +382,7 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     @Test
-    void failingSearchListenerRollsBackPublicationLedgerAndProfile() throws Exception {
+    void failingSearchListenerPreservesPublicationLedgerAndProfile() throws Exception {
         var doc = document();
         long mappingId =
                 result(
@@ -403,13 +395,16 @@ class PersonalInfoPublicationIntegrationTests {
         jdbc.execute(
                 "CREATE OR REPLACE TRIGGER synthetic_poison BEFORE INSERT OR UPDATE ON \"SEARCH\".\"CANDIDATE_INDEX\" FOR EACH ROW EXECUTE FUNCTION \"SEARCH\".synthetic_poison()");
         try {
-            assertThatThrownBy(
-                            () ->
-                                    new org.springframework.transaction.support.TransactionTemplate(
-                                                    transactions)
-                                            .executeWithoutResult(
-                                                    status -> publication.publish(mappingId)))
-                    .hasStackTraceContaining("synthetic poison");
+            // Spec 25/11 section 5: only the failed index write rolls back; publication commits.
+            new org.springframework.transaction.support.TransactionTemplate(transactions)
+                    .executeWithoutResult(
+                            status -> assertThat(publication.publish(mappingId)).isTrue());
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                    Integer.class,
+                                    candidate(doc)))
+                    .isZero();
         } finally {
             jdbc.execute(
                     "DROP TRIGGER IF EXISTS synthetic_poison ON \"SEARCH\".\"CANDIDATE_INDEX\"");
@@ -419,8 +414,9 @@ class PersonalInfoPublicationIntegrationTests {
                                 "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 Integer.class,
                                 mappingId))
-                .isZero();
-        assertThat(candidate(doc)).isNull();
+                .isEqualTo(1);
+        assertThat(queries.detail(candidate(doc)).basic().path("fullName").asString())
+                .isEqualTo("Synthetic Poison Marker");
     }
 
     @Test
@@ -736,6 +732,25 @@ class PersonalInfoPublicationIntegrationTests {
                 .isEqualTo(1);
         assertThat(revisions.history(before.id(), null, 100).getFirst().action())
                 .isEqualTo("PUBLISH_MAPPING");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"STATE\"='UNVERIFIED' AND \"ORIGIN\"='MAPPING' FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
+                                Boolean.class,
+                                oldExperience))
+                .isTrue();
+        long third =
+                result(
+                        doc,
+                        "Full name: Synthetic Again\n\nWork Experience\n01/2023 – 12/2025 Synthetic Final Employer",
+                        false,
+                        "personal-info-mapping/3.5");
+        assertThat(publication.publish(third)).isTrue();
+        var again = queries.detail(before.id());
+        assertThat(again.experiences()).hasSize(1);
+        assertThat(again.experiences().getFirst().resultId()).isEqualTo(third);
+        assertThat(queries.proposals(before.id(), null, 100)).isEmpty();
+        assertThat(revisions.history(before.id(), null, 100).getFirst().actor())
+                .isEqualTo("SYSTEM");
     }
 
     @Test
@@ -813,10 +828,6 @@ class PersonalInfoPublicationIntegrationTests {
                         "personal-info-mapping/3.5");
         assertThat(transactions)
                 .isInstanceOf(org.springframework.orm.jpa.JpaTransactionManager.class);
-        assertThat(
-                        ((org.springframework.orm.jpa.JpaTransactionManager) transactions)
-                                .isNestedTransactionAllowed())
-                .isTrue();
         jdbc.execute(
                 "CREATE OR REPLACE FUNCTION \"SEARCH\".synthetic_publication_poison() RETURNS trigger AS $$ BEGIN IF NEW.\"SEARCH_TEXT\" LIKE '%synthetic poison marker%' THEN RAISE EXCEPTION 'synthetic poison'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql");
         jdbc.execute(

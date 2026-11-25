@@ -68,6 +68,7 @@ class M11IntegrationTests {
         var doc = document();
         var profile = published(doc);
         if (command.equals("EDIT")) {
+            confirmMappedExperience(profile);
             publication.publish(result(doc, raw(), false));
             profile = queries.detail(profile.id());
         }
@@ -135,6 +136,7 @@ class M11IntegrationTests {
     void legacyExperienceProposalHasExplicitKindWithoutChangingItsData() throws Exception {
         var d = document();
         var p = published(d);
+        confirmMappedExperience(p);
         publication.publish(result(d, raw(), false));
         var proposal = queries.proposals(p.id(), null, 100).getFirst();
         assertThat(proposal.kind()).isEqualTo("EXPERIENCE");
@@ -188,6 +190,7 @@ class M11IntegrationTests {
     void historyFailureRollsBackEditAndReviewThroughTheirSpringProxies() throws Exception {
         var doc = document();
         var profile = published(doc);
+        confirmMappedExperience(profile);
         publication.publish(result(doc, raw(), false));
         profile = queries.detail(profile.id());
         var before = profile;
@@ -466,6 +469,18 @@ class M11IntegrationTests {
     private Profile published(CvDocument d) throws Exception {
         publication.publish(result(d, raw(), false));
         return queries.detail(candidate(d));
+    }
+
+    private void confirmMappedExperience(Profile profile) {
+        // D7 updates untouched mapping rows directly; HR confirmation keeps review fixtures
+        // proposed.
+        candidates.editExperience(
+                profile.id(),
+                queries.detail(profile.id()).version(),
+                profile.experiences().getFirst().id(),
+                null,
+                "CONFIRM",
+                "synthetic-reviewer");
     }
 
     @Test
@@ -798,6 +813,7 @@ class M11IntegrationTests {
                                 candidates.basic(
                                         p.id(), p.version(), json.readTree("{}"), false, "two"))
                 .hasMessage("VERSION_CONFLICT");
+        confirmMappedExperience(p);
         publication.publish(result(doc, raw(), false));
         var current = queries.detail(p.id());
         var proposal = queries.proposals(p.id(), null, 100).getFirst();
@@ -1042,6 +1058,7 @@ class M11IntegrationTests {
     void realReviewDecisionRaceCommitsOnlyOneRevision() throws Exception {
         var doc = document();
         var profile = published(doc);
+        confirmMappedExperience(profile);
         publication.publish(result(doc, raw(), false));
         var current = queries.detail(profile.id());
         var proposal = queries.proposals(profile.id(), null, 100).getFirst();

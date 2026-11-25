@@ -76,7 +76,7 @@ public class CatalogLinkRepository implements CatalogLinks {
     }
 
     @Override
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = RuntimeException.class)
     public Optional<IndexProfile> lockIndexProfile(long candidateId) {
         return jdbc
                 .query(
@@ -92,7 +92,8 @@ public class CatalogLinkRepository implements CatalogLinks {
     }
 
     @Override
-    @Transactional(propagation = Propagation.MANDATORY)
+    // The caller rolls back its transaction or JDBC savepoint when this index write fails.
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = RuntimeException.class)
     public void metrics(long candidateId, ProfileLink value) {
         jdbc.update(
                 """

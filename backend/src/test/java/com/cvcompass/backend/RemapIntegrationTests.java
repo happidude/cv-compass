@@ -23,9 +23,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContextManager;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -42,8 +40,8 @@ class RemapIntegrationTests {
     @Autowired com.cvcompass.backend.mapping.repository.MappingRemoteRepository remoteJobs;
     @Autowired RemapService remaps;
     @Autowired RemapProperties properties;
-    @Autowired PlatformTransactionManager transactions;
     private long config;
+    private long previousConfig;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws Exception {
@@ -63,6 +61,7 @@ class RemapIntegrationTests {
         properties.setBatchSize(2);
         properties.setMaxPending(2);
         properties.setListLimit(2);
+        previousConfig = config();
         config = config();
         mapping.activate(config);
     }
@@ -111,6 +110,7 @@ class RemapIntegrationTests {
         assertThat(remaps.pause(run.id()).state()).isEqualTo("DONE");
         assertThat(remaps.resume(run.id()).state()).isEqualTo("DONE");
         mapping.activate(config);
+        terminal(third, "COMPLETED");
         // A repeat over the same original range only skips; a later extraction remains eligible.
         var repeat = remaps.create(scope("ALL"), "synthetic-admin");
         remaps.advance(repeat.id());
@@ -125,7 +125,7 @@ class RemapIntegrationTests {
         long old = extraction(null, "2026-11-01T00:00:00Z");
         var run = remaps.create(scope("ALL"), "synthetic-admin");
         remaps.advance(run.id());
-        long fresh = extraction(null, "2026-11-02T00:00:00Z");
+        long fresh = extraction(null, "2026-11-02T00:00:00Z", false);
         jobs.enqueue(fresh, config, ENGINE, 3);
         assertThat(mapping.claim().orElseThrow().extractionId()).isEqualTo(fresh);
         var remap = mapping.claim().orElseThrow();
@@ -136,6 +136,76 @@ class RemapIntegrationTests {
                                 Integer.class,
                                 remap.jobId()))
                 .isEqualTo(10);
+    }
+
+    @Test
+    void remapLeavesUnmappedInputsForScanAndOnlySelectsLatestExtractionOfEachDocument() {
+        long older = extraction(null, "2026-11-01T00:00:00Z");
+        long doc =
+                jdbc.queryForObject(
+                        "SELECT \"CV_DOCUMENT_ID\" FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?",
+                        Long.class,
+                        older);
+        long latestUnmapped = extractionForDocument(doc);
+        long fresh = extraction(null, "2026-11-02T00:00:00Z", false);
+        long eligible = extraction(null, "2026-11-01T00:00:00Z");
+        var run = remaps.create(scope("ALL"), "synthetic-admin");
+        remaps.advance(run.id());
+        assertThat(selected(run))
+                .containsExactly(eligible)
+                .doesNotContain(older, latestUnmapped, fresh);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\" IN (?,?)",
+                                Long.class,
+                                latestUnmapped,
+                                fresh))
+                .isZero();
+        jobs.enqueue(fresh, config, ENGINE, 3);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"PRIORITY\"=0 AND \"REMAP_RUN_ID\" IS NULL FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\"=?",
+                                Boolean.class,
+                                fresh))
+                .isTrue();
+    }
+
+    @Test
+    void remapSelectsOnlyTheLatestMappedExtractionWhenOlderExtractionsAlsoHaveJobs() {
+        long older = extraction(null, "2026-11-01T00:00:00Z");
+        long doc =
+                jdbc.queryForObject(
+                        "SELECT \"CV_DOCUMENT_ID\" FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\"=?",
+                        Long.class,
+                        older);
+        long latest = extractionForDocument(doc);
+        jobs.enqueue(latest, previousConfig, ENGINE, 3);
+        terminal(latest, "FAILED");
+        var run = remaps.create(scope("ALL"), "synthetic-admin");
+        remaps.advance(run.id());
+        assertThat(selected(run)).containsExactly(latest).doesNotContain(older);
+    }
+
+    @Test
+    void pendingLimitIsSharedAcrossAllRunsIncludingPausedRuns() {
+        long first = extraction(null, "2026-11-01T00:00:00Z");
+        extraction(null, "2026-11-01T00:00:00Z");
+        extraction(null, "2026-11-01T00:00:00Z");
+        var one = remaps.create(scope("ALL"), "synthetic-admin");
+        remaps.advance(one.id());
+        remaps.pause(one.id());
+        mapping.activate(config());
+        var two = remaps.create(scope("ALL"), "synthetic-admin");
+        remaps.advance(two.id());
+        assertThat(remaps.get(one.id()).pending()).isEqualTo(2);
+        assertThat(remaps.get(two.id()).queued()).isZero();
+        assertThat(remaps.get(two.id()).cursorExtractionId()).isZero();
+        terminal(first, "FAILED");
+        remaps.advance(two.id());
+        assertThat(remaps.get(two.id()).queued()).isEqualTo(1);
+        assertThat(remaps.get(one.id()).pending() + remaps.get(two.id()).pending()).isEqualTo(2);
+        remaps.advance(two.id());
+        assertThat(remaps.get(two.id()).queued()).isEqualTo(1);
     }
 
     @Test
@@ -217,25 +287,54 @@ class RemapIntegrationTests {
     }
 
     @Test
+    @Transactional(
+            propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     void failedBatchRollsBackEnqueuesCursorAndCountersTogether() {
-        long first = extraction(null, "2026-11-01T00:00:00Z");
-        extraction(null, "2026-11-01T00:00:00Z");
-        var run = remaps.create(scope("ALL"), "synthetic-admin");
-        var nested = new TransactionTemplate(transactions);
-        nested.setPropagationBehavior(
-                org.springframework.transaction.TransactionDefinition.PROPAGATION_NESTED);
-        nested.executeWithoutResult(
-                status -> {
-                    remaps.advance(run.id());
-                    assertThat(remaps.get(run.id()).queued()).isEqualTo(2);
-                    status.setRollbackOnly();
-                });
-        assertThat(remaps.get(run.id()).selected()).isZero();
-        assertThat(remaps.get(run.id()).cursorExtractionId()).isZero();
-        assertThat(selected(run)).isEmpty();
-        remaps.advance(run.id());
-        assertThat(selected(run)).startsWith(first);
-        assertThat(remaps.get(run.id()).queued()).isEqualTo(2);
+        long batch =
+                jdbc.queryForObject(
+                        "INSERT INTO \"INGESTION\".\"IMPORT_BATCHES\" (\"TOTAL_FILES\",\"STATUS\") VALUES (2,'PENDING') RETURNING \"ID\"",
+                        Long.class);
+        long first = extraction(batch, "2026-11-01T00:00:00Z");
+        long second = extraction(batch, "2026-11-01T00:00:00Z");
+        var run =
+                remaps.create(
+                        new RemapRequest("BATCH", batch, null, null, null), "synthetic-admin");
+        jdbc.execute(
+                "CREATE FUNCTION \"MAPPING\".synthetic_remap_poison() RETURNS trigger AS $$ BEGIN IF NEW.\"REMAP_RUN_ID\"="
+                        + run.id()
+                        + " AND NEW.\"EXTRACTION_ID\"="
+                        + second
+                        + " THEN RAISE EXCEPTION 'synthetic batch failure'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql");
+        jdbc.execute(
+                "CREATE TRIGGER synthetic_remap_poison BEFORE INSERT ON \"MAPPING\".\"JOBS\" FOR EACH ROW EXECUTE FUNCTION \"MAPPING\".synthetic_remap_poison()");
+        try {
+            assertThatThrownBy(() -> remaps.advance(run.id()))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(remaps.get(run.id()).selected()).isZero();
+            assertThat(remaps.get(run.id()).cursorExtractionId()).isZero();
+            assertThat(selected(run)).isEmpty();
+            jdbc.execute("DROP TRIGGER synthetic_remap_poison ON \"MAPPING\".\"JOBS\"");
+            remaps.advance(run.id());
+            assertThat(selected(run)).startsWith(first);
+            assertThat(remaps.get(run.id()).queued()).isEqualTo(2);
+        } finally {
+            jdbc.execute("DROP TRIGGER IF EXISTS synthetic_remap_poison ON \"MAPPING\".\"JOBS\"");
+            jdbc.execute("DROP FUNCTION \"MAPPING\".synthetic_remap_poison()");
+            jdbc.update(
+                    "DELETE FROM \"MAPPING\".\"JOBS\" WHERE \"EXTRACTION_ID\" IN (?,?)",
+                    first,
+                    second);
+            jdbc.update("DELETE FROM \"MAPPING\".\"REMAP_RUNS\" WHERE \"ID\"=?", run.id());
+            jdbc.update(
+                    "DELETE FROM \"INGESTION\".\"EXTRACTIONS\" WHERE \"ID\" IN (?,?)",
+                    first,
+                    second);
+            jdbc.update(
+                    "DELETE FROM \"INGESTION\".\"PROCESSING_JOBS\" WHERE \"CV_DOCUMENT_ID\" IN (SELECT \"ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"BATCH_ID\"=?)",
+                    batch);
+            jdbc.update("DELETE FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"BATCH_ID\"=?", batch);
+            jdbc.update("DELETE FROM \"INGESTION\".\"IMPORT_BATCHES\" WHERE \"ID\"=?", batch);
+        }
     }
 
     private RemapRequest scope(String value) {
@@ -258,6 +357,10 @@ class RemapIntegrationTests {
     }
 
     private long extraction(Long batch, String importedAt) {
+        return extraction(batch, importedAt, true);
+    }
+
+    private long extraction(Long batch, String importedAt, boolean previouslyMapped) {
         long doc =
                 jdbc.queryForObject(
                         """
@@ -268,6 +371,15 @@ class RemapIntegrationTests {
                         batch,
                         "a".repeat(64),
                         OffsetDateTime.parse(importedAt));
+        long extraction = extractionForDocument(doc);
+        if (previouslyMapped) {
+            jobs.enqueue(extraction, previousConfig, ENGINE, 3);
+            terminal(extraction, "FAILED");
+        }
+        return extraction;
+    }
+
+    private long extractionForDocument(long doc) {
         long ocrJob =
                 jdbc.queryForObject(
                         "INSERT INTO \"INGESTION\".\"PROCESSING_JOBS\" (\"CV_DOCUMENT_ID\",\"STATUS\") VALUES (?,'PENDING') RETURNING \"ID\"",

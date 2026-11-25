@@ -108,12 +108,7 @@ public class PublicationService {
                         .filter(e -> java.util.Objects.equals(e.documentId(), result.documentId()))
                         .toList();
         boolean replaceExperiences =
-                sameDocument
-                        && documentExperiences.stream()
-                                .allMatch(
-                                        e ->
-                                                "UNVERIFIED".equals(e.state())
-                                                        && "MAPPING".equals(e.origin()));
+                sameDocument && publications.canReplaceMappedExperiences(id, result.documentId());
         boolean replaceBasic =
                 "UNVERIFIED".equals(before.basicState())
                         && "MAPPING".equals(before.basicOrigin())
@@ -133,7 +128,8 @@ public class PublicationService {
         logPublication(result, direct ? "PUBLISHED" : "PROPOSED", null);
         boolean changed = false;
         if (replaceExperiences) {
-            for (var experience : documentExperiences) repository.deleteExperience(experience.id());
+            for (var experience : documentExperiences)
+                publications.supersedeMappedExperience(experience.id());
             changed = !documentExperiences.isEmpty();
         }
         for (var experience : body.path("experiences")) {

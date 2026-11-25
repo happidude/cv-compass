@@ -80,6 +80,8 @@ class MappingRemoteIntegrationTests {
     @Autowired MockMvc mvc;
     @Autowired PlatformTransactionManager transactions;
     @Autowired com.cvcompass.backend.candidate.service.PublicationService publication;
+    @Autowired com.cvcompass.backend.candidate.service.CandidateService candidateService;
+    @Autowired com.cvcompass.backend.candidate.service.CandidateQueryService candidateQueries;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws Exception {
@@ -227,6 +229,25 @@ class MappingRemoteIntegrationTests {
                             "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                             Long.class,
                             job);
+            if (subsequent) {
+                // D7 needs an HR-protected profile to exercise subsequent proposals.
+                long existingCandidate =
+                        jdbc.queryForObject(
+                                "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
+                                Long.class,
+                                documentId);
+                var profile = candidateQueries.detail(existingCandidate);
+                profile =
+                        candidateService.editExperience(
+                                profile.id(),
+                                profile.version(),
+                                profile.experiences().getFirst().id(),
+                                null,
+                                "CONFIRM",
+                                "synthetic-reviewer");
+                candidateService.basic(
+                        profile.id(), profile.version(), null, true, "synthetic-reviewer");
+            }
             assertThat(publication.publish(result)).isTrue();
             long candidate =
                     jdbc.queryForObject(
@@ -247,16 +268,11 @@ class MappingRemoteIntegrationTests {
                                 .andReturn()
                                 .getResponse();
                 var payload = json.readTree(response.getContentAsString());
-                if (endpoint.equals("proposals")) assertThat(payload.size()).isZero();
+                if (endpoint.equals("proposals"))
+                    assertThat(payload.size()).isEqualTo(subsequent ? 6 : 0);
                 if (endpoint.equals("profile"))
                     assertThat(payload.path("experiences").size()).isEqualTo(5);
-                // D7 refreshes this document's unreviewed profile instead of proposing it.
-                if (subsequent)
-                    LlmRemoteContractFixtures.assertFixture(
-                            prefix + endpoint,
-                            payload,
-                            java.nio.file.Path.of("src/test/resources/mapping/remap-llm"));
-                else LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
+                LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
             }
         }
     }

@@ -523,16 +523,20 @@ class SearchIndexIntegrationTests {
         assertThat(indexCount(good)).isEqualTo(1);
     }
 
-    @Test
-    void indexFailureRollsBackItsSavepointWhileHrEditCommitsAndRebuildRepairsIt() {
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"INDEX", "METRICS"})
+    void indexFailureRollsBackItsSavepointWhileHrEditCommitsAndRebuildRepairsIt(
+            String failureStage) {
         assertThat(transactions)
                 .isInstanceOf(org.springframework.orm.jpa.JpaTransactionManager.class);
-        assertThat(
-                        ((org.springframework.orm.jpa.JpaTransactionManager) transactions)
-                                .isNestedTransactionAllowed())
-                .isTrue();
         long id = candidate();
-        poisonTrigger();
+        if (failureStage.equals("INDEX")) poisonTrigger();
+        else {
+            jdbc.execute(
+                    "CREATE OR REPLACE FUNCTION \"CANDIDATE\".synthetic_metrics_poison() RETURNS trigger AS $$ BEGIN IF NEW.\"FULL_NAME\" LIKE '%Synthetic poison marker%' THEN RAISE EXCEPTION 'synthetic poison'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql");
+            jdbc.execute(
+                    "CREATE TRIGGER synthetic_metrics_poison BEFORE UPDATE OF \"TOTAL_EXPERIENCE_MONTHS\" ON \"CANDIDATE\".\"PROFILES\" FOR EACH ROW EXECUTE FUNCTION \"CANDIDATE\".synthetic_metrics_poison()");
+        }
         try {
             var changed =
                     candidates.basic(
@@ -549,6 +553,8 @@ class SearchIndexIntegrationTests {
             assertThat(links.profile(id).orElseThrow().totalExperienceMonths()).isNull();
         } finally {
             dropPoisonTrigger();
+            jdbc.execute(
+                    "DROP TRIGGER IF EXISTS synthetic_metrics_poison ON \"CANDIDATE\".\"PROFILES\"");
         }
         assertThat(rebuild.rebuildAll().failed()).isZero();
         assertThat(indexCount(id)).isEqualTo(1);
