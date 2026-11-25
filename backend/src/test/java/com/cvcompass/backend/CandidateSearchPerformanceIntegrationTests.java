@@ -171,6 +171,10 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
                                 // This fallback proves the actual API statement can use the
                                 // existing GIN indexes.
                                 jdbc.execute("SET LOCAL enable_seqscan=off");
+                                // At 10k rows the planner may also merge-join both primary keys;
+                                // disabling plain index scans leaves only bitmap scans, which
+                                // must come from the GIN index under test.
+                                jdbc.execute("SET LOCAL enable_indexscan=off");
                                 plan =
                                         String.join(
                                                 "\n",
