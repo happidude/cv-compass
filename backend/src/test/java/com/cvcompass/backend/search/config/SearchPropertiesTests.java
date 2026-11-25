@@ -50,6 +50,50 @@ class SearchPropertiesTests {
     }
 
     @Test
+    void queryDefaultsAndValidOverridesBind() {
+        context.withPropertyValues(
+                        "cv.search.query.default-limit=5",
+                        "cv.search.query.max-limit=10",
+                        "cv.search.query.suggest-limit=3",
+                        "cv.search.query.trigram-threshold=0.4",
+                        "cv.search.query.weights.company-current=5")
+                .run(
+                        app -> {
+                            assertThat(app).hasNotFailed();
+                            var query = app.getBean(SearchProperties.class).getQuery();
+                            assertThat(query.getDefaultLimit()).isEqualTo(5);
+                            assertThat(query.getMaxLimit()).isEqualTo(10);
+                            assertThat(query.getSuggestLimit()).isEqualTo(3);
+                            assertThat(query.getTrigramThreshold()).isEqualByComparingTo("0.4");
+                            assertThat(query.getWeights().getCompanyCurrent())
+                                    .isEqualByComparingTo("5");
+                        });
+    }
+
+    @Test
+    void overlappingTiersAndInvalidQueryBoundsPreventStartup() {
+        for (String property :
+                new String[] {
+                    "max-limit=51",
+                    "max-limit=0",
+                    "default-limit=51",
+                    "default-limit=0",
+                    "suggest-limit=0",
+                    "suggest-limit=51",
+                    "trigram-threshold=0",
+                    "trigram-threshold=1.1",
+                    "weights.keyword-text=-1",
+                    "weights.title-catalog=100",
+                    "weights.company-parent=300",
+                    "weights.company-direct=700",
+                    "weights.company-current=200"
+                }) {
+            context.withPropertyValues("cv.search.query." + property)
+                    .run(app -> assertThat(app).as(property).hasFailed());
+        }
+    }
+
+    @Test
     void configuredCronIsUsedByTheRegisteredNightlyTask() {
         String cron = "0 15 4 * * *";
         context.withPropertyValues("cv.search.nightly-cron=" + cron)
