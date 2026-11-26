@@ -180,3 +180,42 @@ export const historySchema = z.array(
   }),
 );
 export type Profile = z.infer<typeof profileSchema>;
+
+const searchCompanySchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  parentName: z.string().nullable(),
+});
+export const companySuggestionsSchema = z.array(searchCompanySchema);
+const searchOptionSchema = z.object({ code: z.string(), label: z.string() });
+export const searchOptionsSchema = z.object({
+  FUNCTION: z.array(searchOptionSchema),
+  SENIORITY: z.array(searchOptionSchema),
+  SCOPE: z.array(searchOptionSchema),
+  INDUSTRY: z.array(searchOptionSchema),
+  provinces: z.array(z.string()),
+});
+export const searchPageSchema = z.object({
+  content: z.array(
+    z.object({
+      id: idSchema,
+      fullName: z.string().nullable(),
+      currentTitle: z
+        .object({ id: idSchema, name: z.string(), aiNormalized: z.boolean() })
+        .nullable(),
+      currentCompany: searchCompanySchema
+        .extend({ aiNormalized: z.boolean() })
+        .nullable(),
+      province: z.string().nullable(),
+      totalExperienceMonths: countSchema.nullable(),
+      experienceEstimated: z.literal(true),
+      score: z.number().finite(),
+      matchReasons: z.array(z.string()),
+      matchedCompany: z.object({ id: idSchema, name: z.string() }).nullable(),
+    }),
+  ),
+  nextCursor: z.string().nullable(),
+  hasNext: z.boolean(),
+});
+export type SearchResult = z.infer<typeof searchPageSchema>["content"][number];
+export type SearchOptions = z.infer<typeof searchOptionsSchema>;

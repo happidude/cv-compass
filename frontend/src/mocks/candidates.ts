@@ -187,6 +187,74 @@ const notFound = () =>
     { status: 404 },
   );
 export const candidateHandlers = [
+  http.get(`${base}/candidates/search/options`, () =>
+    HttpResponse.json(candidateSearchOptions),
+  ),
+  http.get(`${base}/candidates/search/companies`, async ({ request }) => {
+    await delay(80);
+    const q = new URL(request.url).searchParams.get("q")?.trim().toLowerCase();
+    return HttpResponse.json(
+      q
+        ? candidateCompanySuggestions.filter((company) =>
+            company.name.toLowerCase().includes(q),
+          )
+        : [],
+    );
+  }),
+  http.get(`${base}/candidates/search`, async ({ request }) => {
+    await delay(100);
+    const params = new URL(request.url).searchParams;
+    const companyId = params.get("companyId");
+    if (
+      params.has("companyId") &&
+      (params.has("company") ||
+        params.getAll("companyId").length !== 1 ||
+        !/^\d+$/.test(companyId ?? "") ||
+        BigInt(companyId!) <= 0n ||
+        BigInt(companyId!) > 9223372036854775807n)
+    )
+      return HttpResponse.json(
+        {
+          code: "VALIDATION_ERROR",
+          message: "Use either company or one positive companyId.",
+          correlationId: null,
+          details: [{ field: "companyId" }],
+        },
+        { status: 400 },
+      );
+    const companyName = params.get("company")?.trim().toLowerCase();
+    function matchesCompany(row: { id: number }) {
+      if (companyId === null && !companyName) return true;
+      return (candidateSearchCompanyLinks[row.id] ?? []).some((id) => {
+        const company = candidateCompanySuggestions.find(
+          (item) => item.id === id,
+        )!;
+        const parent = candidateCompanySuggestions.find(
+          (item) => item.name === company.parentName,
+        );
+        return companyId !== null
+          ? [company.id, parent?.id].some(
+              (id) => id !== undefined && BigInt(id) === BigInt(companyId),
+            )
+          : [company.name, company.parentName].some((name) =>
+              name?.toLowerCase().includes(companyName!),
+            );
+      });
+    }
+    const nextContent = candidateSearchNextPage.content.filter(matchesCompany);
+    if (params.has("cursor"))
+      return HttpResponse.json({
+        ...candidateSearchNextPage,
+        content: nextContent,
+      });
+    const hasNext = nextContent.length > 0;
+    return HttpResponse.json({
+      ...candidateSearchPage,
+      content: candidateSearchPage.content.filter(matchesCompany),
+      hasNext,
+      nextCursor: hasNext ? candidateSearchPage.nextCursor : null,
+    });
+  }),
   http.get(`${base}/candidates`, async () => {
     await delay(150);
     return HttpResponse.json(candidatePage);
@@ -223,3 +291,86 @@ export const candidateHandlers = [
     }),
   ),
 ];
+
+export const candidateSearchOptions = {
+  FUNCTION: [
+    { code: "IT", label: "Công nghệ thông tin" },
+    { code: "ENGINEERING", label: "Kỹ thuật" },
+  ],
+  SENIORITY: [
+    { code: "SENIOR", label: "Chuyên viên cao cấp" },
+    { code: "MANAGER", label: "Quản lý" },
+  ],
+  SCOPE: [
+    { code: "COMPANY", label: "Toàn công ty/tập đoàn" },
+    { code: "REGION", label: "Vùng/khu vực" },
+  ],
+  INDUSTRY: [
+    { code: "LOGISTICS", label: "Logistics / vận tải / phân phối" },
+    { code: "MANUFACTURING", label: "Sản xuất công nghiệp" },
+  ],
+  provinces: ["Hà Nội", "Hồ Chí Minh"],
+};
+export const candidateCompanySuggestions = [
+  { id: 22, name: "Synthetic Logistics", parentName: "Synthetic Group" },
+  { id: 23, name: "Synthetic Group", parentName: null },
+  { id: 24, name: "1080", parentName: null },
+];
+// Includes past employers even when the current company in the result is null.
+const candidateSearchCompanyLinks: Record<number, number[]> = {
+  1: [22],
+  8: [24],
+  3: [22],
+};
+export const candidateSearchPage = {
+  content: [
+    {
+      id: 1,
+      fullName: "Synthetic An Nguyen",
+      currentTitle: { id: 11, name: "Kỹ sư phần mềm", aiNormalized: true },
+      currentCompany: { ...candidateCompanySuggestions[0], aiNormalized: true },
+      province: "Hà Nội",
+      totalExperienceMonths: 59,
+      experienceEstimated: true,
+      score: 640,
+      matchReasons: ["COMPANY_PARENT", "COMPANY_CURRENT", "TITLE_CATALOG"],
+      matchedCompany: { id: 23, name: "Synthetic Group" },
+    },
+    {
+      id: 8,
+      fullName: "Synthetic Binh Tran",
+      currentTitle: {
+        id: 12,
+        name: "Chuyên viên kỹ thuật",
+        aiNormalized: false,
+      },
+      currentCompany: null,
+      province: "Hồ Chí Minh",
+      totalExperienceMonths: 8,
+      experienceEstimated: true,
+      score: 200,
+      matchReasons: ["TITLE_CATALOG", "KEYWORD_FUZZY"],
+      matchedCompany: null,
+    },
+  ],
+  nextCursor: "NjQwLjAwMDAwMHw4",
+  hasNext: true,
+};
+export const candidateSearchNextPage = {
+  content: [
+    {
+      id: 3,
+      fullName: null,
+      currentTitle: null,
+      currentCompany: null,
+      province: null,
+      totalExperienceMonths: null,
+      experienceEstimated: true,
+      score: 10,
+      matchReasons: ["KEYWORD_TEXT", "FUTURE_REASON"],
+      matchedCompany: null,
+    },
+  ],
+  nextCursor: null,
+  hasNext: false,
+};
