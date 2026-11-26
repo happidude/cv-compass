@@ -46,6 +46,9 @@ class CandidateSearchWeightsIntegrationTests extends CandidateSearchTestSupport 
         var fixture = positionBonusFixture();
         assertThat(resultIds(search(fixture.query() + "&limit=3")))
                 .containsExactly(fixture.currentTitle(), fixture.currentCompany());
+        var byCompanyId = positionBonusFixture(true);
+        assertThat(resultIds(search(byCompanyId.query() + "&limit=3")))
+                .containsExactly(byCompanyId.currentTitle(), byCompanyId.currentCompany());
         var firstPage = search(fixture.query());
         assertThat(resultIds(firstPage)).containsExactly(fixture.currentTitle());
         assertThat(firstPage.path("hasNext").asBoolean()).isTrue();

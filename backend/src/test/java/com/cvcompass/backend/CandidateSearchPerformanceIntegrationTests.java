@@ -134,6 +134,13 @@ class CandidateSearchPerformanceIntegrationTests extends CandidateSearchTestSupp
         System.out.printf(
                 "SEARCH_PERF kind=http_keyword rows=%d elapsed_ms=%.3f%n",
                 result.path("content").size(), (System.nanoTime() - started) / 1_000_000.0);
+        started = System.nanoTime();
+        var byCompanyId = search("companyId=" + company);
+        assertThat(resultIds(byCompanyId)).hasSize(20);
+        assertThat(resultIds(byCompanyId)).containsExactlyElementsOf(resultIds(result));
+        System.out.printf(
+                "SEARCH_PERF kind=http_arrays rows=%d elapsed_ms=%.3f%n",
+                byCompanyId.path("content").size(), (System.nanoTime() - started) / 1_000_000.0);
     }
 
     private void explain(String name, Criteria criteria, String... requiredIndexes) {

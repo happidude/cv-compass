@@ -145,6 +145,10 @@ abstract class CandidateSearchTestSupport {
     }
 
     BonusFixture positionBonusFixture() {
+        return positionBonusFixture(false);
+    }
+
+    BonusFixture positionBonusFixture(boolean useCompanyId) {
         String marker = unique("bonusmarker");
         String companyName = unique("Bonus Company");
         String titleName = unique("Bonus Title");
@@ -156,8 +160,7 @@ abstract class CandidateSearchTestSupport {
         return new BonusFixture(
                 "q="
                         + encode(marker)
-                        + "&company="
-                        + encode(companyName)
+                        + (useCompanyId ? "&companyId=" + company : "&company=" + encode(companyName))
                         + "&title="
                         + encode(titleName),
                 currentCompany,

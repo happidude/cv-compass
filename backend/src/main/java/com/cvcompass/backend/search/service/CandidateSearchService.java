@@ -73,15 +73,18 @@ public class CandidateSearchService {
         }
         String company = fold(request.company());
         String title = fold(request.title());
-        List<Long> companyIds = resolve("COMPANY", company);
+        List<Long> companyIds =
+                request.companyId() == null
+                        ? resolve("COMPANY", company)
+                        : List.of(request.companyId());
         List<Long> titleIds = resolve("TITLE", title);
         var rows =
                 repository.search(
                         new Criteria(
                                 fold(request.q()),
-                                textFilter(company),
+                                company,
                                 textFilter(title),
-                                !company.isEmpty(),
+                                request.companyId() != null || !company.isEmpty(),
                                 !title.isEmpty(),
                                 companyIds,
                                 titleIds,
@@ -178,7 +181,7 @@ public class CandidateSearchService {
 
     private List<Long> resolve(String kind, String value) {
         if (value.isEmpty()) return List.of();
-        if (value.matches("[0-9]+")) {
+        if ("TITLE".equals(kind) && value.matches("[0-9]+")) {
             try {
                 return List.of(Long.parseLong(value));
             } catch (NumberFormatException failure) {
