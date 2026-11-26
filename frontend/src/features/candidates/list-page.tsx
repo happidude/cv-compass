@@ -14,11 +14,7 @@ import {
 import { candidateTitle, stateLabel, stateTone } from "./labels";
 import { useCandidates } from "./queries";
 import { CandidateSearchForm } from "./search-form";
-import {
-  companyFilterNeedsSelection,
-  experienceFilterError,
-  searchFilters,
-} from "./search-filters";
+import { experienceFilterError, searchFilters } from "./search-filters";
 import { CandidateSearchResults } from "./search-results";
 export function CandidatesPage() {
   const [params] = useSearchParams();
@@ -33,15 +29,7 @@ export function CandidatesPage() {
       {filters ? (
         <CandidateSearchResults
           filters={filters}
-          valid={
-            !experienceFilterError(params) &&
-            !companyFilterNeedsSelection(params)
-          }
-          invalidMessage={
-            companyFilterNeedsSelection(params)
-              ? "Chọn công ty từ danh mục để tìm kiếm."
-              : undefined
-          }
+          valid={!experienceFilterError(params)}
         />
       ) : (
         <CandidateList />

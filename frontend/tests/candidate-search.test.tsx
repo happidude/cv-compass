@@ -147,14 +147,14 @@ describe("candidate search filters", () => {
 
   it("debounces company suggestions, selects an ID, then sends free text on edit", async () => {
     const suggestions: string[] = [];
-    const searches: string[] = [];
+    const searches: URL[] = [];
     server.use(
       http.get("/api/candidates/search/companies", ({ request }) => {
         suggestions.push(new URL(request.url).searchParams.get("q")!);
         return HttpResponse.json(candidateCompanySuggestions);
       }),
       http.get("/api/candidates/search", ({ request }) => {
-        searches.push(new URL(request.url).searchParams.get("company")!);
+        searches.push(new URL(request.url));
         return HttpResponse.json(candidateSearchPage);
       }),
     );
@@ -169,17 +169,42 @@ describe("candidate search filters", () => {
     );
     expect(suggestions).toEqual(["Syn"]);
     expect(
-      new URLSearchParams(router.state.location.search).get("company"),
+      new URLSearchParams(router.state.location.search).get("companyId"),
     ).toBe("22");
     expect(
       new URLSearchParams(router.state.location.search).get("companyName"),
     ).toBe("Synthetic Logistics");
     expect(company).toHaveValue("Synthetic Logistics");
-    await waitFor(() => expect(searches).toContain("22"));
+    await waitFor(() =>
+      expect(
+        searches.some((url) => url.searchParams.get("companyId") === "22"),
+      ).toBe(true),
+    );
+    const selected = searches.find((url) => url.searchParams.has("companyId"))!;
+    expect(selected.searchParams.has("company")).toBe(false);
+    expect(selected.searchParams.has("companyName")).toBe(false);
+    expect(
+      new URLSearchParams(router.state.location.search).has("company"),
+    ).toBe(false);
     await user.clear(company);
     await user.type(company, "Other");
     expect(company).toHaveValue("Other");
-    await waitFor(() => expect(searches).toContain("Other"));
+    await waitFor(() =>
+      expect(searches.at(-1)?.searchParams.get("company")).toBe("Other"),
+    );
+    expect(searches.at(-1)?.searchParams.has("companyId")).toBe(false);
+    expect(searches.at(-1)?.searchParams.has("companyName")).toBe(false);
+    expect(
+      new URLSearchParams(router.state.location.search).has("companyId"),
+    ).toBe(false);
+    expect(
+      searches.every(
+        (url) =>
+          !(
+            url.searchParams.has("company") && url.searchParams.has("companyId")
+          ),
+      ),
+    ).toBe(true);
     expect(
       new URLSearchParams(router.state.location.search).get("company"),
     ).toBe("Other");
@@ -197,21 +222,23 @@ describe("candidate search filters", () => {
       }),
     );
     const { router, user } = renderPage(
-      "/candidates?company=22&companyName=Synthetic+Logistics",
+      "/candidates?companyId=22&companyName=Synthetic+Logistics",
     );
     await screen.findByRole("link", { name: "Synthetic An Nguyen" });
     expect(
-      new URLSearchParams(router.state.location.search).get("company"),
+      new URLSearchParams(router.state.location.search).get("companyId"),
     ).toBe("22");
     expect(screen.getByLabelText("Công ty", { exact: true })).toHaveValue(
       "Synthetic Logistics",
     );
-    expect(searches[0].searchParams.get("company")).toBe("22");
+    expect(searches[0].searchParams.get("companyId")).toBe("22");
+    expect(searches[0].searchParams.has("company")).toBe(false);
     expect(searches[0].searchParams.has("companyName")).toBe(false);
+    expect(screen.getByText("Đã chọn công ty từ danh mục.")).toBeVisible();
     expect(screen.queryByText("22")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Bỏ chọn công ty" }));
     expect(
-      new URLSearchParams(router.state.location.search).has("company"),
+      new URLSearchParams(router.state.location.search).has("companyId"),
     ).toBe(false);
     expect(
       new URLSearchParams(router.state.location.search).has("companyName"),
@@ -233,12 +260,13 @@ describe("candidate search filters", () => {
     expect(searches).toHaveLength(0);
     await waitFor(() => expect(searches).toHaveLength(1));
     expect(searches[0].searchParams.get("company")).toBe("24h");
+    expect(searches[0].searchParams.has("companyId")).toBe(false);
     expect(
       new URLSearchParams(router.state.location.search).has("companyName"),
     ).toBe(false);
   });
 
-  it("keeps all-numeric free text visible and requires catalog selection instead of searching it as an ID", async () => {
+  it("searches all-numeric free text as a name and uses companyId only after selection", async () => {
     const searches: URL[] = [];
     server.use(
       http.get("/api/candidates/search", ({ request }) => {
@@ -253,7 +281,7 @@ describe("candidate search filters", () => {
     const input = screen.getByLabelText("Công ty", { exact: true });
     await user.type(input, "1080");
     expect(input).toHaveValue("1080");
-    expect(screen.getByText(/Tên công ty chỉ có chữ số/)).toBeVisible();
+    expect(screen.queryByText(/Tên công ty chỉ có chữ số/)).toBeNull();
     const option = await screen.findByRole("button", {
       name: "1080",
     });
@@ -262,14 +290,62 @@ describe("candidate search filters", () => {
         new URLSearchParams(router.state.location.search).get("company"),
       ).toBe("1080"),
     );
-    expect(searches).toHaveLength(0);
-    await user.click(option);
     await waitFor(() => expect(searches).toHaveLength(1));
-    expect(searches[0].searchParams.get("company")).toBe("42");
+    expect(searches[0].searchParams.get("company")).toBe("1080");
+    expect(searches[0].searchParams.has("companyId")).toBe(false);
     expect(searches[0].searchParams.has("companyName")).toBe(false);
+    await screen.findByRole("link", { name: "Synthetic An Nguyen" });
+    await user.click(option);
+    await waitFor(() => expect(searches).toHaveLength(2));
+    expect(searches[1].searchParams.get("companyId")).toBe("42");
+    expect(searches[1].searchParams.has("company")).toBe(false);
+    expect(searches[1].searchParams.has("companyName")).toBe(false);
     expect(input).toHaveValue("1080");
     expect(screen.queryByText(/Tên công ty chỉ có chữ số/)).toBeNull();
   });
+
+  it.each(["", "abc", "0", "-1", "1.5", "9223372036854775808"])(
+    "ignores a display name paired with invalid companyId=%s",
+    async (companyId) => {
+      renderPage(
+        "/candidates?" +
+          new URLSearchParams({ companyId, companyName: "Synthetic Hidden" }),
+      );
+      expect(screen.getByLabelText("Công ty", { exact: true })).toHaveValue("");
+      expect(screen.queryByText("Đã chọn công ty từ danh mục.")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Bỏ chọn công ty" }),
+      ).toBeNull();
+      await screen.findByLabelText("Kỹ thuật");
+    },
+  );
+
+  it.each(["company=1080&companyName=Stale", "companyName=Stale"])(
+    "ignores an orphan display name in a legacy URL: %s",
+    async (query) => {
+      const searches: URL[] = [];
+      server.use(
+        http.get("/api/candidates/search", ({ request }) => {
+          searches.push(new URL(request.url));
+          return HttpResponse.json(candidateSearchPage);
+        }),
+      );
+      renderPage("/candidates?" + query);
+      expect(screen.getByLabelText("Công ty", { exact: true })).toHaveValue(
+        query.startsWith("company=") ? "1080" : "",
+      );
+      expect(screen.queryByText("Đã chọn công ty từ danh mục.")).toBeNull();
+      if (query.startsWith("company=")) {
+        await waitFor(() => expect(searches).toHaveLength(1));
+        expect(searches[0].searchParams.get("company")).toBe("1080");
+        expect(searches[0].searchParams.has("companyId")).toBe(false);
+        expect(searches[0].searchParams.has("companyName")).toBe(false);
+      } else {
+        await screen.findByRole("button", { name: "Trang tiếp" });
+        expect(searches).toHaveLength(0);
+      }
+    },
+  );
 
   it("debounces typing to one search and replaces history while preserving back navigation", async () => {
     const searches: URL[] = [];
@@ -713,5 +789,22 @@ describe("search response boundaries and labels", () => {
     expect(
       experienceFilterError(new URLSearchParams("minYears=0&maxYears=0")),
     ).toBeUndefined();
+  });
+  it("whitelists companyId, excludes the display name and never sends both company filters", () => {
+    expect(
+      searchFilters(
+        new URLSearchParams("companyId=22&companyName=Synthetic"),
+      ).toString(),
+    ).toBe("companyId=22");
+    expect(
+      searchFilters(
+        new URLSearchParams("company=1080&companyName=Stale"),
+      ).toString(),
+    ).toBe("company=1080");
+    expect(
+      searchFilters(
+        new URLSearchParams("company=1080&companyId=22&companyName=Synthetic"),
+      ).toString(),
+    ).toBe("companyId=22");
   });
 });

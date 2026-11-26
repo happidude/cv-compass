@@ -8,17 +8,17 @@ export const multiFilters = [
 export const textFilters = [
   "q",
   "company",
+  "companyId",
   "title",
   "minYears",
   "maxYears",
 ] as const;
 
-// A numeric free-text name cannot be distinguished from an ID by this API.
-// Only the UI selection marker lets us safely submit such a company filter.
-export function companyFilterNeedsSelection(params: URLSearchParams) {
+export function isCompanyId(value: string) {
   return (
-    !params.get("companyName") &&
-    /^\d+$/.test(params.get("company")?.trim() ?? "")
+    /^\d+$/.test(value) &&
+    BigInt(value) > 0n &&
+    BigInt(value) <= 9223372036854775807n
   );
 }
 
@@ -26,6 +26,8 @@ export function companyFilterNeedsSelection(params: URLSearchParams) {
 export function searchFilters(params: URLSearchParams) {
   const filters = new URLSearchParams();
   for (const name of textFilters) {
+    // A shared URL may contain both; keep the explicit catalog filter only.
+    if (name === "company" && params.has("companyId")) continue;
     const value = params.get(name);
     if (value?.trim()) filters.set(name, value);
   }

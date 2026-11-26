@@ -4,17 +4,21 @@ import { Button, ErrorNotice, Panel } from "../../shared/ui";
 import { useCompanySuggestions, useSearchOptions } from "./queries";
 import {
   experienceFilterError,
-  companyFilterNeedsSelection,
+  isCompanyId,
   multiFilters,
   textFilters,
 } from "./search-filters";
 import { estimatedExperienceHint } from "./search-results";
 
 function readTextFilters(params: URLSearchParams) {
+  const companyId = params.get("companyId") ?? "";
   return {
     q: params.get("q") ?? "",
-    company: params.get("company") ?? "",
-    companyName: params.get("companyName") ?? "",
+    company: params.has("companyId") ? "" : (params.get("company") ?? ""),
+    companyId,
+    companyName: isCompanyId(companyId)
+      ? (params.get("companyName") ?? "")
+      : "",
     title: params.get("title") ?? "",
     minYears: params.get("minYears") ?? "",
     maxYears: params.get("maxYears") ?? "",
@@ -42,7 +46,7 @@ export function CandidateSearchForm() {
     setPreviousUrl(url);
     setDraft(readTextFilters(params));
   }
-  const companySelected = !!draft.company && !!draft.companyName;
+  const companySelected = isCompanyId(draft.companyId) && !!draft.companyName;
   const suggestionText = companySelected ? "" : draft.company;
   const [debouncedCompany, setDebouncedCompany] = useState("");
   useEffect(() => {
@@ -67,17 +71,21 @@ export function CandidateSearchForm() {
   const suggestions = useCompanySuggestions(debouncedCompany);
   const draftParams = new URLSearchParams(draft);
   const error = experienceFilterError(draftParams);
-  const companyNeedsSelection = companyFilterNeedsSelection(draftParams);
 
   function handleTextChange(name: (typeof textFilters)[number], value: string) {
     setDraft((current) => ({
       ...current,
       [name]: value,
-      ...(name === "company" ? { companyName: "" } : {}),
+      ...(name === "company" ? { companyId: "", companyName: "" } : {}),
     }));
   }
   function handleCompanySelection(id = "", name = "") {
-    const nextDraft = { ...draft, company: id, companyName: name };
+    const nextDraft = {
+      ...draft,
+      company: "",
+      companyId: id,
+      companyName: name,
+    };
     setDraft(nextDraft);
     setParams((current) => withTextFilters(current, nextDraft), {
       flushSync: true,
@@ -136,23 +144,11 @@ export function CandidateSearchForm() {
             autoComplete="off"
             value={companySelected ? draft.companyName : draft.company}
             placeholder="Gõ tên hoặc chọn gợi ý"
-            aria-describedby={
-              companyNeedsSelection
-                ? "company-selection-hint"
-                : companySelected
-                  ? "selected-company"
-                  : undefined
-            }
+            aria-describedby={companySelected ? "selected-company" : undefined}
             onChange={(event) =>
               handleTextChange("company", event.target.value)
             }
           />
-          {companyNeedsSelection && (
-            <p id="company-selection-hint" className="field__hint">
-              Tên công ty chỉ có chữ số. Hãy chọn công ty từ danh mục để tìm
-              kiếm.
-            </p>
-          )}
           {companySelected && (
             <>
               <span id="selected-company" className="field__hint">
