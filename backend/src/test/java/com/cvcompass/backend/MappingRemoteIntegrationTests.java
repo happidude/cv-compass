@@ -188,7 +188,9 @@ class MappingRemoteIntegrationTests {
                         .andReturn();
         var session = (MockHttpSession) login.getRequest().getSession(false);
         CvDocument doc = null;
-        for (boolean subsequent : java.util.List.of(false, true)) {
+        for (int pass = 0; pass < 3; pass++) {
+            boolean subsequent = pass == 1;
+            boolean hrProtected = pass == 2;
             long job = seed(doc, LlmRemoteContractFixtures.definition());
             long documentId =
                     jdbc.queryForObject(
@@ -229,8 +231,8 @@ class MappingRemoteIntegrationTests {
                             "SELECT \"ID\" FROM \"MAPPING\".\"RESULTS\" WHERE \"JOB_ID\"=?",
                             Long.class,
                             job);
-            if (subsequent) {
-                // D7 needs an HR-protected profile to exercise subsequent proposals.
+            com.cvcompass.backend.candidate.dto.Profile protectedProfile = null;
+            if (hrProtected) {
                 long existingCandidate =
                         jdbc.queryForObject(
                                 "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
@@ -245,8 +247,12 @@ class MappingRemoteIntegrationTests {
                                 null,
                                 "CONFIRM",
                                 "synthetic-reviewer");
-                candidateService.basic(
-                        profile.id(), profile.version(), null, true, "synthetic-reviewer");
+                protectedProfile =
+                        candidateService.basic(
+                                profile.id(), profile.version(), null, true, "synthetic-reviewer");
+                assertThat(protectedProfile.basicState()).isEqualTo("CONFIRMED");
+                assertThat(protectedProfile.experiences().getFirst().state())
+                        .isEqualTo("CONFIRMED");
             }
             assertThat(publication.publish(result)).isTrue();
             long candidate =
@@ -254,6 +260,18 @@ class MappingRemoteIntegrationTests {
                             "SELECT \"CANDIDATE_ID\" FROM \"INGESTION\".\"DOCUMENTS\" WHERE \"ID\"=?",
                             Long.class,
                             documentId);
+            if (hrProtected) {
+                var after = candidateQueries.detail(candidate);
+                assertThat(after.basic()).isEqualTo(protectedProfile.basic());
+                assertThat(after.basicState()).isEqualTo("CONFIRMED");
+                assertThat(after.experiences()).isEqualTo(protectedProfile.experiences());
+                assertThat(
+                                jdbc.queryForObject(
+                                        "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                        String.class,
+                                        result))
+                        .isEqualTo("PROPOSED");
+            }
             String prefix = subsequent ? "subsequent-" : "initial-";
             for (String endpoint : java.util.List.of("profile", "proposals", "history")) {
                 var response =
@@ -268,11 +286,18 @@ class MappingRemoteIntegrationTests {
                                 .andReturn()
                                 .getResponse();
                 var payload = json.readTree(response.getContentAsString());
-                if (endpoint.equals("proposals"))
-                    assertThat(payload.size()).isEqualTo(subsequent ? 6 : 0);
+                if (endpoint.equals("proposals")) {
+                    if (hrProtected) {
+                        assertThat(payload.size()).isGreaterThan(0);
+                        var kinds = new java.util.ArrayList<String>();
+                        payload.forEach(proposal -> kinds.add(proposal.path("kind").asString()));
+                        assertThat(kinds).contains("EXPERIENCE", "PERSONAL_INFO");
+                    } else assertThat(payload.size()).isZero();
+                }
                 if (endpoint.equals("profile"))
                     assertThat(payload.path("experiences").size()).isEqualTo(5);
-                LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
+                if (!hrProtected)
+                    LlmRemoteContractFixtures.assertFixture(prefix + endpoint, payload);
             }
         }
     }

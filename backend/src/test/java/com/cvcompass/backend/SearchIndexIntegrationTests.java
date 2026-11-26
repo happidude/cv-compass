@@ -538,33 +538,36 @@ class SearchIndexIntegrationTests {
                     "CREATE TRIGGER synthetic_metrics_poison BEFORE UPDATE OF \"TOTAL_EXPERIENCE_MONTHS\" ON \"CANDIDATE\".\"PROFILES\" FOR EACH ROW EXECUTE FUNCTION \"CANDIDATE\".synthetic_metrics_poison()");
         }
         try {
-            var changed =
-                    candidates.basic(
-                            id,
-                            0,
-                            json.readTree("{\"fullName\":\"Synthetic poison marker\"}"),
-                            false,
-                            "synthetic-editor");
-            assertThat(changed.basic().path("fullName").asString())
-                    .isEqualTo("Synthetic poison marker");
-            assertThat(queries.detail(id).version()).isEqualTo(1);
-            assertThat(indexCount(id)).isZero();
-            // The metrics write precedes the poisoned index write and must roll back too.
-            assertThat(links.profile(id).orElseThrow().totalExperienceMonths()).isNull();
+            try {
+                var changed =
+                        candidates.basic(
+                                id,
+                                0,
+                                json.readTree("{\"fullName\":\"Synthetic poison marker\"}"),
+                                false,
+                                "synthetic-editor");
+                assertThat(changed.basic().path("fullName").asString())
+                        .isEqualTo("Synthetic poison marker");
+                assertThat(queries.detail(id).version()).isEqualTo(1);
+                assertThat(indexCount(id)).isZero();
+                // The metrics write precedes the poisoned index write and must roll back too.
+                assertThat(links.profile(id).orElseThrow().totalExperienceMonths()).isNull();
+            } finally {
+                dropPoisonTrigger();
+                jdbc.execute(
+                        "DROP TRIGGER IF EXISTS synthetic_metrics_poison ON \"CANDIDATE\".\"PROFILES\"");
+            }
+            assertThat(rebuild.rebuildAll().failed()).isZero();
+            assertThat(indexCount(id)).isEqualTo(1);
+            assertThat(text(id)).contains("synthetic poison marker");
         } finally {
-            dropPoisonTrigger();
-            jdbc.execute(
-                    "DROP TRIGGER IF EXISTS synthetic_metrics_poison ON \"CANDIDATE\".\"PROFILES\"");
+            // The class shares one database: drop the marker so later poisoned rebuilds count
+            // only their own candidate, even when an assertion fails.
+            jdbc.update(
+                    "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"FULL_NAME\"='Synthetic repaired profile' WHERE \"CANDIDATE_ID\"=?",
+                    id);
+            indexer.rebuild(id);
         }
-        assertThat(rebuild.rebuildAll().failed()).isZero();
-        assertThat(indexCount(id)).isEqualTo(1);
-        assertThat(text(id)).contains("synthetic poison marker");
-        // The class shares one database: drop the marker so later poisoned rebuilds count
-        // only their own candidate.
-        jdbc.update(
-                "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"FULL_NAME\"='Synthetic repaired profile' WHERE \"CANDIDATE_ID\"=?",
-                id);
-        indexer.rebuild(id);
     }
 
     /** Makes the index write fail for synthetic poisoned rows, like a real per-candidate fault. */
