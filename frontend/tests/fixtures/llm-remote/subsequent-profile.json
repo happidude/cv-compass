@@ -2,521 +2,14 @@
   "id": 1,
   "version": 2,
   "basic": {
-    "dateOfBirth": "1990-05",
-    "fullName": "Synthetic Person"
+    "fullName": "Synthetic Reviewer",
+    "dateOfBirth": "1990-05"
   },
   "basicState": "UNVERIFIED",
   "basicOrigin": "MAPPING",
   "extensions": {
-    "schemaVersion": 1,
     "issues": [],
-    "personalInfo": {
-      "schemaVersion": 1,
-      "fields": {
-        "gender": {
-          "enabled": true,
-          "raw": "OTHER",
-          "normalized": null,
-          "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 22,
-              "end": 27,
-              "text": "OTHER"
-            }
-          ],
-          "issues": [
-            {
-              "code": "GENDER_UNSUPPORTED",
-              "field": "gender",
-              "evidence": [
-                {
-                  "extractionId": 1,
-                  "page": 1,
-                  "start": 22,
-                  "end": 27,
-                  "text": "OTHER"
-                }
-              ]
-            }
-          ],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        },
-        "phone": {
-          "enabled": true,
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
-          "evidence": [],
-          "issues": [],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        },
-        "dateOfBirth": {
-          "enabled": true,
-          "raw": "1990-05",
-          "normalized": "1990-05",
-          "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 28,
-              "end": 35,
-              "text": "1990-05"
-            }
-          ],
-          "issues": [],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        },
-        "summary": {
-          "enabled": true,
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
-          "evidence": [],
-          "issues": [],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        },
-        "fullName": {
-          "enabled": true,
-          "raw": "Synthetic Person",
-          "normalized": "Synthetic Person",
-          "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 2,
-              "end": 18,
-              "text": "Synthetic Person"
-            }
-          ],
-          "issues": [],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        },
-        "location": {
-          "enabled": true,
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
-          "evidence": [],
-          "issues": [],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        },
-        "email": {
-          "enabled": false,
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
-          "evidence": [],
-          "issues": [
-            {
-              "code": "FIELD_DISABLED",
-              "field": "email",
-              "evidence": []
-            }
-          ],
-          "documentId": 1,
-          "resultId": 1,
-          "configRevision": "synthetic-llm-contract-v1"
-        }
-      }
-    },
     "mapping": {
-      "schemaVersion": 3,
-      "extractionId": 1,
-      "ocrSchemaVersion": "cv-compass.ocr/2.0",
-      "configId": 1,
-      "configRevision": "synthetic-llm-contract-v1",
-      "engineVersion": "llm-extraction/1.0",
-      "quality": "NEEDS_REVIEW",
-      "incompleteSource": false,
-      "reason": null,
-      "values": [
-        {
-          "field": "other:synthetic",
-          "value": "é",
-          "evidence": {
-            "extractionId": 1,
-            "page": 1,
-            "start": 19,
-            "end": 21,
-            "text": "é"
-          }
-        }
-      ],
-      "inputSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "documentId": 1,
-      "profileRevision": "synthetic-profile",
-      "rulesRevision": "synthetic-llm-contract-v1",
-      "taxonomyRevision": "none",
-      "experiences": [
-        {
-          "localId": "llm-1",
-          "company": {
-            "raw": "Meadow Labs",
-            "normalized": null,
-            "state": "PROPOSED",
-            "industryCodes": [],
-            "industryState": "NOT_FOUND",
-            "industryBasis": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 36,
-                "end": 47,
-                "text": "Meadow Labs"
-              }
-            ]
-          },
-          "title": {
-            "raw": "Engineer",
-            "canonical": null,
-            "state": "PROPOSED",
-            "functionCodes": [],
-            "functionState": "NOT_FOUND",
-            "seniorityCode": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 48,
-                "end": 56,
-                "text": "Engineer"
-              }
-            ],
-            "alternatives": []
-          },
-          "period": {
-            "start": {
-              "year": 2020,
-              "month": 1,
-              "day": null,
-              "precision": "MONTH"
-            },
-            "end": {
-              "year": 2022,
-              "month": 3,
-              "day": null,
-              "precision": "MONTH"
-            },
-            "ongoingAsStated": false,
-            "state": "PROPOSED",
-            "alternatives": [],
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 57,
-                "end": 72,
-                "text": "2020-01 2022-03"
-              }
-            ]
-          },
-          "descriptionRaw": "",
-          "descriptionEvidence": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
-              "end": 56,
-              "text": "Engineer"
-            },
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 36,
-              "end": 47,
-              "text": "Meadow Labs"
-            },
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 57,
-              "end": 72,
-              "text": "2020-01 2022-03"
-            }
-          ],
-          "issues": []
-        },
-        {
-          "localId": "llm-2",
-          "company": {
-            "raw": "Meadow Labs",
-            "normalized": null,
-            "state": "PROPOSED",
-            "industryCodes": [],
-            "industryState": "NOT_FOUND",
-            "industryBasis": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 36,
-                "end": 47,
-                "text": "Meadow Labs"
-              }
-            ]
-          },
-          "title": {
-            "raw": "Engineer",
-            "canonical": null,
-            "state": "PROPOSED",
-            "functionCodes": [],
-            "functionState": "NOT_FOUND",
-            "seniorityCode": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 48,
-                "end": 56,
-                "text": "Engineer"
-              }
-            ],
-            "alternatives": []
-          },
-          "period": {
-            "start": {
-              "year": 2020,
-              "month": 1,
-              "day": null,
-              "precision": "MONTH"
-            },
-            "end": null,
-            "ongoingAsStated": true,
-            "state": "PROPOSED",
-            "alternatives": [],
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 57,
-                "end": 72,
-                "text": "2020-01 2022-03"
-              }
-            ]
-          },
-          "descriptionRaw": "",
-          "descriptionEvidence": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
-              "end": 56,
-              "text": "Engineer"
-            },
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 36,
-              "end": 47,
-              "text": "Meadow Labs"
-            },
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 57,
-              "end": 72,
-              "text": "2020-01 2022-03"
-            }
-          ],
-          "issues": []
-        },
-        {
-          "localId": "llm-3",
-          "company": {
-            "raw": "Meadow Labs",
-            "normalized": null,
-            "state": "PROPOSED",
-            "industryCodes": [],
-            "industryState": "NOT_FOUND",
-            "industryBasis": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 36,
-                "end": 47,
-                "text": "Meadow Labs"
-              }
-            ]
-          },
-          "title": {
-            "raw": "Engineer",
-            "canonical": null,
-            "state": "PROPOSED",
-            "functionCodes": [],
-            "functionState": "NOT_FOUND",
-            "seniorityCode": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 48,
-                "end": 56,
-                "text": "Engineer"
-              }
-            ],
-            "alternatives": []
-          },
-          "period": {
-            "start": {
-              "year": 2020,
-              "month": 1,
-              "day": null,
-              "precision": "MONTH"
-            },
-            "end": null,
-            "ongoingAsStated": false,
-            "state": "PROPOSED",
-            "alternatives": [],
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 57,
-                "end": 72,
-                "text": "2020-01 2022-03"
-              }
-            ]
-          },
-          "descriptionRaw": "",
-          "descriptionEvidence": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
-              "end": 56,
-              "text": "Engineer"
-            },
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 36,
-              "end": 47,
-              "text": "Meadow Labs"
-            },
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 57,
-              "end": 72,
-              "text": "2020-01 2022-03"
-            }
-          ],
-          "issues": []
-        },
-        {
-          "localId": "llm-4",
-          "company": {
-            "raw": null,
-            "normalized": null,
-            "state": "NOT_FOUND",
-            "industryCodes": [],
-            "industryState": "NOT_FOUND",
-            "industryBasis": null,
-            "evidence": []
-          },
-          "title": {
-            "raw": "Engineer",
-            "canonical": null,
-            "state": "PROPOSED",
-            "functionCodes": [],
-            "functionState": "NOT_FOUND",
-            "seniorityCode": null,
-            "evidence": [
-              {
-                "extractionId": 1,
-                "page": 1,
-                "start": 48,
-                "end": 56,
-                "text": "Engineer"
-              }
-            ],
-            "alternatives": []
-          },
-          "period": {
-            "start": null,
-            "end": null,
-            "ongoingAsStated": false,
-            "state": "NOT_FOUND",
-            "alternatives": [],
-            "evidence": []
-          },
-          "descriptionRaw": "",
-          "descriptionEvidence": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
-              "end": 56,
-              "text": "Engineer"
-            }
-          ],
-          "issues": []
-        },
-        {
-          "localId": "llm-5",
-          "company": {
-            "raw": null,
-            "normalized": null,
-            "state": "NOT_FOUND",
-            "industryCodes": [],
-            "industryState": "NOT_FOUND",
-            "industryBasis": null,
-            "evidence": []
-          },
-          "title": {
-            "raw": null,
-            "canonical": null,
-            "state": "NOT_FOUND",
-            "functionCodes": [],
-            "functionState": "NOT_FOUND",
-            "seniorityCode": null,
-            "evidence": [],
-            "alternatives": []
-          },
-          "period": {
-            "start": null,
-            "end": null,
-            "ongoingAsStated": false,
-            "state": "NOT_FOUND",
-            "alternatives": [],
-            "evidence": []
-          },
-          "descriptionRaw": "",
-          "descriptionEvidence": [],
-          "evidence": [],
-          "issues": []
-        }
-      ],
       "issues": [
         {
           "code": "SYNTHETIC_WARNING",
@@ -524,116 +17,623 @@
           "evidence": []
         }
       ],
-      "personalInfo": {
-        "dateOfBirth": {
-          "enabled": true,
-          "raw": "1990-05",
-          "normalized": "1990-05",
-          "state": "PROPOSED",
-          "alternatives": [],
+      "reason": null,
+      "values": [
+        {
+          "field": "other:synthetic",
+          "value": "é",
+          "evidence": {
+            "end": 21,
+            "page": 1,
+            "text": "é",
+            "start": 19,
+            "extractionId": 1
+          }
+        }
+      ],
+      "quality": "NEEDS_REVIEW",
+      "configId": 1,
+      "documentId": 1,
+      "experiences": [
+        {
+          "title": {
+            "raw": "Engineer",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 56,
+                "page": 1,
+                "text": "Engineer",
+                "start": 48,
+                "extractionId": 1
+              }
+            ],
+            "canonical": null,
+            "alternatives": [],
+            "functionCodes": [],
+            "functionState": "NOT_FOUND",
+            "seniorityCode": null
+          },
+          "issues": [],
+          "period": {
+            "end": {
+              "day": null,
+              "year": 2022,
+              "month": 3,
+              "precision": "MONTH"
+            },
+            "start": {
+              "day": null,
+              "year": 2020,
+              "month": 1,
+              "precision": "MONTH"
+            },
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 72,
+                "page": 1,
+                "text": "2020-01 2022-03",
+                "start": 57,
+                "extractionId": 1
+              }
+            ],
+            "alternatives": [],
+            "ongoingAsStated": false
+          },
+          "company": {
+            "raw": "Meadow Labs",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 47,
+                "page": 1,
+                "text": "Meadow Labs",
+                "start": 36,
+                "extractionId": 1
+              }
+            ],
+            "normalized": null,
+            "industryBasis": null,
+            "industryCodes": [],
+            "industryState": "NOT_FOUND"
+          },
+          "localId": "llm-1",
           "evidence": [
             {
-              "extractionId": 1,
+              "end": 56,
               "page": 1,
-              "start": 28,
-              "end": 35,
-              "text": "1990-05"
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
+            },
+            {
+              "end": 47,
+              "page": 1,
+              "text": "Meadow Labs",
+              "start": 36,
+              "extractionId": 1
+            },
+            {
+              "end": 72,
+              "page": 1,
+              "text": "2020-01 2022-03",
+              "start": 57,
+              "extractionId": 1
             }
           ],
-          "issues": []
+          "descriptionRaw": "",
+          "descriptionEvidence": []
         },
-        "email": {
-          "enabled": false,
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
+        {
+          "title": {
+            "raw": "Engineer",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 56,
+                "page": 1,
+                "text": "Engineer",
+                "start": 48,
+                "extractionId": 1
+              }
+            ],
+            "canonical": null,
+            "alternatives": [],
+            "functionCodes": [],
+            "functionState": "NOT_FOUND",
+            "seniorityCode": null
+          },
+          "issues": [],
+          "period": {
+            "end": null,
+            "start": {
+              "day": null,
+              "year": 2020,
+              "month": 1,
+              "precision": "MONTH"
+            },
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 72,
+                "page": 1,
+                "text": "2020-01 2022-03",
+                "start": 57,
+                "extractionId": 1
+              }
+            ],
+            "alternatives": [],
+            "ongoingAsStated": true
+          },
+          "company": {
+            "raw": "Meadow Labs",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 47,
+                "page": 1,
+                "text": "Meadow Labs",
+                "start": 36,
+                "extractionId": 1
+              }
+            ],
+            "normalized": null,
+            "industryBasis": null,
+            "industryCodes": [],
+            "industryState": "NOT_FOUND"
+          },
+          "localId": "llm-2",
+          "evidence": [
+            {
+              "end": 56,
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
+            },
+            {
+              "end": 47,
+              "page": 1,
+              "text": "Meadow Labs",
+              "start": 36,
+              "extractionId": 1
+            },
+            {
+              "end": 72,
+              "page": 1,
+              "text": "2020-01 2022-03",
+              "start": 57,
+              "extractionId": 1
+            }
+          ],
+          "descriptionRaw": "",
+          "descriptionEvidence": []
+        },
+        {
+          "title": {
+            "raw": "Engineer",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 56,
+                "page": 1,
+                "text": "Engineer",
+                "start": 48,
+                "extractionId": 1
+              }
+            ],
+            "canonical": null,
+            "alternatives": [],
+            "functionCodes": [],
+            "functionState": "NOT_FOUND",
+            "seniorityCode": null
+          },
+          "issues": [],
+          "period": {
+            "end": null,
+            "start": {
+              "day": null,
+              "year": 2020,
+              "month": 1,
+              "precision": "MONTH"
+            },
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 72,
+                "page": 1,
+                "text": "2020-01 2022-03",
+                "start": 57,
+                "extractionId": 1
+              }
+            ],
+            "alternatives": [],
+            "ongoingAsStated": false
+          },
+          "company": {
+            "raw": "Meadow Labs",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 47,
+                "page": 1,
+                "text": "Meadow Labs",
+                "start": 36,
+                "extractionId": 1
+              }
+            ],
+            "normalized": null,
+            "industryBasis": null,
+            "industryCodes": [],
+            "industryState": "NOT_FOUND"
+          },
+          "localId": "llm-3",
+          "evidence": [
+            {
+              "end": 56,
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
+            },
+            {
+              "end": 47,
+              "page": 1,
+              "text": "Meadow Labs",
+              "start": 36,
+              "extractionId": 1
+            },
+            {
+              "end": 72,
+              "page": 1,
+              "text": "2020-01 2022-03",
+              "start": 57,
+              "extractionId": 1
+            }
+          ],
+          "descriptionRaw": "",
+          "descriptionEvidence": []
+        },
+        {
+          "title": {
+            "raw": "Engineer",
+            "state": "PROPOSED",
+            "evidence": [
+              {
+                "end": 56,
+                "page": 1,
+                "text": "Engineer",
+                "start": 48,
+                "extractionId": 1
+              }
+            ],
+            "canonical": null,
+            "alternatives": [],
+            "functionCodes": [],
+            "functionState": "NOT_FOUND",
+            "seniorityCode": null
+          },
+          "issues": [],
+          "period": {
+            "end": null,
+            "start": null,
+            "state": "NOT_FOUND",
+            "evidence": [],
+            "alternatives": [],
+            "ongoingAsStated": false
+          },
+          "company": {
+            "raw": null,
+            "state": "NOT_FOUND",
+            "evidence": [],
+            "normalized": null,
+            "industryBasis": null,
+            "industryCodes": [],
+            "industryState": "NOT_FOUND"
+          },
+          "localId": "llm-4",
+          "evidence": [
+            {
+              "end": 56,
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
+            }
+          ],
+          "descriptionRaw": "",
+          "descriptionEvidence": []
+        },
+        {
+          "title": {
+            "raw": null,
+            "state": "NOT_FOUND",
+            "evidence": [],
+            "canonical": null,
+            "alternatives": [],
+            "functionCodes": [],
+            "functionState": "NOT_FOUND",
+            "seniorityCode": null
+          },
+          "issues": [],
+          "period": {
+            "end": null,
+            "start": null,
+            "state": "NOT_FOUND",
+            "evidence": [],
+            "alternatives": [],
+            "ongoingAsStated": false
+          },
+          "company": {
+            "raw": null,
+            "state": "NOT_FOUND",
+            "evidence": [],
+            "normalized": null,
+            "industryBasis": null,
+            "industryCodes": [],
+            "industryState": "NOT_FOUND"
+          },
+          "localId": "llm-5",
           "evidence": [],
+          "descriptionRaw": "",
+          "descriptionEvidence": []
+        }
+      ],
+      "inputSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "extractionId": 1,
+      "personalInfo": {
+        "email": {
+          "raw": null,
+          "state": "NOT_FOUND",
           "issues": [
             {
               "code": "FIELD_DISABLED",
               "field": "email",
               "evidence": []
             }
-          ]
-        },
-        "fullName": {
-          "enabled": true,
-          "raw": "Synthetic Reviewer",
-          "normalized": "Synthetic Reviewer",
-          "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 73,
-              "end": 91,
-              "text": "Synthetic Reviewer"
-            }
           ],
-          "issues": []
+          "enabled": false,
+          "evidence": [],
+          "normalized": null,
+          "alternatives": []
+        },
+        "phone": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "issues": [],
+          "enabled": true,
+          "evidence": [],
+          "normalized": null,
+          "alternatives": []
         },
         "gender": {
-          "enabled": true,
           "raw": "OTHER",
-          "normalized": null,
           "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 22,
-              "end": 27,
-              "text": "OTHER"
-            }
-          ],
           "issues": [
             {
               "code": "GENDER_UNSUPPORTED",
               "field": "gender",
               "evidence": [
                 {
-                  "extractionId": 1,
-                  "page": 1,
-                  "start": 22,
                   "end": 27,
-                  "text": "OTHER"
+                  "page": 1,
+                  "text": "OTHER",
+                  "start": 22,
+                  "extractionId": 1
                 }
               ]
             }
-          ]
-        },
-        "location": {
+          ],
           "enabled": true,
-          "raw": null,
+          "evidence": [
+            {
+              "end": 27,
+              "page": 1,
+              "text": "OTHER",
+              "start": 22,
+              "extractionId": 1
+            }
+          ],
           "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
-          "evidence": [],
-          "issues": []
-        },
-        "phone": {
-          "enabled": true,
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "alternatives": [],
-          "evidence": [],
-          "issues": []
+          "alternatives": []
         },
         "summary": {
-          "enabled": true,
           "raw": null,
-          "normalized": null,
           "state": "NOT_FOUND",
-          "alternatives": [],
+          "issues": [],
+          "enabled": true,
           "evidence": [],
-          "issues": []
+          "normalized": null,
+          "alternatives": []
+        },
+        "fullName": {
+          "raw": "Synthetic Reviewer",
+          "state": "PROPOSED",
+          "issues": [],
+          "enabled": true,
+          "evidence": [
+            {
+              "end": 91,
+              "page": 1,
+              "text": "Synthetic Reviewer",
+              "start": 73,
+              "extractionId": 1
+            }
+          ],
+          "normalized": "Synthetic Reviewer",
+          "alternatives": []
+        },
+        "location": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "issues": [],
+          "enabled": true,
+          "evidence": [],
+          "normalized": null,
+          "alternatives": []
+        },
+        "dateOfBirth": {
+          "raw": "1990-05",
+          "state": "PROPOSED",
+          "issues": [],
+          "enabled": true,
+          "evidence": [
+            {
+              "end": 35,
+              "page": 1,
+              "text": "1990-05",
+              "start": 28,
+              "extractionId": 1
+            }
+          ],
+          "normalized": "1990-05",
+          "alternatives": []
         }
-      }
-    }
+      },
+      "engineVersion": "llm-extraction/1.0",
+      "rulesRevision": "synthetic-llm-contract-v1",
+      "schemaVersion": 3,
+      "configRevision": "synthetic-llm-contract-v1",
+      "profileRevision": "synthetic-profile",
+      "incompleteSource": false,
+      "ocrSchemaVersion": "cv-compass.ocr/2.0",
+      "taxonomyRevision": "none"
+    },
+    "personalInfo": {
+      "fields": {
+        "email": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "issues": [
+            {
+              "code": "FIELD_DISABLED",
+              "field": "email",
+              "evidence": []
+            }
+          ],
+          "enabled": false,
+          "evidence": [],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": null,
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        },
+        "phone": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "issues": [],
+          "enabled": true,
+          "evidence": [],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": null,
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        },
+        "gender": {
+          "raw": "OTHER",
+          "state": "PROPOSED",
+          "issues": [
+            {
+              "code": "GENDER_UNSUPPORTED",
+              "field": "gender",
+              "evidence": [
+                {
+                  "end": 27,
+                  "page": 1,
+                  "text": "OTHER",
+                  "start": 22,
+                  "extractionId": 1
+                }
+              ]
+            }
+          ],
+          "enabled": true,
+          "evidence": [
+            {
+              "end": 27,
+              "page": 1,
+              "text": "OTHER",
+              "start": 22,
+              "extractionId": 1
+            }
+          ],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": null,
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        },
+        "summary": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "issues": [],
+          "enabled": true,
+          "evidence": [],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": null,
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        },
+        "fullName": {
+          "raw": "Synthetic Reviewer",
+          "state": "PROPOSED",
+          "issues": [],
+          "enabled": true,
+          "evidence": [
+            {
+              "end": 91,
+              "page": 1,
+              "text": "Synthetic Reviewer",
+              "start": 73,
+              "extractionId": 1
+            }
+          ],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": "Synthetic Reviewer",
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        },
+        "location": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "issues": [],
+          "enabled": true,
+          "evidence": [],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": null,
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        },
+        "dateOfBirth": {
+          "raw": "1990-05",
+          "state": "PROPOSED",
+          "issues": [],
+          "enabled": true,
+          "evidence": [
+            {
+              "end": 35,
+              "page": 1,
+              "text": "1990-05",
+              "start": 28,
+              "extractionId": 1
+            }
+          ],
+          "resultId": 1,
+          "documentId": 1,
+          "normalized": "1990-05",
+          "alternatives": [],
+          "configRevision": "synthetic-llm-contract-v1"
+        }
+      },
+      "schemaVersion": 1
+    },
+    "schemaVersion": 1
   },
   "experiences": [
     {
@@ -643,94 +643,94 @@
       "documentId": 1,
       "resultId": 1,
       "data": {
-        "localId": "llm-1",
-        "company": {
-          "raw": "Meadow Labs",
-          "normalized": null,
-          "state": "PROPOSED",
-          "industryCodes": [],
-          "industryState": "NOT_FOUND",
-          "industryBasis": null,
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 36,
-              "end": 47,
-              "text": "Meadow Labs"
-            }
-          ]
-        },
         "title": {
           "raw": "Engineer",
-          "canonical": null,
           "state": "PROPOSED",
-          "functionCodes": [],
-          "functionState": "NOT_FOUND",
-          "seniorityCode": null,
           "evidence": [
             {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
               "end": 56,
-              "text": "Engineer"
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
             }
           ],
-          "alternatives": []
+          "canonical": null,
+          "alternatives": [],
+          "functionCodes": [],
+          "functionState": "NOT_FOUND",
+          "seniorityCode": null
         },
+        "issues": [],
         "period": {
-          "start": {
-            "year": 2020,
-            "month": 1,
-            "day": null,
-            "precision": "MONTH"
-          },
           "end": {
+            "day": null,
             "year": 2022,
             "month": 3,
-            "day": null,
             "precision": "MONTH"
           },
-          "ongoingAsStated": false,
+          "start": {
+            "day": null,
+            "year": 2020,
+            "month": 1,
+            "precision": "MONTH"
+          },
           "state": "PROPOSED",
-          "alternatives": [],
           "evidence": [
             {
-              "extractionId": 1,
-              "page": 1,
-              "start": 57,
               "end": 72,
-              "text": "2020-01 2022-03"
+              "page": 1,
+              "text": "2020-01 2022-03",
+              "start": 57,
+              "extractionId": 1
             }
-          ]
+          ],
+          "alternatives": [],
+          "ongoingAsStated": false
         },
-        "descriptionRaw": "",
-        "descriptionEvidence": [],
+        "company": {
+          "raw": "Meadow Labs",
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 47,
+              "page": 1,
+              "text": "Meadow Labs",
+              "start": 36,
+              "extractionId": 1
+            }
+          ],
+          "normalized": null,
+          "industryBasis": null,
+          "industryCodes": [],
+          "industryState": "NOT_FOUND"
+        },
+        "localId": "llm-1",
         "evidence": [
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 48,
             "end": 56,
-            "text": "Engineer"
+            "page": 1,
+            "text": "Engineer",
+            "start": 48,
+            "extractionId": 1
           },
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 36,
             "end": 47,
-            "text": "Meadow Labs"
+            "page": 1,
+            "text": "Meadow Labs",
+            "start": 36,
+            "extractionId": 1
           },
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 57,
             "end": 72,
-            "text": "2020-01 2022-03"
+            "page": 1,
+            "text": "2020-01 2022-03",
+            "start": 57,
+            "extractionId": 1
           }
         ],
-        "issues": []
+        "descriptionRaw": "",
+        "descriptionEvidence": []
       }
     },
     {
@@ -740,89 +740,89 @@
       "documentId": 1,
       "resultId": 1,
       "data": {
+        "title": {
+          "raw": "Engineer",
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 56,
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
+            }
+          ],
+          "canonical": null,
+          "alternatives": [],
+          "functionCodes": [],
+          "functionState": "NOT_FOUND",
+          "seniorityCode": null
+        },
+        "issues": [],
+        "period": {
+          "end": null,
+          "start": {
+            "day": null,
+            "year": 2020,
+            "month": 1,
+            "precision": "MONTH"
+          },
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 72,
+              "page": 1,
+              "text": "2020-01 2022-03",
+              "start": 57,
+              "extractionId": 1
+            }
+          ],
+          "alternatives": [],
+          "ongoingAsStated": true
+        },
+        "company": {
+          "raw": "Meadow Labs",
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 47,
+              "page": 1,
+              "text": "Meadow Labs",
+              "start": 36,
+              "extractionId": 1
+            }
+          ],
+          "normalized": null,
+          "industryBasis": null,
+          "industryCodes": [],
+          "industryState": "NOT_FOUND"
+        },
         "localId": "llm-2",
-        "company": {
-          "raw": "Meadow Labs",
-          "normalized": null,
-          "state": "PROPOSED",
-          "industryCodes": [],
-          "industryState": "NOT_FOUND",
-          "industryBasis": null,
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 36,
-              "end": 47,
-              "text": "Meadow Labs"
-            }
-          ]
-        },
-        "title": {
-          "raw": "Engineer",
-          "canonical": null,
-          "state": "PROPOSED",
-          "functionCodes": [],
-          "functionState": "NOT_FOUND",
-          "seniorityCode": null,
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
-              "end": 56,
-              "text": "Engineer"
-            }
-          ],
-          "alternatives": []
-        },
-        "period": {
-          "start": {
-            "year": 2020,
-            "month": 1,
-            "day": null,
-            "precision": "MONTH"
-          },
-          "end": null,
-          "ongoingAsStated": true,
-          "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 57,
-              "end": 72,
-              "text": "2020-01 2022-03"
-            }
-          ]
-        },
-        "descriptionRaw": "",
-        "descriptionEvidence": [],
         "evidence": [
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 48,
             "end": 56,
-            "text": "Engineer"
+            "page": 1,
+            "text": "Engineer",
+            "start": 48,
+            "extractionId": 1
           },
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 36,
             "end": 47,
-            "text": "Meadow Labs"
+            "page": 1,
+            "text": "Meadow Labs",
+            "start": 36,
+            "extractionId": 1
           },
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 57,
             "end": 72,
-            "text": "2020-01 2022-03"
+            "page": 1,
+            "text": "2020-01 2022-03",
+            "start": 57,
+            "extractionId": 1
           }
         ],
-        "issues": []
+        "descriptionRaw": "",
+        "descriptionEvidence": []
       }
     },
     {
@@ -832,89 +832,89 @@
       "documentId": 1,
       "resultId": 1,
       "data": {
+        "title": {
+          "raw": "Engineer",
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 56,
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
+            }
+          ],
+          "canonical": null,
+          "alternatives": [],
+          "functionCodes": [],
+          "functionState": "NOT_FOUND",
+          "seniorityCode": null
+        },
+        "issues": [],
+        "period": {
+          "end": null,
+          "start": {
+            "day": null,
+            "year": 2020,
+            "month": 1,
+            "precision": "MONTH"
+          },
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 72,
+              "page": 1,
+              "text": "2020-01 2022-03",
+              "start": 57,
+              "extractionId": 1
+            }
+          ],
+          "alternatives": [],
+          "ongoingAsStated": false
+        },
+        "company": {
+          "raw": "Meadow Labs",
+          "state": "PROPOSED",
+          "evidence": [
+            {
+              "end": 47,
+              "page": 1,
+              "text": "Meadow Labs",
+              "start": 36,
+              "extractionId": 1
+            }
+          ],
+          "normalized": null,
+          "industryBasis": null,
+          "industryCodes": [],
+          "industryState": "NOT_FOUND"
+        },
         "localId": "llm-3",
-        "company": {
-          "raw": "Meadow Labs",
-          "normalized": null,
-          "state": "PROPOSED",
-          "industryCodes": [],
-          "industryState": "NOT_FOUND",
-          "industryBasis": null,
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 36,
-              "end": 47,
-              "text": "Meadow Labs"
-            }
-          ]
-        },
-        "title": {
-          "raw": "Engineer",
-          "canonical": null,
-          "state": "PROPOSED",
-          "functionCodes": [],
-          "functionState": "NOT_FOUND",
-          "seniorityCode": null,
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
-              "end": 56,
-              "text": "Engineer"
-            }
-          ],
-          "alternatives": []
-        },
-        "period": {
-          "start": {
-            "year": 2020,
-            "month": 1,
-            "day": null,
-            "precision": "MONTH"
-          },
-          "end": null,
-          "ongoingAsStated": false,
-          "state": "PROPOSED",
-          "alternatives": [],
-          "evidence": [
-            {
-              "extractionId": 1,
-              "page": 1,
-              "start": 57,
-              "end": 72,
-              "text": "2020-01 2022-03"
-            }
-          ]
-        },
-        "descriptionRaw": "",
-        "descriptionEvidence": [],
         "evidence": [
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 48,
             "end": 56,
-            "text": "Engineer"
+            "page": 1,
+            "text": "Engineer",
+            "start": 48,
+            "extractionId": 1
           },
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 36,
             "end": 47,
-            "text": "Meadow Labs"
+            "page": 1,
+            "text": "Meadow Labs",
+            "start": 36,
+            "extractionId": 1
           },
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 57,
             "end": 72,
-            "text": "2020-01 2022-03"
+            "page": 1,
+            "text": "2020-01 2022-03",
+            "start": 57,
+            "extractionId": 1
           }
         ],
-        "issues": []
+        "descriptionRaw": "",
+        "descriptionEvidence": []
       }
     },
     {
@@ -924,54 +924,54 @@
       "documentId": 1,
       "resultId": 1,
       "data": {
-        "localId": "llm-4",
-        "company": {
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "industryCodes": [],
-          "industryState": "NOT_FOUND",
-          "industryBasis": null,
-          "evidence": []
-        },
         "title": {
           "raw": "Engineer",
-          "canonical": null,
           "state": "PROPOSED",
-          "functionCodes": [],
-          "functionState": "NOT_FOUND",
-          "seniorityCode": null,
           "evidence": [
             {
-              "extractionId": 1,
-              "page": 1,
-              "start": 48,
               "end": 56,
-              "text": "Engineer"
+              "page": 1,
+              "text": "Engineer",
+              "start": 48,
+              "extractionId": 1
             }
           ],
-          "alternatives": []
-        },
-        "period": {
-          "start": null,
-          "end": null,
-          "ongoingAsStated": false,
-          "state": "NOT_FOUND",
+          "canonical": null,
           "alternatives": [],
-          "evidence": []
+          "functionCodes": [],
+          "functionState": "NOT_FOUND",
+          "seniorityCode": null
         },
-        "descriptionRaw": "",
-        "descriptionEvidence": [],
+        "issues": [],
+        "period": {
+          "end": null,
+          "start": null,
+          "state": "NOT_FOUND",
+          "evidence": [],
+          "alternatives": [],
+          "ongoingAsStated": false
+        },
+        "company": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "evidence": [],
+          "normalized": null,
+          "industryBasis": null,
+          "industryCodes": [],
+          "industryState": "NOT_FOUND"
+        },
+        "localId": "llm-4",
         "evidence": [
           {
-            "extractionId": 1,
-            "page": 1,
-            "start": 48,
             "end": 56,
-            "text": "Engineer"
+            "page": 1,
+            "text": "Engineer",
+            "start": 48,
+            "extractionId": 1
           }
         ],
-        "issues": []
+        "descriptionRaw": "",
+        "descriptionEvidence": []
       }
     },
     {
@@ -981,38 +981,38 @@
       "documentId": 1,
       "resultId": 1,
       "data": {
-        "localId": "llm-5",
-        "company": {
-          "raw": null,
-          "normalized": null,
-          "state": "NOT_FOUND",
-          "industryCodes": [],
-          "industryState": "NOT_FOUND",
-          "industryBasis": null,
-          "evidence": []
-        },
         "title": {
           "raw": null,
-          "canonical": null,
           "state": "NOT_FOUND",
+          "evidence": [],
+          "canonical": null,
+          "alternatives": [],
           "functionCodes": [],
           "functionState": "NOT_FOUND",
-          "seniorityCode": null,
-          "evidence": [],
-          "alternatives": []
+          "seniorityCode": null
         },
+        "issues": [],
         "period": {
-          "start": null,
           "end": null,
-          "ongoingAsStated": false,
+          "start": null,
           "state": "NOT_FOUND",
+          "evidence": [],
           "alternatives": [],
-          "evidence": []
+          "ongoingAsStated": false
         },
-        "descriptionRaw": "",
-        "descriptionEvidence": [],
+        "company": {
+          "raw": null,
+          "state": "NOT_FOUND",
+          "evidence": [],
+          "normalized": null,
+          "industryBasis": null,
+          "industryCodes": [],
+          "industryState": "NOT_FOUND"
+        },
+        "localId": "llm-5",
         "evidence": [],
-        "issues": []
+        "descriptionRaw": "",
+        "descriptionEvidence": []
       }
     }
   ],
