@@ -14,7 +14,7 @@ function readTextFilters(params: URLSearchParams) {
   const companyId = params.get("companyId") ?? "";
   return {
     q: params.get("q") ?? "",
-    company: params.has("companyId") ? "" : (params.get("company") ?? ""),
+    company: isCompanyId(companyId) ? "" : (params.get("company") ?? ""),
     companyId,
     companyName: isCompanyId(companyId)
       ? (params.get("companyName") ?? "")

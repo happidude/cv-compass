@@ -25,9 +25,11 @@ export function isCompanyId(value: string) {
 // Whitelist only filters: list pagination and stale cursors never enter search.
 export function searchFilters(params: URLSearchParams) {
   const filters = new URLSearchParams();
+  const validCompanyId = isCompanyId(params.get("companyId") ?? "");
   for (const name of textFilters) {
-    // A shared URL may contain both; keep the explicit catalog filter only.
-    if (name === "company" && params.has("companyId")) continue;
+    // A shared URL may contain both; only a valid catalog ID takes precedence.
+    if (name === "company" && validCompanyId) continue;
+    if (name === "companyId" && !validCompanyId) continue;
     const value = params.get(name);
     if (value?.trim()) filters.set(name, value);
   }
