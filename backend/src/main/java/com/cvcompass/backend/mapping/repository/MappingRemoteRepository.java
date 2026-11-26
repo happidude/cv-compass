@@ -47,7 +47,7 @@ public class MappingRemoteRepository {
                 WHERE j."STATUS"='PENDING' AND j."ENGINE_VERSION"='llm-extraction/1.0'
                 AND c."DEFINITION"->>'engineCompatibility'=j."ENGINE_VERSION"
                 AND j."NEXT_ATTEMPT_AT"<=clock_timestamp() AND j."ATTEMPTS"<j."MAX_ATTEMPTS"
-                ORDER BY j."NEXT_ATTEMPT_AT",j."ID" LIMIT 1 FOR UPDATE OF j SKIP LOCKED
+                ORDER BY j."PRIORITY",j."NEXT_ATTEMPT_AT",j."ID" LIMIT 1 FOR UPDATE OF j SKIP LOCKED
                 """,
                         (rs, n) -> rs.getLong(1))
                 .stream()

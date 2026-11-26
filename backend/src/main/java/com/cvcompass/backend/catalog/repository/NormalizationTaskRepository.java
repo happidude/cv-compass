@@ -24,6 +24,21 @@ public class NormalizationTaskRepository {
 
     public record Task(long id, String kind, String folded, String raw, Instant expiresAt) {}
 
+    public int requeue(String kind, String errorCode) {
+        return jdbc.update(
+                """
+                UPDATE "CATALOG"."ALIASES" SET "STATE"='PENDING',"ATTEMPTS"=0,"ERROR_CODE"=NULL,
+                  "TOKEN"=NULL,"LEASE_EXPIRES_AT"=NULL,"NEXT_ATTEMPT_AT"=clock_timestamp(),"COMPLETED_AT"=NULL
+                WHERE "STATE"='FAILED' AND "ORIGIN" IS DISTINCT FROM 'USER'
+                  AND (CAST(? AS text) IS NULL OR "KIND"=?)
+                  AND (CAST(? AS text) IS NULL OR "ERROR_CODE"=?)
+                """,
+                kind,
+                kind,
+                errorCode,
+                errorCode);
+    }
+
     public void enqueue(String kind, String folded, String raw, String company) {
         // Existing leases need no write lock while the caller holds a candidate profile lock.
         jdbc.update(

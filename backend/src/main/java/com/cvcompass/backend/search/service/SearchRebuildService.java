@@ -31,23 +31,13 @@ public class SearchRebuildService {
     }
 
     public RebuildResult rebuildAll() {
-        return rebuild(false);
-    }
-
-    public RebuildResult rebuildOngoing() {
-        return rebuild(true);
-    }
-
-    private RebuildResult rebuild(boolean ongoingOnly) {
         // Bound the run to its initial population even while new candidates are being published.
         long through = candidates.lastCandidateId();
         long after = 0;
         long rebuilt = 0;
         long failed = 0;
         while (true) {
-            var ids =
-                    candidates.indexCandidates(
-                            after, through, properties.getRebuildBatchSize(), ongoingOnly);
+            var ids = candidates.indexCandidates(after, through, properties.getRebuildBatchSize());
             if (ids.isEmpty()) return new RebuildResult(rebuilt, failed);
             for (long id : ids) {
                 try {

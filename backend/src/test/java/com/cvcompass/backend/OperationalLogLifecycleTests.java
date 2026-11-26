@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -104,13 +105,52 @@ class OperationalLogLifecycleTests {
                 .thenReturn(
                         MappingRemoteFixtures.JSON.writeValueAsString(
                                 MappingRemoteFixtures.definition()));
-        when(jdbc.update(anyString(), anyLong(), anyLong(), anyString(), eq(3))).thenReturn(1, 0);
+        when(jdbc.update(anyString(), anyLong(), anyLong(), anyString(), eq(3), eq(0), isNull()))
+                .thenReturn(1, 0);
         when(jdbc.queryForObject(anyString(), eq(Long.class), anyLong(), anyLong(), anyString()))
                 .thenReturn(20L);
         when(jdbc.queryForObject(anyString(), eq(Long.class), eq(20L))).thenReturn(12L);
         var repository = new MappingRepository(jdbc, MappingRemoteFixtures.JSON);
         repository.enqueue(11, 13, MappingRemoteFixtures.definition().engineCompatibility(), 3);
         repository.enqueue(11, 13, MappingRemoteFixtures.definition().engineCompatibility(), 3);
+        assertThat(commitOne())
+                .containsEntry("event", "MAPPING_ENQUEUED")
+                .containsEntry("documentId", "12")
+                .containsEntry("jobId", "20")
+                .containsEntry("extractionId", "11");
+    }
+
+    @Test
+    void remapEnqueueAlsoLogsOnlyANewInsertWithDocumentAndJobIdentity() {
+        var jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(), eq(String.class), anyLong()))
+                .thenReturn(
+                        MappingRemoteFixtures.JSON.writeValueAsString(
+                                MappingRemoteFixtures.definition()));
+        when(jdbc.update(anyString(), anyLong(), anyLong(), anyString(), eq(3), eq(10), eq(15L)))
+                .thenReturn(1, 0);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), anyLong(), anyLong(), anyString()))
+                .thenReturn(20L);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), eq(20L))).thenReturn(12L);
+        var repository = new MappingRepository(jdbc, MappingRemoteFixtures.JSON);
+        assertThat(
+                        repository.enqueue(
+                                11,
+                                13,
+                                MappingRemoteFixtures.definition().engineCompatibility(),
+                                3,
+                                10,
+                                15L))
+                .isTrue();
+        assertThat(
+                        repository.enqueue(
+                                11,
+                                13,
+                                MappingRemoteFixtures.definition().engineCompatibility(),
+                                3,
+                                10,
+                                15L))
+                .isFalse();
         assertThat(commitOne())
                 .containsEntry("event", "MAPPING_ENQUEUED")
                 .containsEntry("documentId", "12")

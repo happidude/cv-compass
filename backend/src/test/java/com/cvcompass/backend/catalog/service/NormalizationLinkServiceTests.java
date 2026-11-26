@@ -40,12 +40,12 @@ class NormalizationLinkServiceTests {
                         new ObjectMapper(),
                         properties);
         when(candidates.lastCandidateId()).thenReturn(3L);
-        when(candidates.indexCandidates(0, 3, 2, false)).thenReturn(List.of(1L, 2L));
-        when(candidates.indexCandidates(2, 3, 2, false)).thenReturn(List.of(3L));
+        when(candidates.indexCandidates(0, 3, 2)).thenReturn(List.of(1L, 2L));
+        when(candidates.indexCandidates(2, 3, 2)).thenReturn(List.of(3L));
         assertThat(service.linkMatches(Map.of(new Alias("COMPANY", "synthetic alias"), 10L)))
                 .isEmpty();
-        verify(candidates).indexCandidates(0, 3, 2, false);
-        verify(candidates).indexCandidates(2, 3, 2, false);
+        verify(candidates).indexCandidates(0, 3, 2);
+        verify(candidates).indexCandidates(2, 3, 2);
         for (long id = 1; id <= 3; id++) {
             verify(candidates).experiences(id);
             verify(candidates, never()).lockIndexProfile(id);
@@ -66,9 +66,9 @@ class NormalizationLinkServiceTests {
                         new ObjectMapper(),
                         new NormalizationProperties());
         when(candidates.lastCandidateId()).thenReturn(101L);
-        when(candidates.indexCandidates(0, 101, 100, false))
+        when(candidates.indexCandidates(0, 101, 100))
                 .thenReturn(LongStream.rangeClosed(1, 100).boxed().toList());
-        when(candidates.indexCandidates(100, 101, 100, false)).thenReturn(List.of(101L));
+        when(candidates.indexCandidates(100, 101, 100)).thenReturn(List.of(101L));
         when(lookup.companies(List.of(10L)))
                 .thenReturn(
                         Map.of(
@@ -103,8 +103,8 @@ class NormalizationLinkServiceTests {
                                 new Alias("TITLE", "synthetic title"),
                                 20L));
         assertThat(affected).containsExactly(1L, 101L);
-        verify(candidates, times(1)).indexCandidates(0, 101, 100, false);
-        verify(candidates, times(1)).indexCandidates(100, 101, 100, false);
+        verify(candidates, times(1)).indexCandidates(0, 101, 100);
+        verify(candidates, times(1)).indexCandidates(100, 101, 100);
         for (long id = 1; id <= 101; id++) {
             verify(candidates, times(1)).experiences(id);
             if (id != 1 && id != 101) verify(candidates, never()).lockIndexProfile(id);

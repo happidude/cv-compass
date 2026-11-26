@@ -382,7 +382,7 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     @Test
-    void failingSearchListenerRollsBackPublicationLedgerAndProfile() throws Exception {
+    void failingSearchListenerPreservesPublicationLedgerAndProfile() throws Exception {
         var doc = document();
         long mappingId =
                 result(
@@ -395,13 +395,16 @@ class PersonalInfoPublicationIntegrationTests {
         jdbc.execute(
                 "CREATE OR REPLACE TRIGGER synthetic_poison BEFORE INSERT OR UPDATE ON \"SEARCH\".\"CANDIDATE_INDEX\" FOR EACH ROW EXECUTE FUNCTION \"SEARCH\".synthetic_poison()");
         try {
-            assertThatThrownBy(
-                            () ->
-                                    new org.springframework.transaction.support.TransactionTemplate(
-                                                    transactions)
-                                            .executeWithoutResult(
-                                                    status -> publication.publish(mappingId)))
-                    .hasStackTraceContaining("synthetic poison");
+            // Spec 25/11 section 5: only the failed index write rolls back; publication commits.
+            new org.springframework.transaction.support.TransactionTemplate(transactions)
+                    .executeWithoutResult(
+                            status -> assertThat(publication.publish(mappingId)).isTrue());
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                    Integer.class,
+                                    candidate(doc)))
+                    .isZero();
         } finally {
             jdbc.execute(
                     "DROP TRIGGER IF EXISTS synthetic_poison ON \"SEARCH\".\"CANDIDATE_INDEX\"");
@@ -411,8 +414,9 @@ class PersonalInfoPublicationIntegrationTests {
                                 "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
                                 Integer.class,
                                 mappingId))
-                .isZero();
-        assertThat(candidate(doc)).isNull();
+                .isEqualTo(1);
+        assertThat(queries.detail(candidate(doc)).basic().path("fullName").asString())
+                .isEqualTo("Synthetic Poison Marker");
     }
 
     @Test
@@ -676,6 +680,198 @@ class PersonalInfoPublicationIntegrationTests {
     }
 
     @Test
+    void remapReplacesUnverifiedFieldsAndExperiencesAndRefreshesNormalizationAndIndex()
+            throws Exception {
+        var doc = document();
+        long original =
+                result(
+                        doc,
+                        "Full name: Synthetic Before\n\nWork Experience\n01/2020 – 12/2021 Synthetic Old Employer",
+                        false,
+                        "personal-info-mapping/3.5");
+        publication.publish(original);
+        var before = queries.detail(candidate(doc));
+        assertThat(before.experiences()).hasSize(1);
+        UUID oldExperience = before.experiences().getFirst().id();
+        long next =
+                result(
+                        doc,
+                        "Full name: Synthetic After\n\nWork Experience\n01/2022 – 12/2025 Synthetic New Employer",
+                        false,
+                        "personal-info-mapping/3.5");
+        assertThat(publication.publish(next)).isTrue();
+        var after = queries.detail(before.id());
+        assertThat(after.basic().path("fullName").asString()).isEqualTo("Synthetic After");
+        assertThat(after.basicState()).isEqualTo("UNVERIFIED");
+        assertThat(after.basicOrigin()).isEqualTo("MAPPING");
+        assertThat(after.experiences()).hasSize(1);
+        var replacement = after.experiences().getFirst();
+        assertThat(replacement.id()).isNotEqualTo(oldExperience);
+        assertThat(replacement.resultId()).isEqualTo(next);
+        assertThat(replacement.documentId()).isEqualTo(doc.getId());
+        assertThat(replacement.data().path("evidence")).isNotEmpty();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"DELETED\" FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
+                                Boolean.class,
+                                oldExperience))
+                .isTrue();
+        assertThat(queries.proposals(before.id(), null, 100)).isEmpty();
+        assertThat(after.version()).isEqualTo(before.version() + 1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"SEARCH_TEXT\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                String.class,
+                                before.id()))
+                .contains("synthetic after", "synthetic new employer")
+                .doesNotContain("synthetic old employer");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM \"CATALOG\".\"ALIASES\" WHERE \"KIND\"='COMPANY' AND \"ALIAS_FOLDED\"='synthetic new employer'",
+                                Integer.class))
+                .isEqualTo(1);
+        assertThat(revisions.history(before.id(), null, 100).getFirst().action())
+                .isEqualTo("PUBLISH_MAPPING");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"STATE\"='UNVERIFIED' AND \"ORIGIN\"='MAPPING' FROM \"CANDIDATE\".\"EXPERIENCES\" WHERE \"ID\"=?",
+                                Boolean.class,
+                                oldExperience))
+                .isTrue();
+        long third =
+                result(
+                        doc,
+                        "Full name: Synthetic Again\n\nWork Experience\n01/2023 – 12/2025 Synthetic Final Employer",
+                        false,
+                        "personal-info-mapping/3.5");
+        assertThat(publication.publish(third)).isTrue();
+        var again = queries.detail(before.id());
+        assertThat(again.experiences()).hasSize(1);
+        assertThat(again.experiences().getFirst().resultId()).isEqualTo(third);
+        assertThat(queries.proposals(before.id(), null, 100)).isEmpty();
+        assertThat(revisions.history(before.id(), null, 100).getFirst().actor())
+                .isEqualTo("SYSTEM");
+    }
+
+    @Test
+    void secondDocumentProposesWithoutReplacingUnverifiedFieldsOrExperiences() throws Exception {
+        var first = document();
+        publication.publish(
+                result(
+                        first,
+                        "Full name: Synthetic First\n\nWork Experience\n01/2020 – 12/2021 Synthetic First Employer",
+                        false,
+                        "personal-info-mapping/3.5"));
+        var before = queries.detail(candidate(first));
+        var second = document();
+        jdbc.update(
+                "UPDATE \"INGESTION\".\"DOCUMENTS\" SET \"CANDIDATE_ID\"=? WHERE \"ID\"=?",
+                before.id(),
+                second.getId());
+        publication.publish(
+                result(
+                        second,
+                        "Full name: Synthetic Second\n\nWork Experience\n01/2022 – 12/2025 Synthetic Second Employer",
+                        false,
+                        "personal-info-mapping/3.5"));
+        var after = queries.detail(before.id());
+        assertThat(after.basic()).isEqualTo(before.basic());
+        assertThat(after.experiences()).isEqualTo(before.experiences());
+        assertThat(queries.proposals(before.id(), null, 100)).hasSize(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"SEARCH_TEXT\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                String.class,
+                                before.id()))
+                .contains("synthetic first employer")
+                .doesNotContain("synthetic second employer");
+    }
+
+    @Test
+    void protectedExperienceSetIsProposedWhileUnverifiedBasicStillUpdates() throws Exception {
+        var doc = document();
+        publication.publish(
+                result(
+                        doc,
+                        "Full name: Synthetic Before\n\nWork Experience\n01/2020 – 12/2021 Synthetic Original Employer",
+                        false,
+                        "personal-info-mapping/3.5"));
+        var before = queries.detail(candidate(doc));
+        var confirmed =
+                candidates.editExperience(
+                        before.id(),
+                        before.version(),
+                        before.experiences().getFirst().id(),
+                        null,
+                        "CONFIRM",
+                        "synthetic-reviewer");
+        publication.publish(
+                result(
+                        doc,
+                        "Full name: Synthetic After\n\nWork Experience\n01/2022 – 12/2025 Synthetic Replacement Employer",
+                        false,
+                        "personal-info-mapping/3.5"));
+        var after = queries.detail(before.id());
+        assertThat(after.basic().path("fullName").asString()).isEqualTo("Synthetic After");
+        assertThat(after.experiences()).isEqualTo(confirmed.experiences());
+        assertThat(queries.proposals(before.id(), null, 100)).hasSize(1);
+    }
+
+    @Test
+    void poisonedIndexDoesNotRollBackPublicationAndCanBeRebuilt() throws Exception {
+        var doc = document();
+        long resultId =
+                result(
+                        doc,
+                        "Full name: Synthetic Poison Marker",
+                        false,
+                        "personal-info-mapping/3.5");
+        assertThat(transactions)
+                .isInstanceOf(org.springframework.orm.jpa.JpaTransactionManager.class);
+        jdbc.execute(
+                "CREATE OR REPLACE FUNCTION \"SEARCH\".synthetic_publication_poison() RETURNS trigger AS $$ BEGIN IF NEW.\"SEARCH_TEXT\" LIKE '%synthetic poison marker%' THEN RAISE EXCEPTION 'synthetic poison'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql");
+        jdbc.execute(
+                "CREATE TRIGGER synthetic_publication_poison BEFORE INSERT OR UPDATE ON \"SEARCH\".\"CANDIDATE_INDEX\" FOR EACH ROW EXECUTE FUNCTION \"SEARCH\".synthetic_publication_poison()");
+        try {
+            assertThat(publication.publish(resultId)).isTrue();
+            assertThat(queries.detail(candidate(doc)).basic().path("fullName").asString())
+                    .isEqualTo("Synthetic Poison Marker");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                    Integer.class,
+                                    resultId))
+                    .isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                    Integer.class,
+                                    candidate(doc)))
+                    .isZero();
+        } finally {
+            jdbc.execute(
+                    "DROP TRIGGER synthetic_publication_poison ON \"SEARCH\".\"CANDIDATE_INDEX\"");
+        }
+        var context =
+                new TestContextManager(PersonalInfoPublicationIntegrationTests.class)
+                        .getTestContext()
+                        .getApplicationContext();
+        assertThat(
+                        context.getBean(
+                                        com.cvcompass.backend.search.service.SearchRebuildService
+                                                .class)
+                                .rebuildAll()
+                                .failed())
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT \"SEARCH_TEXT\" FROM \"SEARCH\".\"CANDIDATE_INDEX\" WHERE \"CANDIDATE_ID\"=?",
+                                String.class,
+                                candidate(doc)))
+                .contains("synthetic poison marker");
+    }
+
+    @Test
     void unchangedRemapDoesNotCreateHistoryOrProposal() throws Exception {
         var d = document();
         String raw = "Full name: Synthetic Person\nGender: Male";
@@ -758,6 +954,7 @@ class PersonalInfoPublicationIntegrationTests {
         var d = document();
         publication.publish(result(d, "Full name: First Person", false));
         var p = queries.detail(candidate(d));
+        p = candidates.basic(p.id(), p.version(), null, true, "reviewer");
         publication.publish(result(d, "Full name: Second Person", false));
         p = queries.detail(p.id());
         var proposal = queries.proposals(p.id(), null, 100).getFirst();
@@ -871,6 +1068,7 @@ class PersonalInfoPublicationIntegrationTests {
         var d = document();
         publication.publish(result(d, "Full name: First Person", false));
         var p = queries.detail(candidate(d));
+        p = candidates.basic(p.id(), p.version(), null, true, "reviewer");
         publication.publish(result(d, "Full name: Next Person", false));
         p = queries.detail(p.id());
         var proposal = queries.proposals(p.id(), null, 100).getFirst();

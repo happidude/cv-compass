@@ -102,26 +102,47 @@ public class PublicationService {
         long version = revisions.lock(id);
         var before = queries.detail(id);
         boolean initial = repository.experienceCount(id) == 0 && version == 0;
-        publications.ledger(result, id, initial ? "PUBLISHED" : "PROPOSED");
-        logPublication(result, initial ? "PUBLISHED" : "PROPOSED", null);
+        boolean sameDocument = publications.publishedDocument(id, result.documentId());
+        var documentExperiences =
+                before.experiences().stream()
+                        .filter(e -> java.util.Objects.equals(e.documentId(), result.documentId()))
+                        .toList();
+        boolean replaceExperiences =
+                sameDocument && publications.canReplaceMappedExperiences(id, result.documentId());
+        boolean replaceBasic =
+                "UNVERIFIED".equals(before.basicState())
+                        && "MAPPING".equals(before.basicOrigin())
+                        && (sameDocument || initial && before.basic().isEmpty());
+        var patch =
+                v3
+                        ? PersonalInfoMapper.patch(
+                                body, before.basic(), mapping.canonicalPersonalValues())
+                        : json.createObjectNode();
+        boolean direct =
+                initial
+                        || replaceExperiences
+                                && (!documentExperiences.isEmpty()
+                                        || !body.path("experiences").isEmpty())
+                        || replaceBasic && !patch.isEmpty();
+        publications.ledger(result, id, direct ? "PUBLISHED" : "PROPOSED");
+        logPublication(result, direct ? "PUBLISHED" : "PROPOSED", null);
         boolean changed = false;
+        if (replaceExperiences) {
+            for (var experience : documentExperiences)
+                publications.supersedeMappedExperience(experience.id());
+            changed = !documentExperiences.isEmpty();
+        }
         for (var experience : body.path("experiences")) {
             changed = true;
-            if (initial)
+            if (initial || replaceExperiences)
                 experiences.insertExperience(
                         id, experience, "UNVERIFIED", "MAPPING", result.documentId(), result.id());
             else publications.propose(UUID.randomUUID(), id, result, experience);
         }
         if (v3) {
-            var patch =
-                    PersonalInfoMapper.patch(
-                            body, before.basic(), mapping.canonicalPersonalValues());
             if (!patch.isEmpty()) {
                 var metadata = PersonalInfoMapper.metadata(body, result.documentId(), result.id());
-                if (initial
-                        && "UNVERIFIED".equals(before.basicState())
-                        && "MAPPING".equals(before.basicOrigin())
-                        && before.basic().isEmpty()) {
+                if (replaceBasic) {
                     var merged = PersonalInfoMapper.merge(before.basic(), patch);
                     repository.mappedBasic(
                             id,

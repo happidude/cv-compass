@@ -56,7 +56,7 @@ it.each([
       values: [{ field: "other:synthetic", value: "é" }],
       issues: [{ code: "SYNTHETIC_WARNING", field: null, evidence: [] }],
     });
-    expect(parsedProposals).toHaveLength(_ === "initial" ? 0 : 6);
+    expect(parsedProposals).toHaveLength(0);
     expect(parsedProfile.extensions.personalInfo?.fields.email).toMatchObject({
       enabled: false,
       state: "NOT_FOUND",

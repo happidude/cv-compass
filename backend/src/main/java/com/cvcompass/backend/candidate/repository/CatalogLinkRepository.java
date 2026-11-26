@@ -76,7 +76,7 @@ public class CatalogLinkRepository implements CatalogLinks {
     }
 
     @Override
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = RuntimeException.class)
     public Optional<IndexProfile> lockIndexProfile(long candidateId) {
         return jdbc
                 .query(
@@ -92,7 +92,8 @@ public class CatalogLinkRepository implements CatalogLinks {
     }
 
     @Override
-    @Transactional(propagation = Propagation.MANDATORY)
+    // The caller rolls back its transaction or JDBC savepoint when this index write fails.
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = RuntimeException.class)
     public void metrics(long candidateId, ProfileLink value) {
         jdbc.update(
                 """
@@ -113,19 +114,16 @@ public class CatalogLinkRepository implements CatalogLinks {
     }
 
     @Override
-    public List<Long> indexCandidates(long after, long through, int limit, boolean ongoingOnly) {
+    public List<Long> indexCandidates(long after, long through, int limit) {
         return jdbc.queryForList(
                 """
                 SELECT c."ID" FROM "CANDIDATE"."CANDIDATES" c
-                WHERE c."ID">? AND c."ID"<=? AND (NOT ? OR EXISTS (
-                  SELECT 1 FROM "CANDIDATE"."EXPERIENCES" e WHERE e."CANDIDATE_ID"=c."ID"
-                    AND NOT e."DELETED" AND e."ONGOING_AS_STATED"))
+                WHERE c."ID">? AND c."ID"<=?
                 ORDER BY c."ID" LIMIT ?
                 """,
                 Long.class,
                 after,
                 through,
-                ongoingOnly,
                 limit);
     }
 

@@ -8,7 +8,7 @@ Phiên bản cấu hình ánh xạ và trạng thái kiểm định.
 
 | Name | Type | Default | Nullable | Children | Parents | Comment |
 | ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| ID | bigint |  | false | [MAPPING.SETTINGS](MAPPING.SETTINGS.md) [MAPPING.JOBS](MAPPING.JOBS.md) |  | Khóa chính của cấu hình ánh xạ. |
+| ID | bigint |  | false | [MAPPING.SETTINGS](MAPPING.SETTINGS.md) [MAPPING.JOBS](MAPPING.JOBS.md) [MAPPING.REMAP_RUNS](MAPPING.REMAP_RUNS.md) |  | Khóa chính của cấu hình ánh xạ. |
 | REVISION | varchar(128) |  | false |  |  |  |
 | DEFINITION | jsonb |  | false |  |  |  |
 | CREATED_AT | timestamp with time zone | CURRENT_TIMESTAMP | false |  |  |  |
@@ -47,6 +47,7 @@ erDiagram
 
 "MAPPING.SETTINGS" }o--o| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;ACTIVE_CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
 "MAPPING.JOBS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
+"MAPPING.REMAP_RUNS" }o--|| "MAPPING.CONFIGS" : "FOREIGN KEY (#quot;CONFIG_ID#quot;) REFERENCES #quot;MAPPING#quot;.#quot;CONFIGS#quot;(#quot;ID#quot;)"
 
 "MAPPING.CONFIGS" {
   bigint ID
@@ -79,6 +80,24 @@ erDiagram
   timestamp_with_time_zone CREATED_AT
   timestamp_with_time_zone COMPLETED_AT
   integer MAX_ATTEMPTS
+  smallint PRIORITY
+  bigint REMAP_RUN_ID FK
+}
+"MAPPING.REMAP_RUNS" {
+  bigint ID
+  varchar_16_ SCOPE_KIND
+  jsonb SCOPE_VALUE
+  bigint CONFIG_ID FK
+  varchar_16_ STATE
+  bigint CURSOR_EXTRACTION_ID
+  bigint UPPER_EXTRACTION_ID
+  bigint SELECTED
+  bigint QUEUED
+  bigint SKIPPED
+  varchar_128_ CREATED_BY
+  timestamp_with_time_zone CREATED_AT
+  timestamp_with_time_zone UPDATED_AT
+  timestamp_with_time_zone FINISHED_AT
 }
 ```
 

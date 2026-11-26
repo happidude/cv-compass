@@ -74,7 +74,7 @@ public class NormalizationLinkService {
 
     @Transactional
     public long backfillBatch(long after, long through, int size) {
-        var ids = candidates.indexCandidates(after, through, size, false);
+        var ids = candidates.indexCandidates(after, through, size);
         for (long id : ids) {
             if (linkCandidate(id)) events.publishEvent(new CandidateChanged(id));
         }
@@ -95,7 +95,7 @@ public class NormalizationLinkService {
         while (after < through) {
             var ids =
                     candidates.indexCandidates(
-                            after, through, properties.getCandidateScanPageSize(), false);
+                            after, through, properties.getCandidateScanPageSize());
             if (ids.isEmpty()) break;
             for (long id : ids) {
                 var experiences = candidates.experiences(id);
