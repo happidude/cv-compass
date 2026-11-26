@@ -1,31 +1,12 @@
-# Chạy toàn hệ thống local (dev)
+# Tham chiếu script dev-up / dev-down
 
-Áp dụng cho `develop` từ 14/11/2026, gồm engine LLM REMOTE (L4–L6). Đây là trang tóm tắt **thứ tự chạy**.
-Cấu hình chi tiết vẫn nằm ở tài liệu gốc, trang này không chép lại:
-[backend/LOCAL_OCR.md](../backend/LOCAL_OCR.md), [backend/RAW_TEXT_V2_LOCAL.md](../backend/RAW_TEXT_V2_LOCAL.md),
-[backend/M11.md](../backend/M11.md) (đăng nhập, publication), [frontend/README.md](../frontend/README.md),
-[llm-worker/README.md](../llm-worker/README.md), [runbook REMOTE E2E](llm/runbook-l6-remote-e2e.md).
+Hướng dẫn chạy local (thứ tự bật/tắt, cấu hình, reset DB, token, worker, lỗi hay gặp) nằm ở [RUN_LOCAL.md](RUN_LOCAL.md). Trang này chỉ giữ tham chiếu cờ và hành vi của `scripts/dev-up.*`/`dev-down.*`.
 
-Chỉ dùng PDF tổng hợp khi thử. Mọi `<...>` là chỗ bạn tự điền; không commit/dán giá trị thật (token, mật khẩu, hash cá nhân).
-
-## 1. Thành phần và thứ tự
-
-| # | Thành phần | Chạy ở đâu | Địa chỉ |
-| --- | --- | --- | --- |
-| 1 | PostgreSQL 17 | Docker | dev `127.0.0.1:5432` (`infra/docker-compose.yml`) hoặc test `127.0.0.1:5433` (`scripts/test-db.ps1`) |
-| 2 | Backend (Java 25) | PowerShell hoặc Ubuntu WSL, `backend/` | `http://127.0.0.1:8080` |
-| 3 | Frontend (Vite) | PowerShell hoặc Ubuntu WSL, `frontend/` | `http://127.0.0.1:5173` |
-| 4 | OCR worker (Python 3.14) | WSL Ubuntu-24.04 | gọi backend qua loopback |
-| 5 | Ollama + LLM worker (tùy chọn) | WSL | Ollama `127.0.0.1:11434`; worker gọi backend qua loopback |
-
-Thứ tự bật: **DB → backend → frontend → OCR worker → (Ollama → LLM worker)**. Thứ tự tắt ngược lại,
-chờ UI không còn CV `PROCESSING` trước khi dừng worker. Backend phải chạy trước mọi worker.
-
-### Windows PowerShell 5.1
+## Windows PowerShell 5.1
 
 Yêu cầu: Java 25, Node theo engines `^22.22.2 || ^24.15.0`, `npm.cmd`, đã chạy `npm ci` trong `frontend/`;
 Docker cho chế độ Dev/Test. Script chỉ quản lý Docker DB, backend và frontend, không tự cài công cụ.
-Backend và frontend chạy trong cửa sổ PowerShell riêng; chạy tay [OCR worker](#ocr-worker) và [LLM worker](#llm-worker) sau khi backend sẵn sàng.
+Backend và frontend chạy trong cửa sổ PowerShell riêng; chạy tay OCR worker và llm-worker sau khi backend sẵn sàng ([RUN_LOCAL.md](RUN_LOCAL.md)).
 
 ```powershell
 # Xem trước các lệnh, không chạy gì:
@@ -74,7 +55,7 @@ $env:DB_PASSWORD = [Environment]::GetEnvironmentVariable('TEST_DB_PASSWORD', 'Us
 Nếu chưa có container/bộ biến User, chủ máy chuẩn bị bằng `scripts/test-db.ps1 up` trước rồi nạp vào phiên.
 DB test cũng dùng cho gate tự động — đừng chạy gate khi đang chạy dev trên DB test.
 
-### Ubuntu WSL bash
+## Ubuntu WSL bash
 
 Chạy trong clone Linux riêng. Script chỉ quản lý Docker DB, backend và frontend. Yêu cầu Java 25, Node khớp
 `^22.22.2 || ^24.15.0`, npm và `frontend/node_modules`, `setsid`, Docker khi dùng dev/test.
@@ -127,61 +108,6 @@ Cả hai nền tảng probe TCP `127.0.0.1`, nên WSL cần mạng mirrored đ�
 Record khớp hoặc port bị chiếm: `REFUSED`, bỏ service đó, exit 3.
 `dev-down` chỉ dừng backend/frontend có PID khớp record, không kill theo tên; không xóa container, volume, PDF hay spool.
 
-## OCR worker
+## Worker và lỗi hay gặp
 
-Chỉ chạy trong terminal WSL sau khi backend báo sẵn sàng. Setup Python/công cụ và cấu hình riêng theo
-[backend/LOCAL_OCR.md](../backend/LOCAL_OCR.md), rồi chạy thủ công:
-
-```bash
-source <(grep -E '^(PY|BUILD|PROFILE)=' ~/cv-ocr-private/values.txt | sed 's/^/export /')
-cd ~/cv-compass
-export CV_COMPASS_OCR_TOKEN="$(cat ~/cv-ocr-private/worker.token)"
-"$PY" worker/run_pull_worker.py --config ~/cv-ocr-private/pull.toml
-```
-
-Dừng bằng **Ctrl+C** sau khi UI không còn CV `PROCESSING`.
-Gặp `WORKER_HALTED` / `OPERATOR_RECOVERY_REQUIRED` thì không xóa `halt.json`/`claim.json`, làm theo [Recovery](../backend/LOCAL_OCR.md#recovery-tests-and-safe-stop).
-
-## LLM worker
-
-Chạy thủ công sau khi backend sẵn sàng; Ollama chạy trong WSL, model đã pull; backend đã bật REMOTE.
-Tạo `llm-worker/.env` từ `.env.example`, đặt provider/model và URL backend/Ollama; không đặt token trong `.env`.
-WSL cần mạng mirrored để gọi backend Windows qua loopback; dùng clone `~/cv-compass` đúng nhánh, đã cập nhật code.
-
-Trong terminal WSL, tạo token mới (chỉ in SHA-256):
-
-```bash
-export CVC_LLM_WORKER_TOKEN="$(python3.14 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-printf %s "$CVC_LLM_WORKER_TOKEN" | sha256sum | cut -d' ' -f1
-```
-
-Dán hash vào `backend/.env.properties`, khóa `cv.mapping.remote.workers.local_llm.credential-sha256[0]`, rồi khởi động lại backend và chờ sẵn sàng.
-Token chỉ nằm trong phiên terminal; không ghi vào file, lịch sử lệnh hay chat.
-Nếu dùng token cũ, nhập ẩn bằng `read -rs CVC_LLM_WORKER_TOKEN && export CVC_LLM_WORKER_TOKEN`.
-
-Chạy check, thử một việc rồi chạy liên tục:
-
-```bash
-cd ~/cv-compass/llm-worker
-export PYTHONPATH=src
-python3.14 -m cv_compass_llm check
-python3.14 -m cv_compass_llm pull --once
-python3.14 -m cv_compass_llm pull
-```
-
-Dừng bằng **Ctrl+C**. Log chính: `worker_start` → `waiting` → `claimed` → `extraction_done` → `accepted`; lỗi: `failed code=…`.
-Chi tiết cấu hình/log xem [llm-worker/README.md](../llm-worker/README.md); bật/tắt REMOTE, token và xử lý lỗi xem [runbook L6](llm/runbook-l6-remote-e2e.md).
-
-## 3. Hiện tượng thường gặp
-
-| Hiện tượng | Ý nghĩa |
-| --- | --- |
-| Hồ sơ ứng viên **mới** có kinh nghiệm nhưng tab đề xuất (`/proposals`) rỗng | Bình thường: lần xuất bản đầu chèn thẳng vào hồ sơ (`UNVERIFIED`). Đề xuất chỉ xuất hiện khi hồ sơ đã có dữ liệu. |
-| UI báo "Lỗi contract…" | Mở console trình duyệt: dòng `[contract]` ghi đường dẫn trường bị từ chối và mã lỗi (không có giá trị). Gửi dòng đó khi báo lỗi. |
-| Worker im lặng | Bản clone WSL chưa `git pull`, hoặc mức log quá cao (`CVC_LLM_LOG_LEVEL`). Chạy `check`. |
-| `check` FAIL ở backend | Backend chưa chạy, sai `CVC_LLM_BACKEND_URL`, hoặc WSL không ở chế độ mạng mirrored. |
-| `Could not find or load main class .timezone=UTC` | PowerShell 5.1 có thể tách `-Duser.timezone=UTC` nếu mất quote. Lệnh thủ công phải quote `"-Duser.timezone=UTC"`; script dùng mảng `$javaArgs` và cửa sổ `-EncodedCommand` để giữ nguyên quote qua `Start-Process`. |
-| `REFUSED <svc>: ...` (exit 3) | PID record còn khớp hoặc port đã có listener. Dùng down đúng nền tảng đã chạy service hoặc kiểm tra tiến trình bên ngoài; không chạy thêm bản sao. |
-| `SKIP <svc>: pid <n> does not match record` | PID đã được dùng lại hoặc command đã đổi. Script không gửi tín hiệu tới PID đó và bỏ record cũ; kiểm tra tiến trình bằng tay trước khi chạy lại. |
-| `STALE <svc>: ...` | Tiến trình đã thoát; record cũ được dọn. Xem log trước khi thử lại. |
-| `FAIL backend_token code=…` | `UNAUTHORIZED`: token trong cửa sổ không khớp hash backend; `MAPPING_REMOTE_UNAVAILABLE`: REMOTE đang tắt; `TLS_REQUIRED`: gọi HTTP không qua loopback; `BACKEND_PROBE_REJECTED`: địa chỉ không phải backend CV Compass. |
+OCR worker, llm-worker và bảng lỗi hay gặp: xem [RUN_LOCAL.md](RUN_LOCAL.md).

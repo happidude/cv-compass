@@ -10,6 +10,7 @@ Mặc định đọc root + AGENTS component + spec; nguồn kích hoạt chi ti
 | Xác định phạm vi cần duyệt, sửa kiến trúc/dữ liệu | [Policy tham chiếu](AGENT_POLICY.md) |
 | Branch/commit/PR | [Git](CV_COMPASS_GIT_WORKFLOW.md) |
 | Chọn/chạy check | [Kiểm chứng](VERIFICATION.md) |
+| Chạy hệ thống local | [RUN_LOCAL.md](RUN_LOCAL.md) |
 | Task tối ưu workflow hiện tại | [Spec](milestones/agent-workflow-lean/spec.md), [bằng chứng](milestones/agent-workflow-lean/verification.md) |
 
 | Loại | Nguồn | Cách dùng |
@@ -17,7 +18,7 @@ Mặc định đọc root + AGENTS component + spec; nguồn kích hoạt chi ti
 | Quy tắc | [Root](../AGENTS.md), AGENTS component, [policy](AGENT_POLICY.md), [workflow](AGENT_WORKFLOW.md) | Yêu cầu hiện hành về phạm vi/quyền/vai trò |
 | Convention | [Mục lục convention](conventions/README.md), convention backend/worker/frontend | Quy tắc implementation chi tiết |
 | Contract | [Bản đồ contract](contracts/README.md); canonical JSON trong worker/design; backend MAPPING/experience/M11 | Đọc trước tích hợp API/dữ liệu; không di chuyển runtime artifact |
-| Vận hành | [Chạy toàn hệ thống local](LOCAL_DEV.md); README component; backend [OCR cục bộ](../backend/LOCAL_OCR.md), [raw-text cục bộ](../backend/RAW_TEXT_V2_LOCAL.md), [logging](../backend/LOGGING.md), [vận hành mapping](../backend/MAPPING_OPERATIONS.md); worker [handoff](../worker/design/M6_BASELINE_HANDOFF.md) | Quy trình chạy/khôi phục; giữ cảnh báo lịch sử rõ ràng |
+| Vận hành | [Chạy local: bật/tắt, reset DB, token, lỗi hay gặp](RUN_LOCAL.md); [cờ script dev-up/dev-down](LOCAL_DEV.md); README component; backend [OCR cục bộ](../backend/LOCAL_OCR.md), [raw-text cục bộ](../backend/RAW_TEXT_V2_LOCAL.md), [logging](../backend/LOGGING.md), [vận hành mapping](../backend/MAPPING_OPERATIONS.md); worker [handoff](../worker/design/M6_BASELINE_HANDOFF.md) | Quy trình chạy/khôi phục; giữ cảnh báo lịch sử rõ ràng |
 | Spec milestone/task | [Danh mục](milestones/README.md), [roadmap](roadmap.md), [bản nháp nền tảng POC](POC_CV_INGESTION_DATABASE_FOUNDATION.md), [tham chiếu mapping đã loại dữ liệu riêng tư](specs/mapping-design-reference.md); backend MAPPING/M11; worker M6_1_OCR_WORKER_DESIGN/M7_INTEGRATION/OCR_V2_RAW_TEXT | Giữ nhãn trạng thái có sẵn; không suy ra Active/hoàn thành |
 | Kiểm chứng | [Quy trình](VERIFICATION.md), backend *_REPORT / *_VERIFICATION và FOUNDATION_CONFIGURATION_REPORT; frontend VERIFICATION; worker M6_2_VERIFICATION/M6_2_REVIEW/M6_2_HARDENING_REPORT/M6_2_HARDENING_REVIEW và bản ghi PR9; [report format](conventions/REFACTOR_REPORT.md) | Bằng chứng theo commit, không phải nghiệm thu hiện tại |
 | Lịch sử | [Mục lục lịch sử](history/README.md); worker M6_1_REVIEW/M6_1_STACK_SPIKE/M6_2_GCC_INVESTIGATION/M6_2_HARDENING_DECISIONS và banner bị thay thế; bằng chứng lịch sử đã tách của backend | Giữ nguồn gốc, không bao giờ cấp quyền task hiện tại |
