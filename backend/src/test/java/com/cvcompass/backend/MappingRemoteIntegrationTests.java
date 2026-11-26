@@ -264,6 +264,8 @@ class MappingRemoteIntegrationTests {
                 var after = candidateQueries.detail(candidate);
                 assertThat(after.basic()).isEqualTo(protectedProfile.basic());
                 assertThat(after.basicState()).isEqualTo("CONFIRMED");
+                assertThat(after.extensions().path("personalInfo"))
+                        .isEqualTo(protectedProfile.extensions().path("personalInfo"));
                 assertThat(after.experiences()).isEqualTo(protectedProfile.experiences());
                 assertThat(
                                 jdbc.queryForObject(
@@ -271,6 +273,13 @@ class MappingRemoteIntegrationTests {
                                         String.class,
                                         result))
                         .isEqualTo("PROPOSED");
+            } else if (subsequent) {
+                assertThat(
+                                jdbc.queryForObject(
+                                        "SELECT \"STATUS\" FROM \"CANDIDATE\".\"PUBLICATIONS\" WHERE \"RESULT_ID\"=?",
+                                        String.class,
+                                        result))
+                        .isEqualTo("PUBLISHED");
             }
             String prefix = subsequent ? "subsequent-" : "initial-";
             for (String endpoint : java.util.List.of("profile", "proposals", "history")) {
@@ -290,7 +299,21 @@ class MappingRemoteIntegrationTests {
                     if (hrProtected) {
                         assertThat(payload.size()).isGreaterThan(0);
                         var kinds = new java.util.ArrayList<String>();
-                        payload.forEach(proposal -> kinds.add(proposal.path("kind").asString()));
+                        payload.forEach(
+                                proposal -> {
+                                    kinds.add(proposal.path("kind").asString());
+                                    if (proposal.path("kind").asString().equals("PERSONAL_INFO"))
+                                        assertThat(
+                                                        proposal.path("data")
+                                                                .path("patch")
+                                                                .path("fullName")
+                                                                .asString())
+                                                .isEqualTo(
+                                                        body.path("personal")
+                                                                .path("fullName")
+                                                                .path("value")
+                                                                .asString());
+                                });
                         assertThat(kinds).contains("EXPERIENCE", "PERSONAL_INFO");
                     } else assertThat(payload.size()).isZero();
                 }

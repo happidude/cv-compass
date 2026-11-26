@@ -537,6 +537,7 @@ class SearchIndexIntegrationTests {
             jdbc.execute(
                     "CREATE TRIGGER synthetic_metrics_poison BEFORE UPDATE OF \"TOTAL_EXPERIENCE_MONTHS\" ON \"CANDIDATE\".\"PROFILES\" FOR EACH ROW EXECUTE FUNCTION \"CANDIDATE\".synthetic_metrics_poison()");
         }
+        Throwable failure = null;
         try {
             try {
                 var changed =
@@ -560,13 +561,21 @@ class SearchIndexIntegrationTests {
             assertThat(rebuild.rebuildAll().failed()).isZero();
             assertThat(indexCount(id)).isEqualTo(1);
             assertThat(text(id)).contains("synthetic poison marker");
+        } catch (RuntimeException | Error error) {
+            failure = error;
+            throw error;
         } finally {
             // The class shares one database: drop the marker so later poisoned rebuilds count
             // only their own candidate, even when an assertion fails.
-            jdbc.update(
-                    "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"FULL_NAME\"='Synthetic repaired profile' WHERE \"CANDIDATE_ID\"=?",
-                    id);
-            indexer.rebuild(id);
+            try {
+                jdbc.update(
+                        "UPDATE \"CANDIDATE\".\"PROFILES\" SET \"FULL_NAME\"='Synthetic repaired profile' WHERE \"CANDIDATE_ID\"=?",
+                        id);
+                indexer.rebuild(id);
+            } catch (RuntimeException | Error cleanupError) {
+                if (failure != null) failure.addSuppressed(cleanupError);
+                else throw cleanupError;
+            }
         }
     }
 
