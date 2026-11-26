@@ -16,6 +16,7 @@ import com.cvcompass.backend.mapping.repository.CompletedMappingRepository;
 import com.cvcompass.backend.mapping.service.*;
 import java.time.Instant;
 import java.util.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -34,10 +35,13 @@ class LlmRemoteSerializationTests {
             (ObjectNode)
                     LlmRemoteContractFixtures.JSON.readTree("{\"schemaVersion\":1,\"issues\":[]}");
     private long version;
+    private String basicState = "UNVERIFIED";
+    private CandidateQueryService queries;
+    private CandidateRevisionService revisions;
+    private PublicationService publication;
 
-    @Test
-    void serializesInitialProfileAndSubsequentProposalsFromVerifiedCompactOutput()
-            throws Exception {
+    @BeforeEach
+    void setUp() {
         var json = LlmRemoteContractFixtures.JSON;
         when(documents.valid(12)).thenReturn(true);
         when(documents.lockAndResolve(12)).thenReturn(1L);
@@ -55,7 +59,7 @@ class LlmRemoteSerializationTests {
                                         new ProfileCore(
                                                 version,
                                                 basic.deepCopy(),
-                                                "UNVERIFIED",
+                                                basicState,
                                                 "MAPPING",
                                                 extensions.deepCopy())));
         when(profiles.experienceCount(1)).thenAnswer(call -> rows.size());
@@ -85,6 +89,14 @@ class LlmRemoteSerializationTests {
                 .when(profiles)
                 .insertExperience(
                         any(), eq(1L), any(), anyString(), anyString(), eq(12L), anyLong());
+        doAnswer(
+                        call -> {
+                            UUID id = call.getArgument(0);
+                            rows.removeIf(row -> row.experience().id().equals(id));
+                            return null;
+                        })
+                .when(publications)
+                .supersedeMappedExperience(any());
         doAnswer(
                         call -> {
                             basic = ((ObjectNode) call.getArgument(1)).deepCopy();
@@ -143,11 +155,11 @@ class LlmRemoteSerializationTests {
                         })
                 .when(profiles)
                 .revision(eq(1L), anyLong(), anyString(), anyString(), anyString(), anyString());
-        var queries =
+        queries =
                 new CandidateQueryService(
                         profiles, documents, new CandidateExperienceTotals(profiles, documents));
-        var revisions = new CandidateRevisionService(profiles, queries, json);
-        var publication =
+        revisions = new CandidateRevisionService(profiles, queries, json);
+        publication =
                 new PublicationService(
                         publications,
                         profiles,
@@ -158,8 +170,18 @@ class LlmRemoteSerializationTests {
                         new CandidateExperienceService(profiles, new CandidateValueMapper()),
                         json,
                         event -> {});
+    }
+
+    @Test
+    void serializesInitialProfileAndSubsequentProposalsFromVerifiedCompactOutput()
+            throws Exception {
+        var json = LlmRemoteContractFixtures.JSON;
         var softly = new org.assertj.core.api.SoftAssertions();
         for (boolean subsequent : List.of(false, true)) {
+            if (subsequent) {
+                when(publications.publishedDocument(1, 12)).thenReturn(true);
+                when(publications.canReplaceMappedExperiences(1, 12)).thenReturn(true);
+            }
             long resultId = subsequent ? 102 : 101;
             var input = MappingRemoteFixtures.input();
             String hash = MappingDigests.sha256(MappingDigests.canonical(input));
@@ -195,7 +217,7 @@ class LlmRemoteSerializationTests {
                                             12)));
             assertThat(publication.publish(resultId)).isTrue();
             assertThat(rows).hasSize(5);
-            assertThat(proposals).hasSize(subsequent ? 6 : 0);
+            assertThat(proposals).hasSize(0);
             String prefix = subsequent ? "subsequent-" : "initial-";
             // Write all outputs before comparing, so drift evidence is complete.
             Map<String, JsonNode> outputs =
@@ -214,5 +236,80 @@ class LlmRemoteSerializationTests {
                                                     prefix + name, value)));
         }
         softly.assertAll();
+    }
+
+    @Test
+    void proposesSameDocumentRemappingWhenHrHasConfirmedProfileAndExperience() {
+        var input = MappingRemoteFixtures.input();
+        String hash = MappingDigests.sha256(MappingDigests.canonical(input));
+        var claim =
+                new MappingClaim(
+                        1,
+                        11,
+                        13,
+                        LlmRemoteContractFixtures.definition().revision(),
+                        "llm-extraction/1.0",
+                        1,
+                        UUID.randomUUID(),
+                        Instant.MAX,
+                        LlmRemoteContractFixtures.definition());
+        var verified =
+                new MappingRemoteVerifier()
+                        .verify(
+                                claim,
+                                input,
+                                hash,
+                                LlmRemoteContractFixtures.compact(hash, true),
+                                MappingRemoteFixtures.provenance());
+        var result =
+                new CompletedMappings.Result(
+                        102, 3, "NEEDS_REVIEW", MappingDigests.canonical(verified), 11, 13, 12);
+        when(mappings.read(102)).thenReturn(Optional.of(result));
+        when(publications.publishedDocument(1, 12)).thenReturn(true);
+        when(publications.canReplaceMappedExperiences(1, 12)).thenReturn(false);
+        version = 1;
+        basicState = "CONFIRMED";
+        basic.put("fullName", "Synthetic HR Reviewer");
+        var confirmedBasic = basic.deepCopy();
+        JsonNode data =
+                LlmRemoteContractFixtures.JSON.valueToTree(verified.experiences().getFirst());
+        var fields = new CandidateValueMapper().experience(data);
+        var confirmedExperience =
+                new ExperienceReadRow(
+                        new Experience(UUID.randomUUID(), "CONFIRMED", "MAPPING", 12L, 101L, data),
+                        fields.startDate(),
+                        fields.startPrecision(),
+                        fields.endDate(),
+                        fields.endPrecision(),
+                        fields.ongoingAsStated());
+        rows.add(confirmedExperience);
+
+        assertThat(publication.publish(102)).isTrue();
+
+        assertThat(proposals).hasSize(6);
+        assertThat(proposals)
+                .extracting(Proposal::kind)
+                .containsOnly("EXPERIENCE", "PERSONAL_INFO");
+        assertThat(proposals)
+                .filteredOn(proposal -> "PERSONAL_INFO".equals(proposal.kind()))
+                .singleElement()
+                .satisfies(
+                        proposal ->
+                                assertThat(
+                                                proposal.data()
+                                                        .path("patch")
+                                                        .path("fullName")
+                                                        .asString())
+                                        .isEqualTo("Synthetic Reviewer"));
+        verify(publications).ledger(result, 1L, "PROPOSED");
+        verify(profiles, never())
+                .mappedBasic(anyLong(), any(), any(), anyString(), anyString(), any());
+        verify(publications, never()).supersedeMappedExperience(any());
+        verify(profiles, never())
+                .insertExperience(
+                        any(), anyLong(), any(), anyString(), anyString(), anyLong(), anyLong());
+        assertThat(basic).isEqualTo(confirmedBasic);
+        assertThat(queries.detail(1).basicState()).isEqualTo("CONFIRMED");
+        assertThat(rows).containsExactly(confirmedExperience);
     }
 }
