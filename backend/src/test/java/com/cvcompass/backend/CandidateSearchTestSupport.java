@@ -160,7 +160,9 @@ abstract class CandidateSearchTestSupport {
         return new BonusFixture(
                 "q="
                         + encode(marker)
-                        + (useCompanyId ? "&companyId=" + company : "&company=" + encode(companyName))
+                        + (useCompanyId
+                                ? "&companyId=" + company
+                                : "&company=" + encode(companyName))
                         + "&title="
                         + encode(titleName),
                 currentCompany,
