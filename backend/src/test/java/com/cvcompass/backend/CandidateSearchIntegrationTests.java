@@ -373,6 +373,26 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
     }
 
     @Test
+    void numericCompanyTextDoesNotMatchAnExistingCatalogId() throws Exception {
+        String marker = unique("numericidmarker").replaceAll("[0-9]", "x");
+        String name = unique("Synthetic Alphabetic Company").replaceAll("[0-9]", "x");
+        long company = company(name, null, "USER");
+        alias(
+                "COMPANY",
+                unique("Synthetic Alphabetic Alias").replaceAll("[0-9]", "x"),
+                company,
+                "DONE");
+        long linked = candidate(marker, company, null, null, null, null, null, 0);
+
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + company))).isEmpty();
+        var byId = search("q=" + encode(marker) + "&companyId=" + company);
+        assertThat(resultIds(byId)).containsExactly(linked);
+        assertThat(reasons(byId.path("content").get(0)))
+                .contains("COMPANY_DIRECT")
+                .doesNotContain("COMPANY_PARENT", "COMPANY_TEXT");
+    }
+
+    @Test
     void companyIdPreservesCatalogRankingAndNeverMatchesText() throws Exception {
         String marker = unique("companyidmarker");
         long company = company(unique("Company Id Synthetic"), null, "USER");
