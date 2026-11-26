@@ -203,11 +203,57 @@ export const candidateHandlers = [
   }),
   http.get(`${base}/candidates/search`, async ({ request }) => {
     await delay(100);
-    return HttpResponse.json(
-      new URL(request.url).searchParams.has("cursor")
-        ? candidateSearchNextPage
-        : candidateSearchPage,
-    );
+    const params = new URL(request.url).searchParams;
+    const companyId = params.get("companyId");
+    if (
+      params.has("companyId") &&
+      (params.has("company") ||
+        params.getAll("companyId").length !== 1 ||
+        !/^\d+$/.test(companyId ?? "") ||
+        BigInt(companyId!) <= 0n ||
+        BigInt(companyId!) > 9223372036854775807n)
+    )
+      return HttpResponse.json(
+        {
+          code: "VALIDATION_ERROR",
+          message: "Use either company or one positive companyId.",
+          correlationId: null,
+          details: [{ field: "companyId" }],
+        },
+        { status: 400 },
+      );
+    const companyName = params.get("company")?.trim().toLowerCase();
+    function matchesCompany(row: { id: number }) {
+      if (companyId === null && !companyName) return true;
+      return (candidateSearchCompanyLinks[row.id] ?? []).some((id) => {
+        const company = candidateCompanySuggestions.find(
+          (item) => item.id === id,
+        )!;
+        const parent = candidateCompanySuggestions.find(
+          (item) => item.name === company.parentName,
+        );
+        return companyId !== null
+          ? [company.id, parent?.id].some(
+              (id) => id !== undefined && BigInt(id) === BigInt(companyId),
+            )
+          : [company.name, company.parentName].some((name) =>
+              name?.toLowerCase().includes(companyName!),
+            );
+      });
+    }
+    const nextContent = candidateSearchNextPage.content.filter(matchesCompany);
+    if (params.has("cursor"))
+      return HttpResponse.json({
+        ...candidateSearchNextPage,
+        content: nextContent,
+      });
+    const hasNext = nextContent.length > 0;
+    return HttpResponse.json({
+      ...candidateSearchPage,
+      content: candidateSearchPage.content.filter(matchesCompany),
+      hasNext,
+      nextCursor: hasNext ? candidateSearchPage.nextCursor : null,
+    });
   }),
   http.get(`${base}/candidates`, async () => {
     await delay(150);
@@ -268,7 +314,14 @@ export const candidateSearchOptions = {
 export const candidateCompanySuggestions = [
   { id: 22, name: "Synthetic Logistics", parentName: "Synthetic Group" },
   { id: 23, name: "Synthetic Group", parentName: null },
+  { id: 24, name: "1080", parentName: null },
 ];
+// Includes past employers even when the current company in the result is null.
+const candidateSearchCompanyLinks: Record<number, number[]> = {
+  1: [22],
+  8: [24],
+  3: [22],
+};
 export const candidateSearchPage = {
   content: [
     {

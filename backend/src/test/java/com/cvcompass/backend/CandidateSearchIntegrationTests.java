@@ -153,7 +153,7 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
                 search(
                         "q="
                                 + encode(marker)
-                                + "&company="
+                                + "&companyId="
                                 + company
                                 + "&title="
                                 + encode(titleName));
@@ -195,7 +195,7 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
             assertThat(resultIds(search("q=" + encode(marker) + "&title=" + encode(filter))))
                     .containsExactly(exact);
         }
-        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + Long.MAX_VALUE)))
+        assertThat(resultIds(search("q=" + encode(marker) + "&companyId=" + Long.MAX_VALUE)))
                 .isEmpty();
     }
 
@@ -290,7 +290,6 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
         long parent = candidate(marker, child, company, title, child, title, null, null);
         for (String filter :
                 List.of(
-                        String.valueOf(company),
                         name,
                         com.cvcompass.backend.catalog.api.CatalogText.fold(name),
                         companyAlias,
@@ -298,6 +297,8 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
             assertThat(resultIds(search("q=" + encode(marker) + "&company=" + encode(filter))))
                     .containsExactlyInAnyOrder(direct, parent);
         }
+        assertThat(resultIds(search("q=" + encode(marker) + "&companyId=" + company)))
+                .containsExactlyInAnyOrder(direct, parent);
         for (String filter :
                 List.of(
                         String.valueOf(title),
@@ -328,6 +329,101 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
                                                 + encode(marker)
                                                 + "&company=Unlinked%20Employer&title=Unlinked%20Position")))
                 .containsExactly(textOnly);
+    }
+
+    @Test
+    void numericCompanyNamesAndDoneAliasesResolveCatalogAndText() throws Exception {
+        String marker = unique("numericcompanymarker").replaceAll("[0-9]", "x");
+        long named = company("24", null, "USER");
+        long aliased = company("1080 Synthetic", null, "USER");
+        long similar = company("1080 Synthetic Labs", null, "USER");
+        alias("COMPANY", "1080", aliased, "DONE");
+        long nameMatch = candidate(marker, named, null, null, null, null, null, 0);
+        long aliasMatch = candidate(marker, aliased, null, null, null, null, null, 0);
+        candidate(marker, similar, null, null, null, null, null, 0);
+        long textOnly = candidate(marker + " 24 1080", null, null, null, null, null, null, 0);
+        for (String filter : List.of("24", "1080")) {
+            var result = search("q=" + encode(marker) + "&company=" + filter);
+            assertThat(resultIds(result))
+                    .containsExactly(filter.equals("24") ? nameMatch : aliasMatch, textOnly);
+            assertThat(reasons(result.path("content").get(0))).contains("COMPANY_DIRECT");
+            assertThat(result.path("content").get(0).path("matchedCompany").path("id").asLong())
+                    .isEqualTo(filter.equals("24") ? named : aliased);
+            assertThat(reasons(result.path("content").get(1)))
+                    .contains("COMPANY_TEXT")
+                    .doesNotContain("COMPANY_DIRECT", "COMPANY_PARENT");
+            assertThat(result.path("content").get(1).path("matchedCompany").isNull()).isTrue();
+        }
+        String longName = "9223372036854775808";
+        long longText = candidate(marker + " " + longName, null, null, null, null, null, null, 0);
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + longName)))
+                .containsExactly(longText);
+    }
+
+    @Test
+    void numericCompanyNamesUseBoundedTrigramFallback() throws Exception {
+        String marker = unique("numericfuzzymarker");
+        String query = "9753108642";
+        for (int i = 0; i < 8; i++) {
+            long company = company(query + i, null, "USER");
+            candidate(marker, company, null, null, null, null, null, 0);
+        }
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + query)))
+                .hasSize(searchProperties.getQuery().getResolveLimit());
+    }
+
+    @Test
+    void numericCompanyTextDoesNotMatchAnExistingCatalogId() throws Exception {
+        String marker = unique("numericidmarker").replaceAll("[0-9]", "x");
+        String name = unique("Synthetic Alphabetic Company").replaceAll("[0-9]", "x");
+        long company = company(name, null, "USER");
+        alias(
+                "COMPANY",
+                unique("Synthetic Alphabetic Alias").replaceAll("[0-9]", "x"),
+                company,
+                "DONE");
+        long linked = candidate(marker, company, null, null, null, null, null, 0);
+
+        assertThat(resultIds(search("q=" + encode(marker) + "&company=" + company))).isEmpty();
+        var byId = search("q=" + encode(marker) + "&companyId=" + company);
+        assertThat(resultIds(byId)).containsExactly(linked);
+        assertThat(reasons(byId.path("content").get(0)))
+                .contains("COMPANY_DIRECT")
+                .doesNotContain("COMPANY_PARENT", "COMPANY_TEXT");
+    }
+
+    @Test
+    void companyIdPreservesCatalogRankingAndNeverMatchesText() throws Exception {
+        String marker = unique("companyidmarker");
+        long company = company(unique("Company Id Synthetic"), null, "USER");
+        long child = company(unique("Company Id Child"), company, "USER");
+        String text = marker + " " + company + " " + Long.MAX_VALUE;
+        long directCurrent = candidate(text, company, null, null, company, null, null, 0);
+        long directOld = candidate(text, company, null, null, null, null, null, 0);
+        long parentCurrent = candidate(text, child, company, null, child, null, null, 0);
+        long parentOld = candidate(text, child, company, null, null, null, null, 0);
+        candidate(text, null, null, null, null, null, null, 0);
+        var result = search("q=" + encode(marker) + "&companyId=" + company);
+        assertThat(resultIds(result))
+                .containsExactly(directCurrent, directOld, parentCurrent, parentOld);
+        var content = result.path("content");
+        assertThat(reasons(content.get(0)))
+                .contains("COMPANY_DIRECT", "COMPANY_CURRENT")
+                .doesNotContain("COMPANY_PARENT", "COMPANY_TEXT");
+        assertThat(reasons(content.get(1)))
+                .contains("COMPANY_DIRECT")
+                .doesNotContain("COMPANY_CURRENT", "COMPANY_TEXT");
+        assertThat(reasons(content.get(2)))
+                .contains("COMPANY_PARENT", "COMPANY_CURRENT")
+                .doesNotContain("COMPANY_DIRECT", "COMPANY_TEXT");
+        assertThat(reasons(content.get(3)))
+                .contains("COMPANY_PARENT")
+                .doesNotContain("COMPANY_CURRENT", "COMPANY_TEXT");
+        for (var row : content) {
+            assertThat(row.path("matchedCompany").path("id").asLong()).isEqualTo(company);
+        }
+        assertThat(resultIds(search("q=" + encode(marker) + "&companyId=" + Long.MAX_VALUE)))
+                .isEmpty();
     }
 
     @Test
@@ -455,6 +551,16 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
                     {"limit=51", "limit"},
                     {"limit=0", "limit"},
                     {"limit=abc", "limit"},
+                    {"companyId=abc", "companyId"},
+                    {"companyId=0", "companyId"},
+                    {"companyId=-1", "companyId"},
+                    {"companyId=1.5", "companyId"},
+                    {"companyId=", "companyId"},
+                    {"companyId=9223372036854775808", "companyId"},
+                    {"companyId=1&companyId=1", "companyId"},
+                    {"companyId=1&companyId=2", "companyId"},
+                    {"company=Synthetic&companyId=1", "companyId"},
+                    {"company=&companyId=1", "companyId"},
                     {"function=INVALID", "function"},
                     {"function=MANAGER", "function"},
                     {"function=TEST_INACTIVE", "function"},
@@ -477,6 +583,10 @@ class CandidateSearchIntegrationTests extends CandidateSearchTestSupport {
             var error = json.readTree(response.body());
             assertThat(error.path("code").asString()).isEqualTo("VALIDATION_ERROR");
             assertThat(error.path("details").get(0).path("field").asString()).isEqualTo(input[1]);
+            if (input[0].startsWith("company=")) {
+                assertThat(error.path("details").get(0).path("message").asString())
+                        .contains("only one of company and companyId");
+            }
             assertThat(error.path("correlationId").asString()).isNotBlank();
             assertThat(response.body()).doesNotContain("corrupt", "INVALID", "TEST_INACTIVE");
         }

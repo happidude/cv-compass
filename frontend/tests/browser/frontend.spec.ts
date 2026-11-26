@@ -13,12 +13,22 @@ test("candidate filters persist on reload, show matches and load the next search
   await page.getByLabel("Công nghệ thông tin", { exact: true }).check();
   await page.getByLabel("Kỹ thuật", { exact: true }).check();
   await page.getByLabel("Công ty", { exact: true }).fill("Synthetic");
+  const selectedRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/candidates/search" &&
+      url.searchParams.get("companyId") === "22"
+    );
+  });
   await page
     .getByRole("button", {
       name: "Synthetic Logistics (Synthetic Group)",
       exact: true,
     })
     .click();
+  const selectedParams = new URL((await selectedRequest).url()).searchParams;
+  expect(selectedParams.has("company")).toBe(false);
+  expect(selectedParams.has("companyName")).toBe(false);
   await page.getByLabel("Số năm tối thiểu").fill("0");
   await page.getByLabel("Số năm tối đa").fill("6");
   await expect(
@@ -29,13 +39,15 @@ test("candidate filters persist on reload, show matches and load the next search
     .toBe("6");
   const params = new URL(page.url()).searchParams;
   expect(params.getAll("function")).toEqual(["IT", "ENGINEERING"]);
-  expect(params.get("company")).toBe("22");
+  expect(params.get("companyId")).toBe("22");
+  expect(params.has("company")).toBe(false);
   expect(params.get("companyName")).toBe("Synthetic Logistics");
   await page.reload();
   await expect(page.getByLabel("Từ khóa")).toHaveValue("ky su");
   await expect(page.getByLabel("Công ty", { exact: true })).toHaveValue(
     "Synthetic Logistics",
   );
+  await expect(page.getByText("Đã chọn công ty từ danh mục.")).toBeVisible();
   await expect(page.getByLabel("Kỹ thuật", { exact: true })).toBeChecked();
   await expect(
     page.getByLabel("Công nghệ thông tin", { exact: true }),
@@ -58,6 +70,23 @@ test("candidate filters persist on reload, show matches and load the next search
   for (const code of ["IT", "ENGINEERING", "SENIOR", "COMPANY"])
     await expect(page.getByText(code, { exact: true })).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  const numericRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/candidates/search" &&
+      url.searchParams.get("company") === "1080"
+    );
+  });
+  await page.getByLabel("Công ty", { exact: true }).fill("1080");
+  const numericParams = new URL((await numericRequest).url()).searchParams;
+  expect(numericParams.has("companyId")).toBe(false);
+  expect(numericParams.has("companyName")).toBe(false);
+  expect(new URL(page.url()).searchParams.get("company")).toBe("1080");
+  expect(new URL(page.url()).searchParams.has("companyId")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("companyName")).toBe(false);
+  await expect(
+    page.getByRole("link", { name: "Synthetic Binh Tran" }),
+  ).toBeVisible();
   await page.getByLabel("Số năm tối thiểu").fill("7");
   await expect(page.getByRole("alert")).toContainText(
     "Số năm tối thiểu phải nhỏ hơn hoặc bằng số năm tối đa.",
@@ -103,6 +132,7 @@ test("candidate typing debounces search and replaces URL history", async ({
     )
     .toBe(true);
   expect(new URL(page.url()).searchParams.has("companyName")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("companyId")).toBe(false);
 });
 const screens = [
   ["/", "Tổng quan"],
