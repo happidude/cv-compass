@@ -21,6 +21,7 @@ ENV_KEYS = {
     'evidence': 'CVC_LLM_EVIDENCE',
     'name_style': 'CVC_LLM_NAME_STYLE',
     'name_trim': 'CVC_LLM_NAME_TRIM',
+    'quote_match': 'CVC_LLM_QUOTE_MATCH',
     'dates': 'CVC_LLM_DATES',
     'trim_input': 'CVC_LLM_TRIM_INPUT',
     'trim_sections': 'CVC_LLM_TRIM_SECTIONS',
@@ -66,6 +67,7 @@ BENCH_ENV_KEYS = frozenset(
         'evidence',
         'name_style',
         'name_trim',
+        'quote_match',
         'dates',
         'trim_input',
         'trim_sections',
@@ -116,6 +118,7 @@ class LlmConfig:
     name_trim: str = 'off'
     reasoning_effort: str = ''
     api_key: str = field(default='', repr=False, compare=False)
+    quote_match: str = 'strict'
 
     @property
     def provenance_model(self) -> str:
@@ -301,6 +304,9 @@ def load_config(
     name_trim = value('name_trim', 'off')
     if name_trim not in ('off', 'on'):
         raise ValueError('INVALID_NAME_TRIM')
+    quote_match = value('quote_match', 'strict')
+    if quote_match not in ('strict', 'tolerant'):
+        raise ValueError('INVALID_QUOTE_MATCH')
     dates = value('dates', 'v1')
     if dates not in ('v1', 'v2', 'v3'):
         raise ValueError('INVALID_DATES')
@@ -359,6 +365,7 @@ def load_config(
         evidence=evidence,
         name_style=name_style,
         name_trim=name_trim,
+        quote_match=quote_match,
         dates=dates,
         trim_phrases=tuple(
             part.strip() for part in value('trim_phrases').split('|') if part.strip()
@@ -543,6 +550,7 @@ def load_pull_config(
             'INVALID_EVIDENCE': 'evidence',
             'INVALID_NAME_STYLE': 'name_style',
             'INVALID_NAME_TRIM': 'name_trim',
+            'INVALID_QUOTE_MATCH': 'quote_match',
             'INVALID_DATES': 'dates',
             'INVALID_TRIM_INPUT': 'trim_input',
             'INVALID_TRIM_SECTIONS': 'trim_sections',

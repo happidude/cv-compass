@@ -50,21 +50,32 @@ def _find(quote: str, text: str, *, fold: bool = False) -> tuple[int, int] | Non
     return left, right
 
 
-def source_value(value: str, text: str) -> str | None:
+def source_value(value: str, text: str, *, quote_match: str = 'strict') -> str | None:
     """Return the literal source substring supporting a model's text value."""
     if not normalize(value):
         return None
     start = text.find(value)
-    if start >= 0:
+    if start >= 0 and (
+        quote_match != 'tolerant' or _whole_clusters(text, start, start + len(value))
+    ):
         return text[start : start + len(value)]
     for fold in (False, True):
         match = _find(value, text, fold=fold)
-        if match is not None:
+        if match is not None and (quote_match != 'tolerant' or _whole_clusters(text, *match)):
             return text[match[0] : match[1]]
+    if quote_match == 'tolerant':
+        for left, right in _quote_matches(value, text):
+            return text[left:right]
     return None
 
 
-def locate(quote: str | None, block: Block, *, ignore_case: bool = True) -> Evidence | None:
+def locate(
+    quote: str | None,
+    block: Block,
+    *,
+    ignore_case: bool = True,
+    quote_match: str = 'strict',
+) -> Evidence | None:
     """Locate exact, whitespace-normalized, then length-preserving casefold quotes."""
     if not isinstance(quote, str) or len(normalize(quote)) < 2:
         return None
@@ -77,17 +88,129 @@ def locate(quote: str | None, block: Block, *, ignore_case: bool = True) -> Evid
             groups.append(span)
     for span in groups:
         start = span.text.find(quote)
-        if start >= 0:
+        if start >= 0 and (
+            quote_match != 'tolerant' or _whole_clusters(span.text, start, start + len(quote))
+        ):
             return Evidence(span.page, span.start + start, span.start + start + len(quote), quote)
     for fold in (False, True) if ignore_case else (False,):
         for span in groups:
             match = _find(quote, span.text, fold=fold)
-            if match is not None:
+            if match is not None and (
+                quote_match != 'tolerant' or _whole_clusters(span.text, *match)
+            ):
                 left, right = match
                 return Evidence(
                     span.page, span.start + left, span.start + right, span.text[left:right]
                 )
+    if quote_match == 'tolerant':
+        for span in groups:
+            for left, right in _quote_matches(quote, span.text, ignore_case=ignore_case):
+                return Evidence(
+                    span.page, span.start + left, span.start + right, span.text[left:right]
+                )
     return None
+
+
+def _quote_clusters(text: str):
+    """Use the personal matcher's cluster boundaries without changing its behavior."""
+    index = 0
+    while index < len(text):
+        end = index + 1
+        while end < len(text) and (
+            unicodedata.combining(text[end])
+            or len(unicodedata.normalize('NFC', text[index : end + 1]))
+            < len(unicodedata.normalize('NFC', text[index:end]))
+            + len(unicodedata.normalize('NFC', text[end]))
+        ):
+            end += 1
+        yield unicodedata.normalize('NFC', text[index:end]), index, end
+        index = end
+
+
+def _whole_clusters(text: str, left: int, right: int) -> bool:
+    return not any(
+        start < left < end or start < right < end for _, start, end in _quote_clusters(text)
+    )
+
+
+def _quote_text(text: str, *, fold: bool) -> tuple[str, list[tuple[int, int]]]:
+    """Keep mandatory word spaces and map whole NFC clusters back to raw ranges."""
+    chars, offsets = [], []
+    for cluster, index, end in _quote_clusters(text):
+        cluster = cluster.translate(_PERSONAL_PUNCTUATION)
+        for char in cluster:
+            if char.isspace():
+                if chars and chars[-1] == ' ':
+                    offsets[-1] = (offsets[-1][0], end)
+                elif chars:
+                    chars.append(' ')
+                    offsets.append((index, end))
+            else:
+                chars.append(char.casefold() if fold and _safe_case(char) else char)
+                offsets.append((index, end))
+    if chars and chars[-1] == ' ':
+        chars.pop()
+        offsets.pop()
+    return ''.join(chars), offsets
+
+
+def _quote_matches(quote: str, text: str, *, ignore_case: bool = True):
+    """Yield literal spans; expanding case folds and partial clusters cannot match."""
+    for fold in (False, True) if ignore_case else (False,):
+        target, _ = _quote_text(quote, fold=False)
+        if not target:
+            return
+        if fold:
+            if not _safe_case(target):
+                continue
+            target = target.casefold()
+        normalized, offsets = _quote_text(text, fold=fold)
+        start = normalized.find(target)
+        while start >= 0:
+            end = start + len(target)
+            if (start == 0 or offsets[start] != offsets[start - 1]) and (
+                end == len(offsets) or offsets[end - 1] != offsets[end]
+            ):
+                left, right = offsets[start][0], offsets[end - 1][1]
+                if not fold or _safe_case(text[left:right]):
+                    yield left, right
+            start = normalized.find(target, start + 1)
+
+
+def _value_boundaries(span: Span, left: int, right: int) -> bool:
+    """B3 cannot take part of a word, including a preceding base with raw marks."""
+    text = span.raw_text if span.raw_text is not None else span.text
+    if span.raw_text is not None:
+        left, right = span.start + left, span.start + right
+    before = left - 1
+    while before >= 0 and unicodedata.combining(text[before]):
+        before -= 1
+    return (before < 0 or not text[before].isalnum()) and (
+        right == len(text) or (not text[right].isalnum() and not unicodedata.combining(text[right]))
+    )
+
+
+def locate_value(value: str, block: Block, near: Evidence | None) -> Evidence | None:
+    """Choose a B3 literal occurrence, preferring the period's page then offset."""
+    candidates = [
+        Evidence(span.page, span.start + left, span.start + right, span.text[left:right])
+        for span in personal_groups(block)
+        for left, right in _quote_matches(value, span.text)
+        if _value_boundaries(span, left, right)
+    ]
+    if not candidates:
+        return None
+    if near is None:
+        return min(candidates, key=lambda item: (item.page, item.start))
+    return min(
+        candidates,
+        key=lambda item: (
+            item.page != near.page,
+            abs(item.start - near.start) if item.page == near.page else abs(item.page - near.page),
+            item.page,
+            item.start,
+        ),
+    )
 
 
 _PERSONAL_PUNCTUATION = str.maketrans(

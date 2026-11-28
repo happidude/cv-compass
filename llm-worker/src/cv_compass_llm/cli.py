@@ -75,6 +75,7 @@ CLI_ERRORS = (
         'INVALID_MODE',
         'INVALID_NAME_STYLE',
         'INVALID_NAME_TRIM',
+        'INVALID_QUOTE_MATCH',
         'INVALID_DATES',
         'INVALID_WHOLE_TIMEOUT',
         'INVALID_PROMPT_SCHEMA_TEXT',
@@ -298,6 +299,7 @@ def run_batch(
         'mode': mode,
         'dates': config.dates if config is not None else 'v1',
         'name_trim': config.name_trim if config is not None else 'off',
+        'quote_match': config.quote_match if config is not None else 'strict',
         'whole_fallbacks': issues['WHOLE_TOO_LONG'],
         'llm_calls': len(calls),
         'llm_metrics': metric_summary(calls),
@@ -345,6 +347,7 @@ def parser() -> argparse.ArgumentParser:
     for name in (
         'name_style',
         'name_trim',
+        'quote_match',
         'dates',
         'prompt_schema_text',
         'whole_personal',
@@ -384,6 +387,7 @@ def parser() -> argparse.ArgumentParser:
     for name in (
         'name_style',
         'name_trim',
+        'quote_match',
         'dates',
         'prompt_schema_text',
         'whole_personal',
