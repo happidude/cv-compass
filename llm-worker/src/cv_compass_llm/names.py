@@ -55,6 +55,12 @@ _LEGAL_EXTENSION = re.compile(
     re.I,
 )
 _VIETNAMESE_LEGAL = re.compile(r'^\s*Công ty\s+(?:TNHH|Cổ phần)\b', re.I)
+_CORE_LEGAL = re.compile(
+    r'(?<!\w)(?:'
+    + '|'.join(LEGAL_SUFFIXES)
+    + r'|CO(?!-)\.?|Công\s+ty|Cổ\s+phần|TNHH|Vietnam|Việt\s+Nam|VN)(?!\w)',
+    re.I,
+)
 _PAREN = re.compile(r'\s*\(([^()]*)\)\s*$')
 _EDGES = ',;:-–—|/'
 
@@ -167,7 +173,13 @@ def trim_company(value: str) -> tuple[int, int]:
     return name.span()
 
 
-def trim_title(value: str, company: str | None) -> tuple[int, int]:
+def _company_core(value: str) -> str:
+    """Compare company cores only; never use this view as an extracted value."""
+    value = _CORE_LEGAL.sub('', value)
+    return ' '.join(re.sub(r'[^\w\s]|_', '', value).casefold().split())
+
+
+def trim_title(value: str, company: str | None, *, prompt_rules: str = 'v1') -> tuple[int, int]:
     """Return the source span retained by rules 6–9, 12, 10, 11, 13, 14."""
     name = _Name(value)
     _label(name, r'Position|Chức vụ|Vị trí')
@@ -181,6 +193,13 @@ def trim_title(value: str, company: str | None) -> tuple[int, int]:
             break
     _parenthesis(name, 3)
     if company and company.strip():
+        if prompt_rules == 'v3':
+            core = _company_core(company)
+            if sum(char.isalnum() for char in core) >= 3:
+                for separator in re.finditer(r' – | - | \| ', name.text):
+                    if _company_core(name.text[separator.end() :]) == core:
+                        name.keep(end=separator.start())
+                        break
         company_view = ' '.join(company.split())
         escaped = re.escape(company_view)
         # Rule 12 consumes its connector before rule 10 can leave a dangling "at".

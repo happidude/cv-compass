@@ -11,6 +11,14 @@ from .schema import (
     WHOLE_SCHEMA,
 )
 
+
+def _replace_required(text: str, old: str, new: str) -> str:
+    """Fail on template drift without exposing instructions or enclosed data."""
+    if old not in text:
+        raise RuntimeError('PROMPT_TEMPLATE_MISMATCH')
+    return text.replace(old, new, 1)
+
+
 PROMPT_VERSION = 'llm-extraction-prompt/3'
 WHOLE_PROMPT_VERSION = 'llm-extraction-prompt/whole-2'
 BEGIN = '<<<CV_DATA_BEGIN>>>'
@@ -49,6 +57,32 @@ CLEAN_NAME_LINES_INSTRUCTIONS = (
         'years each need a record with their own period {line, text}. ',
     )
 )
+ROLE_INSTRUCTIONS = (
+    'Split a compound title "A, B", "A | B", "A / B", "A cum B" or "A kiêm B" '
+    'into two experience records ONLY when it names two distinct roles. '
+    'Use the same company and period for both; reuse the period quote. '
+    'Invented example: "Sales Manager cum Marketing Manager" -> two records titled '
+    '"Sales Manager" and "Marketing Manager". Each title value must remain a verbatim '
+    'contiguous substring of the CV. Do not split a single role from its scope, unit or '
+    'channel: "Director, Creative Merchandising"; '
+    '"Area Sales Manager | Traditional Trade Channel"; '
+    '"Manager, Category Management – Home & Living"; "EAF, LF, CCM supervisor". '
+    'Company must name an organization, never a description, location or skill. '
+    'For "X at/of Y", company is Y; "salesman of P&G at Mesa Distributor" -> '
+    'company "Mesa Distributor". Scan the entire CV, including two-column layouts and '
+    'summary tables plus details; do not miss experience at the top of a page. '
+    'List each position exactly once, even when repeated in a summary and details.'
+)
+ROLE_LINES_INSTRUCTIONS = _replace_required(
+    _replace_required(
+        ROLE_INSTRUCTIONS,
+        'reuse the period quote.',
+        'reuse the period {line, text}.',
+    ),
+    'Each title value must remain a verbatim contiguous substring of the CV.',
+    'Return each title as {line, value}; value must be a verbatim contiguous substring '
+    'of that exact line.',
+)
 
 
 def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
@@ -64,6 +98,8 @@ def prompt_version(mode: str, config: LlmConfig | None = None) -> str:
         version += '-xp'
     if config is not None and config.trim_input:
         version += '-trims' if config.trim_sections else '-trim'
+    if config is not None and config.prompt_rules == 'v3':
+        version += '-r3'
     return version
 
 
@@ -74,6 +110,7 @@ def build_lines_prompt(
     whole: bool = False,
     schema_text: bool = True,
     name_style: str = 'raw',
+    prompt_rules: str = 'v1',
 ) -> str:
     """Request exact line references and verbatim values or date phrases."""
     schema = LINES_PERSONAL_SCHEMA if personal else LINES_EXPERIENCE_SCHEMA
@@ -127,15 +164,10 @@ def build_lines_prompt(
         )
         if name_style == 'clean':
             instructions = instructions.rstrip() + '\n' + CLEAN_NAME_LINES_INSTRUCTIONS + '\n'
+        if prompt_rules == 'v3':
+            instructions = instructions.rstrip() + '\n' + ROLE_LINES_INSTRUCTIONS + '\n'
     escaped = text.replace(BEGIN, '[CV_BEGIN_ESCAPED]').replace(END, '[CV_END_ESCAPED]')
     return prefix + instructions.rstrip() + '\n' + BEGIN + '\n' + escaped + '\n' + END
-
-
-def _replace_required(text: str, old: str, new: str) -> str:
-    """Fail on template drift without exposing instructions or enclosed data."""
-    if old not in text:
-        raise RuntimeError('PROMPT_TEMPLATE_MISMATCH')
-    return text.replace(old, new, 1)
 
 
 def _schema_text(prompt: str, schema: dict, enabled: bool, *, personal_only: bool = False) -> str:
@@ -160,7 +192,12 @@ def _schema_text(prompt: str, schema: dict, enabled: bool, *, personal_only: boo
 
 
 def build_prompt(
-    block_text: str, schema: dict, *, schema_text: bool = True, name_style: str = 'raw'
+    block_text: str,
+    schema: dict,
+    *,
+    schema_text: bool = True,
+    name_style: str = 'raw',
+    prompt_rules: str = 'v1',
 ) -> str:
     """Enclose escaped CV data in a versioned schema-specific prompt."""
     escaped = block_text.replace(BEGIN, '[CV_BEGIN_ESCAPED]').replace(END, '[CV_END_ESCAPED]')
@@ -192,6 +229,8 @@ def build_prompt(
     instructions, data = prompt.split(BEGIN, 1)
     if name_style == 'clean':
         instructions += CLEAN_NAME_INSTRUCTIONS + '\n'
+    if prompt_rules == 'v3':
+        instructions += ROLE_INSTRUCTIONS + '\n'
     return _schema_text(instructions, schema, schema_text) + BEGIN + data
 
 
@@ -226,11 +265,19 @@ def build_personal_prompt(block_text: str, *, schema_text: bool = True) -> str:
 
 
 def build_experience_prompt(
-    block_text: str, *, schema_text: bool = True, name_style: str = 'raw'
+    block_text: str,
+    *,
+    schema_text: bool = True,
+    name_style: str = 'raw',
+    prompt_rules: str = 'v1',
 ) -> str:
     """Build the prompt for experience records."""
     return build_prompt(
-        block_text, EXPERIENCE_SCHEMA, schema_text=schema_text, name_style=name_style
+        block_text,
+        EXPERIENCE_SCHEMA,
+        schema_text=schema_text,
+        name_style=name_style,
+        prompt_rules=prompt_rules,
     )
 
 
@@ -240,6 +287,7 @@ def build_whole_prompt(
     schema_text: bool = True,
     whole_personal: bool = True,
     name_style: str = 'raw',
+    prompt_rules: str = 'v1',
 ) -> str:
     """Request all supported personal fields and positions across the entire CV."""
     prefix = (
@@ -248,7 +296,9 @@ def build_whole_prompt(
         + 'List EVERY job position in the entire CV.\n'
     )
     schema = WHOLE_SCHEMA if whole_personal else EXPERIENCE_SCHEMA
-    prompt = build_prompt(text, schema, schema_text=schema_text, name_style=name_style)
+    prompt = build_prompt(
+        text, schema, schema_text=schema_text, name_style=name_style, prompt_rules=prompt_rules
+    )
     if not whole_personal:
         instructions, data = prompt.split(BEGIN, 1)
         for old, new in (
