@@ -38,6 +38,121 @@ Nếu Ruff đã được provision, dùng `ruff format --check src tests` và
 `ruff check src tests`. Không cài dependency hay công cụ để chạy package.
 `ruff.toml` sao chép nguyên bản từ worker, không thay đổi cấu hình dùng chung.
 
+## Provider API cho bench (L7)
+
+`CVC_LLM_PROVIDER` nhận `ollama`, `openai`, `anthropic`. Cấu hình Ollama hiện có
+giữ nguyên hành vi. `CVC_LLM_MODEL` vẫn bắt buộc; `gpt-6-luna` và
+`claude-haiku-5-5` chỉ là model ví dụ trong các file cấu hình mẫu.
+Provider API chỉ được dùng cho `run` và `bench`; `pull`, `normalize`,
+`bench-norm`, `check` từ chối bằng `INVALID_PROVIDER`.
+
+**Cảnh báo: lệnh bench dưới đây gửi toàn văn CV tới dịch vụ ngoài.
+Chỉ chủ dự án chạy trên dữ liệu đã duyệt.** Trong phát triển/test chỉ dùng
+opener giả lập và dữ liệu tổng hợp, không gọi API thật.
+
+| Biến | OpenAI | Anthropic |
+| --- | --- | --- |
+| `CVC_LLM_PROVIDER` | `openai` | `anthropic` |
+| Key | `OPENAI_API_KEY` | `ANTHROPIC_API_KEY` |
+| `CVC_LLM_REASONING_EFFORT` | `none` (mặc định), `low`, `medium`, `high` | `low` (mặc định), `medium`, `high` |
+| `CVC_LLM_MAX_OUTPUT_TOKENS` | Bỏ khỏi request khi trống | `8192` khi trống |
+
+Ollama yêu cầu `CVC_LLM_REASONING_EFFORT` trống. Giá trị không hợp lệ trả
+`INVALID_REASONING_EFFORT`. Không có cờ CLI cho API key. Chỉ key của provider
+đang chọn được giữ trong config; key không xuất hiện trong repr hay thông báo lỗi.
+Key chỉ nhận ký tự ASCII `0x21–0x7E`, dài tối đa 512 ký tự, không có khoảng trắng.
+
+Đặt key qua biến môi trường tiến trình, tương thích Windows PowerShell 5.1:
+
+```powershell
+$apiKeySecure = Read-Host 'OPENAI_API_KEY' -AsSecureString
+$apiKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($apiKeySecure)
+try {
+  $env:OPENAI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($apiKeyPtr)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($apiKeyPtr)
+  $apiKeySecure.Dispose()
+}
+$apiKeySecure = Read-Host 'ANTHROPIC_API_KEY' -AsSecureString
+$apiKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($apiKeySecure)
+try {
+  $env:ANTHROPIC_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($apiKeyPtr)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($apiKeyPtr)
+  $apiKeySecure.Dispose()
+}
+```
+
+Key chỉ được đặt cho phiên PowerShell này; tiến trình con khởi chạy từ phiên
+sẽ kế thừa key. Xóa khỏi môi trường phiên sau khi dùng:
+
+```powershell
+Remove-Item Env:OPENAI_API_KEY
+Remove-Item Env:ANTHROPIC_API_KEY
+```
+
+Hoặc dùng env-file riêng đã được gitignore; không đặt key vào file example,
+command line hay commit. Với `run`, thứ tự là môi trường tiến trình > env-file;
+với `bench --config`, giá trị file ưu tiên hơn môi trường, nhưng key trống
+trong file sẽ lấy từ môi trường. Hai file example cố ý để key trống.
+
+| Tham số | Hành vi với provider API |
+| --- | --- |
+| `CVC_LLM_BASE_URL` | Bỏ qua; URL HTTPS cố định của nhà cung cấp |
+| `CVC_LLM_KEEP_ALIVE` | Bỏ qua |
+| `CVC_LLM_NUM_CTX` | Bỏ qua; provider không có context Ollama |
+| `CVC_LLM_CTX_GUARD` | Ép `false`, không chạy guard Ollama |
+| `CVC_LLM_TEMPERATURE` | Không gửi; Haiku 5.5 từ chối giá trị khác mặc định |
+| `CVC_LLM_THINK` | Không gửi; OpenAI dùng reasoning effort, Anthropic đặt thinking disabled |
+
+Transport dùng urllib chuẩn, tắt proxy và redirect, giới hạn response 4 MiB.
+Mỗi lượt dùng timeout cấu hình (hoặc timeout riêng của call). HTTP `429` và
+`5xx` retry tối đa 3 lần sau lượt đầu, chờ `1/2/4` giây; `Retry-After` là số
+nguyên giây không âm sẽ thay khoảng chờ, giới hạn 30 giây. Lỗi khác không retry.
+Body lỗi không được đưa vào thông báo.
+
+| Mã lỗi | Ý nghĩa |
+| --- | --- |
+| `MISSING_API_KEY` | Chưa đặt key cho provider đang chọn |
+| `INVALID_API_KEY` | Key vượt giới hạn hoặc chứa ký tự không hợp lệ |
+| `INVALID_REASONING_EFFORT` | Effort không thuộc tập giá trị của provider |
+| `API_HOST_NOT_ALLOWED` | URL không phải HTTPS với host và cổng được phép của provider |
+| `API_HTTP_<code>` | HTTP lỗi, gồm cả redirect `3xx` bị từ chối |
+| `API_TIMEOUT` | Timeout trực tiếp hoặc qua URLError |
+| `API_UNREACHABLE` | Lỗi kết nối/OS khác |
+| `API_BAD_RESPONSE` | JSON sai/quá lớn, thiếu text, refusal hoặc lỗi giao thức HTTP |
+
+OpenAI gửi schema bản sao giữ nguyên, dùng structured output strict và
+`store=false`. Anthropic gửi bản sao đã bỏ giới hạn độ dài/số phần tử/số học
+không hỗ trợ; pipeline vẫn validate bằng schema đầy đủ ban đầu. Response bị
+cắt vì giới hạn output vẫn trả text đã có với `done_reason=length` để pipeline
+xử lý. O8 fallback dùng cùng provider/key/effort và chỉ thay model.
+
+Ví dụ tại `llm-worker/`: dùng file env Ollama dành cho bench hiện có cho `qwen`
+(thay `C:\cv-compass-private\qwen.env` bằng vị trí file đó, chỉ có key trong
+allowlist `BENCH_ENV_KEYS`). Copy hai example cho `luna`/`haiku` nếu chưa có;
+không sửa hay ghi đè file cấu hình hiện có.
+`C:\cv-compass-private` là thư mục dữ liệu riêng do chủ dự án chuẩn bị;
+thư mục output phải mới/rỗng theo quy tắc bench.
+
+```powershell
+Copy-Item .env.openai.example .env.luna
+Copy-Item .env.anthropic.example .env.haiku
+$env:PYTHONPATH='src'
+py -3.14 -m cv_compass_llm bench `
+  --input C:\cv-compass-private\ocr --gold C:\cv-compass-private\gold `
+  --output C:\cv-compass-private\bench-l7-01 `
+  --config qwen=C:\cv-compass-private\qwen.env `
+  --config luna=.env.luna --config haiku=.env.haiku `
+  --repeat 1 --warmup 0
+```
+
+Mỗi lượt repeat/warmup gọi API lại và tính phí.
+
+Bench in `prompt_tokens`/`output_tokens` dưới dạng `.count` và `.average`;
+tổng token = count × average. `total_ns` đo toàn lời gọi API, gồm retry và
+backoff; usage chỉ nhận số nguyên không âm tới `2**53`. L7 không đổi bench.py.
+
 ## O8 — Model dự phòng sau cờ
 
 `CVC_LLM_FALLBACK_MODEL` mặc định trống: không gọi model dự phòng, giữ nguyên

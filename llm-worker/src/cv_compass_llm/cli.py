@@ -16,9 +16,12 @@ from .bench import BENCH_ERRORS, print_bench, run_bench
 from .check import run_check
 from .compare import compare
 from .config import (
+    BENCH_ENV_KEYS,
     ENV_KEYS,
+    NORM_BATCH_KEY,
     LlmConfig,
     PullConfigError,
+    _read_env,
     load_config,
     load_norm_config,
     load_pull_config,
@@ -31,8 +34,10 @@ from .normalize import run_normalize
 from .ocr_input import load_document
 from .pipeline import FALLBACK_REASONS, extract, fallback_reasons
 from .prompts import prompt_version
+from .providers.anthropic_api import AnthropicProvider
 from .providers.base import LlmProvider
 from .providers.ollama import OllamaProvider
+from .providers.openai_api import OpenAIProvider
 from .pull import run_pull
 
 INPUT_ERRORS = {
@@ -58,6 +63,10 @@ CLI_ERRORS = (
         'INVALID_TIMEOUT',
         'MISSING_CONFIG',
         'INVALID_PROVIDER',
+        'MISSING_API_KEY',
+        'INVALID_API_KEY',
+        'API_HOST_NOT_ALLOWED',
+        'INVALID_REASONING_EFFORT',
         'ENV_FILE_NOT_FOUND',
         'INVALID_ENV_FILE',
         'INVALID_TEMPERATURE',
@@ -423,21 +432,61 @@ def create_provider(config: LlmConfig) -> LlmProvider:
         options['keep_alive'] = config.keep_alive
     if config.ctx_guard:
         options['ctx_guard'] = True
-    provider = OllamaProvider(
-        config.model,
-        base_url=config.base_url,
-        timeout_s=config.timeout_s,
-        temperature=config.temperature,
-        think=config.think,
-        num_ctx=config.num_ctx,
-        **options,
-    )
+    if config.provider == 'ollama':
+        provider = OllamaProvider(
+            config.model,
+            base_url=config.base_url,
+            timeout_s=config.timeout_s,
+            temperature=config.temperature,
+            think=config.think,
+            num_ctx=config.num_ctx,
+            **options,
+        )
+    elif config.provider in ('openai', 'anthropic'):
+        provider_type = OpenAIProvider if config.provider == 'openai' else AnthropicProvider
+        provider = provider_type(
+            config.model,
+            api_key=config.api_key,
+            timeout_s=config.timeout_s,
+            reasoning_effort=config.reasoning_effort or None,
+            max_output_tokens=config.max_output_tokens,
+        )
+    else:
+        raise ValueError('INVALID_PROVIDER')
     provider.extraction_config = config
     if config.fallback_model:
         provider.fallback_provider = create_provider(
             replace(config, model=config.fallback_model, fallback_model='')
         )
     return provider
+
+
+def _create_ollama_provider(config: LlmConfig) -> LlmProvider:
+    """Keep normalization benchmarks from sending source data to external APIs."""
+    if config.provider != 'ollama':
+        raise ValueError('INVALID_PROVIDER')
+    return create_provider(config)
+
+
+def _require_ollama_bench(configurations) -> None:
+    """Reject external normalization before loading gold or requiring an API key."""
+    snapshots = [{}]
+    if configurations:
+        snapshots = []
+        for entry in configurations:
+            _, separator, path = entry.partition('=')
+            if not separator:
+                raise ValueError('BENCH_INVALID_CONFIG')
+            snapshots.append(
+                _read_env(Path(path), True, allowed_keys=BENCH_ENV_KEYS | {NORM_BATCH_KEY})
+            )
+    for values in snapshots:
+        provider = (
+            values.get(ENV_KEYS['provider'], '').strip()
+            or os.environ.get(ENV_KEYS['provider'], '').strip()
+        )
+        if provider and provider != 'ollama':
+            raise ValueError('INVALID_PROVIDER')
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -453,10 +502,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             return run_normalize(config, create_provider(config.transport.llm), once=args.once)
         if args.command == 'bench-norm':
+            _require_ollama_bench(args.config)
             report = run_norm_bench(
                 args.gold,
                 args.config,
-                provider_factory=create_provider,
+                provider_factory=_create_ollama_provider,
                 repeat=args.repeat,
                 taxonomy_path=args.taxonomy,
                 output_dir=args.output,
