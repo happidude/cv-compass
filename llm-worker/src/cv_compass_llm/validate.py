@@ -8,10 +8,12 @@ from .dates import (
     DATE_TOKEN_V3,
     ENGLISH_MONTH,
     PRESENT_TOKEN,
+    date_matches_v3,
     find_birth_dates,
     find_dates,
     has_open_period,
     has_present,
+    is_weak_date_token,
     normalize_date,
     parse_birth_date,
     parse_date,
@@ -283,6 +285,14 @@ def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[I
     return tuple(fields), tuple(issues)
 
 
+def _period_ends_source_line(evidence: Evidence, block: Block) -> bool:
+    for span in block.spans:
+        if span.page == evidence.page and span.start < evidence.end <= span.end:
+            tail = span.text[evidence.end - span.start :].split('\n', 1)[0]
+            return not tail.strip()
+    return False
+
+
 def validate_period(
     item: dict,
     block: Block,
@@ -301,13 +311,26 @@ def validate_period(
     tokens = find_dates(evidence.text, style=dates)
     precision_tokens = tokens
     if dates == 'v3':
-        # Legacy year fallbacks must not hide a month explicitly recognized by v3.
+        # Only strong month tokens can remove the legacy year fallback.
+        matches = date_matches_v3(evidence.text)
         precision_tokens = [
             value
-            for match in DATE_TOKEN_V3.finditer(evidence.text)
+            for match in matches
             if (value := parse_date(match.group(), style=dates)) in tokens
         ]
-    open_period = dates == 'v3' and allow_open_period and has_open_period(evidence.text)
+        precision_tokens.extend(
+            value[:4]
+            for match in matches
+            if is_weak_date_token(match.group())
+            and (value := parse_date(match.group(), style=dates)) is not None
+            and value[:4] in tokens
+        )
+    open_period = (
+        dates == 'v3'
+        and allow_open_period
+        and has_open_period(evidence.text)
+        and _period_ends_source_line(evidence, block)
+    )
     if open_period and item['end'] is not None:
         issues.append(Issue('QUOTE_NOT_FOUND', 'end'))
         return None, None, False, None
@@ -543,7 +566,7 @@ def _line_period(
             or (
                 number + 1 not in occupied_lines
                 and len(
-                    list(DATE_TOKEN_V3.finditer(following.text))
+                    date_matches_v3(following.text)
                     if dates == 'v3'
                     else find_dates(following.text, style=dates)
                 )
@@ -561,7 +584,7 @@ def _line_period(
     text = evidence.text
     tokens = find_dates(text, style=dates)
     date_token = DATE_TOKEN_V3 if dates == 'v3' else DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
-    matches = list(date_token.finditer(text))
+    matches = date_matches_v3(text) if dates == 'v3' else list(date_token.finditer(text))
     for match in matches:
         try:
             normalize_date(match.group(), style=dates)

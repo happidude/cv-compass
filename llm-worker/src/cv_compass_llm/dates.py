@@ -103,6 +103,8 @@ NUMERIC_RANGE_V2 = re.compile(
 
 def _tolerant_months() -> dict[str, int]:
     candidates: dict[str, set[int]] = {}
+    # Common names and words are too ambiguous to treat as misspelled months.
+    ambiguous = {'amy', 'marc', 'par', 'cot', 'esp', 'spe'}
     for number, names in enumerate(MONTHS, 1):
         name = names[0]
         variants = {name[:length] for length in range(3, len(name) + 1)}
@@ -111,7 +113,11 @@ def _tolerant_months() -> dict[str, int]:
             variants.add(short[:index] + short[index + 1] + short[index] + short[index + 2 :])
         for variant in variants:
             candidates.setdefault(variant, set()).add(number)
-    return {name: next(iter(numbers)) for name, numbers in candidates.items() if len(numbers) == 1}
+    return {
+        name: next(iter(numbers))
+        for name, numbers in candidates.items()
+        if len(numbers) == 1 and name not in ambiguous
+    }
 
 
 MONTH_NUMBERS_V3 = _tolerant_months()
@@ -122,6 +128,7 @@ ENGLISH_V3 = (
 )
 SPACED_MONTH_YEAR = r'([0-9]{1,2})[ \t]*[/.–—-][ \t]*([0-9]{4})'
 VIETNAMESE_V3 = r'(?:tháng\s+|t)' + SPACED_MONTH_YEAR
+PHONE_V3 = re.compile(r'(?<![\w+])\+?\(?[0-9]+(?:[ \t()./–—-]+[0-9]+)*\)?(?!\w)')
 DATE_TOKEN_V3 = re.compile(
     DATE_TOKEN_V2.pattern
     + r'|(?<![\w/])(?<![0-9][.,:])(?:'
@@ -227,18 +234,35 @@ def _tokens(quote: str) -> list[str]:
     ]
 
 
+def is_weak_date_token(text: str) -> bool:
+    """Identify bare numeric month/year tokens with whitespace beside the separator."""
+    return re.fullmatch(SPACED_MONTH_YEAR, text) is not None and bool(re.search(r'[ \t]', text))
+
+
+def _numeric_date_context(quote: str, start: int) -> bool:
+    prefix = quote[:start]
+    if not prefix.strip():
+        return True
+    return re.search(r'(?:[([{:,]|\b(?:from|từ|since))\s*\Z', prefix, re.IGNORECASE) is not None
+
+
 def _token_matches_v2(quote: str, *, style: str = 'v2') -> list[re.Match[str]]:
     excluded = []
     explicit_year = FOUR_DIGIT_YEAR.search(quote) is not None
     numeric_range = NUMERIC_RANGE_V3 if style == 'v3' else NUMERIC_RANGE_V2
     date_token = DATE_TOKEN_V3 if style == 'v3' else DATE_TOKEN_V2
-    for match in PHONE.finditer(quote):
+    phone = PHONE_V3 if style == 'v3' else PHONE
+    for match in phone.finditer(quote):
         digits = sum(char.isdigit() for char in match.group())
         date_range = numeric_range.fullmatch(match.group())
-        if 9 <= digits <= 15 and not (
-            date_range
-            and parse_date(date_range['start'], style=style)
-            and parse_date(date_range['end'], style=style)
+        if (
+            9 <= digits
+            and (digits <= 15 or style == 'v3')
+            and not (
+                date_range
+                and parse_date(date_range['start'], style=style)
+                and parse_date(date_range['end'], style=style)
+            )
         ):
             excluded.append((match.start(), match.end()))
     for match in NUMERIC_CHAIN.finditer(quote):
@@ -258,11 +282,27 @@ def _token_matches_v2(quote: str, *, style: str = 'v2') -> list[re.Match[str]]:
         )
         and not (explicit_year and re.fullmatch(ENGLISH_SHORT_YEAR, match.group(), re.IGNORECASE))
         and not any(left < match.end() and match.start() < right for left, right in excluded)
+        and not (
+            style == 'v3'
+            and is_weak_date_token(match.group())
+            and not _numeric_date_context(quote, match.start())
+        )
     ]
 
 
 def _tokens_v2(quote: str, *, style: str = 'v2') -> list[str]:
     return [match.group() for match in _token_matches_v2(quote, style=style)]
+
+
+def date_matches_v3(quote: str) -> list[re.Match[str]]:
+    """Collect source endpoints, preserving v2 matches when a richer match is rejected."""
+    matches = _token_matches_v2(quote, style='v3')
+    for legacy in _token_matches_v2(quote):
+        if not any(
+            match.start() < legacy.end() and legacy.start() < match.end() for match in matches
+        ):
+            matches.append(legacy)
+    return sorted(matches, key=lambda match: match.start())
 
 
 def find_dates(quote: str, *, style: str = 'v1', current_year: int | None = None) -> list[str]:
@@ -303,14 +343,12 @@ def has_open_period(quote: str) -> bool:
     if separator is None:
         return False
     prefix = quote[: separator.start()].rstrip()
-    tokens = _tokens_v2(prefix, style='v3')
-    if len(tokens) != 1:
+    matches = date_matches_v3(prefix)
+    if len(matches) != 1:
         return False
     return any(
-        match.end() == len(prefix)
-        and match.group() in tokens
-        and parse_date(match.group(), style='v3') is not None
-        for match in DATE_TOKEN_V3.finditer(prefix)
+        match.end() == len(prefix) and parse_date(match.group(), style='v3') is not None
+        for match in matches
     )
 
 

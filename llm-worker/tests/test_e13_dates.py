@@ -10,6 +10,7 @@ from test_o5_lines import numbered, position
 from cv_compass_llm.config import BENCH_ENV_KEYS, ENV_KEYS, load_config
 from cv_compass_llm.dates import find_birth_dates, find_dates, parse_birth_date, parse_date
 from cv_compass_llm.schema import Issue
+from cv_compass_llm.segmenter import Block, Span
 from cv_compass_llm.validate import validate_experiences, validate_line_experiences
 
 ENGLISH_CASES = (
@@ -115,8 +116,108 @@ class TolerantDateTests(unittest.TestCase):
                 self.assertEqual(parse_birth_date(text), (None, False))
                 self.assertEqual(find_birth_dates(text), [(text[-4:], False)])
 
+    def test_spaced_numbers_after_words_do_not_add_month_tokens(self):
+        for period in ('Phase 1 - 2020', 'Top 10 / 2020', 'Sep 3 - 2020'):
+            with self.subTest(period=period):
+                self.assertEqual(find_dates(period, style='v2'), ['2020'])
+                self.assertEqual(find_dates(period, style='v3'), ['2020'])
+                for style in ('v2', 'v3'):
+                    rows, issues = quote_period(period, '2020-05', style=style)
+                    self.assertFalse(issues)
+                    self.assertEqual(rows[0].start, '2020')
+                    rows, issues = validate_line_experiences(
+                        json.dumps({'experiences': [position(period_text=period)]}),
+                        numbered('Engineer\nSynthetic Works\n' + period),
+                        dates=style,
+                    )
+                    self.assertFalse(issues)
+                    self.assertEqual((rows[0].start, rows[0].end), ('2020', None))
+
+    def test_spaced_numeric_dates_require_explicit_context_and_keep_year_precision(self):
+        for prefix in ('', ' \t', '(', '[ ', 'Dates: ', 'Period, ', 'from ', 'từ ', 'SINCE '):
+            for token in ('3 - 2020', '3 / 2020', '3 . 2020'):
+                period = prefix + token
+                with self.subTest(period=period):
+                    self.assertIn('2020-03', find_dates(period, style='v3'))
+                    rows, issues = quote_period(period, '2020-03')
+                    self.assertFalse(issues)
+                    self.assertEqual(rows[0].start, '2020-03')
+        for period in ('3 - 2020', 'từ 3 - 2020', '3 / 2020'):
+            with self.subTest(period=period):
+                for style in ('v2', 'v3'):
+                    rows, issues = quote_period(period, '2020-05', style=style)
+                    self.assertFalse(issues)
+                    self.assertEqual(rows[0].start, '2020')
+        for period in ('Tháng 3/ 2020', 'T3/ 2020', 'Arp 2020'):
+            with self.subTest(period=period):
+                rows, issues = quote_period(period, '2020-05')
+                self.assertIn(Issue('QUOTE_NOT_FOUND', 'start'), issues)
+                self.assertIsNone(rows[0].start)
+
+    def test_common_words_and_names_are_not_month_variants(self):
+        for word in ('Amy', 'Marc', 'par', 'cot', 'esp', 'spe'):
+            period = word + ' 2020'
+            with self.subTest(word=word):
+                self.assertIsNone(parse_date(period, style='v3'))
+                self.assertEqual(find_dates(period, style='v3'), ['2020'])
+                self.assertEqual(find_dates(period, style='v3'), find_dates(period, style='v2'))
+
+    def test_spaced_phone_and_long_numeric_runs_add_no_dates(self):
+        for period in (
+            '0912 345 / 2020 678',
+            '+84 912 - 2020 55',
+            '09 / 2020 1234',
+            '09 - 2020 1234',
+            '(09 / 2020 1234)',
+            '09 / 2020 1234 5678 9012',
+            '09 - 2020 1234 5678 9012',
+        ):
+            with self.subTest(period=period):
+                self.assertEqual(find_dates(period, style='v3'), find_dates(period, style='v2'))
+
 
 class OpenPeriodTests(unittest.TestCase):
+    def test_truncated_quote_cannot_turn_a_closed_source_period_into_ongoing(self):
+        for period, start, following in (
+            ('03/2021 -', '2021-03', ' 05/2022'),
+            ('08.2022 -', '2022-08', ' Present'),
+            ('08.2022 -', '2022-08', ' unfinished'),
+        ):
+            for style in ('v2', 'v3'):
+                with self.subTest(period=period, following=following, style=style):
+                    rows, issues = validate_experiences(
+                        response(experience(start=start, end=None, ongoing=True, period=period)),
+                        block('Role-Z Org-Z ' + period + following),
+                        dates=style,
+                    )
+                    self.assertIn(Issue('QUOTE_NOT_FOUND', 'ongoing'), issues)
+                    self.assertFalse(rows[0].ongoing)
+
+    def test_open_quote_may_end_before_whitespace_or_a_new_source_line(self):
+        period = '08.2022 -'
+        for following in ('', ' \t', '\nNext line', ' \t\r\nNext line'):
+            with self.subTest(following=following):
+                rows, issues = validate_experiences(
+                    response(experience(start='2022-08', end=None, ongoing=True, period=period)),
+                    block('Role-Z Org-Z ' + period + following),
+                    dates='v3',
+                )
+                self.assertFalse(issues)
+                self.assertEqual(
+                    (rows[0].start, rows[0].end, rows[0].ongoing), ('2022-08', None, True)
+                )
+
+    def test_source_line_check_uses_the_evidence_page_and_absolute_offset(self):
+        period = '08.2022 -'
+        payload = response(experience(start='2022-08', end=None, ongoing=True, period=period))
+        for following, accepted in ((' Present', False), (' \t\nNext line', True)):
+            source = 'Role-Z Org-Z ' + period + following
+            table = Block((Span(1, 0, 5, 'Other'), Span(2, 100, 100 + len(source), source)))
+            with self.subTest(accepted=accepted):
+                rows, issues = validate_experiences(payload, table, dates='v3')
+                self.assertEqual(rows[0].ongoing, accepted)
+                self.assertEqual(bool(issues), not accepted)
+
     def test_quote_open_period_requires_model_ongoing_and_null_end(self):
         for token, start in (
             ('08.2022', '2022-08'),
