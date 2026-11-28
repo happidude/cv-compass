@@ -43,6 +43,10 @@ class AnthropicProvider(_ApiProvider):
     url = ANTHROPIC_URL
     default_effort = 'low'
     efforts = ('low', 'medium', 'high')
+    usage_fields = _ApiProvider.usage_fields + (
+        (('cache_read_input_tokens',), 'cached_input_tokens'),
+        (('cache_creation_input_tokens',), 'cache_write_tokens'),
+    )
 
     def _headers(self):
         return {

@@ -545,6 +545,12 @@ class CompareTests(DirectoryTests):
         }
         for counts in expected_personal.values():
             counts['loose'] = dict(counts)
+        expected_personal['fullName']['core'] = {
+            'correct': 1,
+            'wrong': 0,
+            'missing': 1,
+            'extra': 0,
+        }
         self.assertEqual(metrics['personal'], expected_personal)
         for kind in ('companies', 'companyPeriods', 'titles', 'positions'):
             self.assertEqual(
@@ -561,6 +567,18 @@ class CompareTests(DirectoryTests):
                         'gold': 3,
                         'precision': 1 / 3,
                         'recall': 1 / 3,
+                    },
+                    **{
+                        level: {
+                            'matched': 1,
+                            'predicted': 3,
+                            'gold': 3,
+                            'precision': 1 / 3,
+                            'recall': 1 / 3,
+                        }
+                        for level in ('core', 'coreYear')
+                        if (level == 'core' and kind != 'companyPeriods')
+                        or (level == 'coreYear' and kind == 'positions')
                     },
                 },
             )
@@ -680,7 +698,7 @@ class CompareTests(DirectoryTests):
         save(self.source / 'unknown.result.json', result_record({}, [unknown, unknown]))
         metrics = compare(self.source, self.output)
         self.assertEqual(metrics['compared'], 1)
-        for counts in metrics['experiences'].values():
+        for kind, counts in metrics['experiences'].items():
             self.assertEqual(
                 counts,
                 {
@@ -695,6 +713,18 @@ class CompareTests(DirectoryTests):
                         'gold': 0,
                         'precision': 0.0,
                         'recall': 0.0,
+                    },
+                    **{
+                        level: {
+                            'matched': 0,
+                            'predicted': 0,
+                            'gold': 0,
+                            'precision': 0.0,
+                            'recall': 0.0,
+                        }
+                        for level in ('core', 'coreYear')
+                        if (level == 'core' and kind != 'companyPeriods')
+                        or (level == 'coreYear' and kind == 'positions')
                     },
                 },
             )
