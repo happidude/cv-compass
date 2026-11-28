@@ -18,7 +18,7 @@ export const useCandidates = (before?: string) =>
     queryKey: candidateKeys.list(before),
     queryFn: ({ signal }) => listCandidates(before, signal),
   });
-export const useCandidateSearch = (filters: string, enabled: boolean) =>
+export const useCandidateSearch = (filters: string) =>
   useInfiniteQuery({
     queryKey: candidateKeys.search(filters),
     queryFn: ({ pageParam, signal }) =>
@@ -26,7 +26,8 @@ export const useCandidateSearch = (filters: string, enabled: boolean) =>
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) =>
       page.hasNext ? (page.nextCursor ?? undefined) : undefined,
-    enabled,
+    // Never ask the API for an unfiltered search over the whole corpus.
+    enabled: filters !== "",
     placeholderData: keepPreviousData,
   });
 export const useSearchOptions = () =>

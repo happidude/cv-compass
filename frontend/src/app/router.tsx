@@ -4,7 +4,11 @@ import { RequireUser, LoginPage } from "./auth";
 import { OverviewPage } from "../features/overview";
 import { DocumentsPage, DocumentPage, UploadPage } from "../features/documents";
 import { BatchesPage, BatchPage } from "../features/batches";
-import { CandidatesPage, CandidatePage } from "../features/candidates";
+import {
+  CandidatesPage,
+  CandidatePage,
+  SearchPage,
+} from "../features/candidates";
 import { PageHeader } from "../shared/ui";
 
 const documents = { label: "Quản lý CV", to: "/documents" };
@@ -53,6 +57,11 @@ export const routes = [
               parent: candidates,
               crumb: (p: Record<string, string>) => `Hồ sơ #${p.id}`,
             },
+          },
+          {
+            path: "/search",
+            element: <SearchPage />,
+            handle: { crumb: "Tìm kiếm & xếp hạng" },
           },
           {
             path: "/documents",

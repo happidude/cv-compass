@@ -526,3 +526,16 @@ test("expired session redirects to login without mock fallback", async ({
   ).toHaveCount(0);
   await expect(page.getByText("Dữ liệu mẫu")).toHaveCount(0);
 });
+test("legacy candidate search link moves to /search over HTTP", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/candidates?q=synthetic&maxYears=3");
+  await expect(page).toHaveURL(/\/search\?q=synthetic$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Tìm kiếm & xếp hạng",
+  );
+  await expect(page.getByLabel("Từ khóa", { exact: true })).toHaveValue(
+    "synthetic",
+  );
+});

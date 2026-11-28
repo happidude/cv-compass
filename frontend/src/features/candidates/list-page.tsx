@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { date } from "../../shared/format";
 import {
@@ -13,27 +13,19 @@ import {
 } from "../../shared/ui";
 import { candidateTitle, stateLabel, stateTone } from "./labels";
 import { useCandidates } from "./queries";
-import { CandidateSearchForm } from "./search-form";
-import { experienceFilterError, searchFilters } from "./search-filters";
-import { CandidateSearchResults } from "./search-results";
+import { legacySearchRedirect } from "./search-filters";
 export function CandidatesPage() {
   const [params] = useSearchParams();
-  const filters = searchFilters(params).toString();
+  // Old bookmarks of the search that used to live here move to /search.
+  const redirect = legacySearchRedirect(params);
+  if (redirect) return <Navigate to={redirect} replace />;
   return (
     <>
       <PageHeader
         title="Hồ sơ ứng viên"
         description="Hồ sơ xuất hiện ngay sau publication, có thể còn chưa xác minh. Không tự gộp theo tên/email/điện thoại."
       />
-      <CandidateSearchForm />
-      {filters ? (
-        <CandidateSearchResults
-          filters={filters}
-          valid={!experienceFilterError(params)}
-        />
-      ) : (
-        <CandidateList />
-      )}
+      <CandidateList />
     </>
   );
 }

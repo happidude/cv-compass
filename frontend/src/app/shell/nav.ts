@@ -29,6 +29,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: "Tổng quan", icon: LayoutDashboard, to: "/", end: true },
       { label: "Hồ sơ ứng viên", icon: Users, to: "/candidates" },
+      { label: "Tìm kiếm & xếp hạng", icon: Search, to: "/search" },
       { label: "Quản lý CV", icon: FileText, to: "/documents" },
       { label: "Lịch sử nhập", icon: History, to: "/batches" },
     ],
@@ -38,7 +39,6 @@ export const navGroups: NavGroup[] = [
     label: "Sắp có",
     items: [
       { label: "Hàng đợi review", icon: ListChecks },
-      { label: "Tìm kiếm & xếp hạng", icon: Search },
       { label: "Xuất PDF", icon: FileOutput },
     ],
   },

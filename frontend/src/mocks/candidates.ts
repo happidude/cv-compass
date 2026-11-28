@@ -309,7 +309,19 @@ export const candidateSearchOptions = {
     { code: "LOGISTICS", label: "Logistics / vận tải / phân phối" },
     { code: "MANUFACTURING", label: "Sản xuất công nghiệp" },
   ],
-  provinces: ["Hà Nội", "Hồ Chí Minh"],
+  // More than eight entries so the quick filter of a long group is exercised.
+  provinces: [
+    "Hà Nội",
+    "Hồ Chí Minh",
+    "Đà Nẵng",
+    "Hải Phòng",
+    "Cần Thơ",
+    "Bình Dương",
+    "Đồng Nai",
+    "Khánh Hòa",
+    "Quảng Ninh",
+    "Thừa Thiên Huế",
+  ],
 };
 export const candidateCompanySuggestions = [
   { id: 22, name: "Synthetic Logistics", parentName: "Synthetic Group" },
