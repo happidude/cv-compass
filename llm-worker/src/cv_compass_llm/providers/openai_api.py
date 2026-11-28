@@ -17,6 +17,25 @@ from .ollama import MAX_RESPONSE_BYTES, _NoRedirect, _validate_call_options
 OPENAI_URL = 'https://api.openai.com/v1/responses'
 
 
+def _strict_schema(schema):
+    """Adapt only the sent copy; local validation keeps the original constraints."""
+    if not isinstance(schema, dict):
+        return
+    schema.pop('uniqueItems', None)
+    if 'oneOf' in schema:
+        # norm-1 branches are disjoint objects with different required keys.
+        schema['anyOf'] = schema.pop('oneOf')
+    for key, value in schema.items():
+        if key in ('properties', '$defs', 'definitions', 'patternProperties'):
+            for child in value.values():
+                _strict_schema(child)
+        elif isinstance(value, dict):
+            _strict_schema(value)
+        elif isinstance(value, list):
+            for child in value:
+                _strict_schema(child)
+
+
 class _ApiProvider:
     """Share credential validation, bounded reads and content-free retry diagnostics."""
 
@@ -178,6 +197,8 @@ class OpenAIProvider(_ApiProvider):
         return {'Authorization': 'Bearer ' + self._api_key, 'Content-Type': 'application/json'}
 
     def _payload(self, prompt, json_schema):
+        sent_schema = copy.deepcopy(json_schema)
+        _strict_schema(sent_schema)
         payload = {
             'model': self.model,
             'input': prompt,
@@ -185,7 +206,7 @@ class OpenAIProvider(_ApiProvider):
                 'format': {
                     'type': 'json_schema',
                     'name': 'cv_extraction',
-                    'schema': copy.deepcopy(json_schema),
+                    'schema': sent_schema,
                     'strict': True,
                 }
             },

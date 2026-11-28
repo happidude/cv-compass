@@ -487,10 +487,16 @@ def _run_pull(config: PullConfig, provider, *, once: bool) -> int:
             last_waiting[code] = now
 
     model = model_name(config.llm.model) if config.llm.model != config.worker_token else 'REDACTED'
+    if config.llm.api_key and config.llm.api_key in config.llm.model:
+        model = 'REDACTED'
     event(
         'worker_start',
         model=model,
-        ollama=endpoint(config.llm.base_url),
+        **(
+            {'ollama': endpoint(config.llm.base_url)}
+            if config.llm.provider == 'ollama'
+            else {'provider': config.llm.provider}
+        ),
         backend=endpoint(config.backend_url),
         poll_s=config.poll_s,
         log_level=config.log_level,

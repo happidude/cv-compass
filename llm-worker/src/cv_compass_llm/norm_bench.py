@@ -9,6 +9,7 @@ from time import perf_counter
 
 from .batch_io import input_directory, load_json, prepare_output, write_json
 from .config import (
+    API_KEY_ENV,
     BENCH_ENV_KEYS,
     ENV_KEYS,
     _integer,
@@ -206,7 +207,8 @@ def _configurations(specifications, environ):
             maximum=50,
         )
         llm = load_config(
-            {key: values.get(env) for key, env in ENV_KEYS.items()},
+            {key: values.get(env) for key, env in ENV_KEYS.items()}
+            | {provider + '_api_key': values.get(key) for provider, key in API_KEY_ENV.items()},
             environ,
             None,
             env_file_explicit=False,
