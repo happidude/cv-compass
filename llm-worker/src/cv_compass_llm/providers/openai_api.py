@@ -25,6 +25,10 @@ class _ApiProvider:
     url = OPENAI_URL
     default_effort = 'none'
     efforts = ('none', 'low', 'medium', 'high')
+    usage_fields = (
+        (('input_tokens',), 'prompt_tokens'),
+        (('output_tokens',), 'output_tokens'),
+    )
 
     def __init__(
         self,
@@ -142,20 +146,22 @@ class _ApiProvider:
             data = self._request(self._payload(prompt, json_schema), timeout_s)
             try:
                 root = strict_json(data.decode('utf-8'))
+                usage = root.get('usage')
+                metrics = {}
+                for path, target in self.usage_fields:
+                    value = usage
+                    for key in path:
+                        value = value.get(key) if isinstance(value, dict) else None
+                    if type(value) is int and 0 <= value <= 2**53:
+                        metrics[target] = value
                 text, reason = self._text(root)
+                # Preserve usage for token-limit responses even when no text was produced.
+                if text or reason == 'length':
+                    self.last_metrics.update(metrics)
                 if not text:
                     raise ValueError
             except ValueError, UnicodeError, KeyError, TypeError, AttributeError, RecursionError:
                 raise ProviderError('API_BAD_RESPONSE') from None
-            usage = root.get('usage')
-            if isinstance(usage, dict):
-                for source, target in (
-                    ('input_tokens', 'prompt_tokens'),
-                    ('output_tokens', 'output_tokens'),
-                ):
-                    value = usage.get(source)
-                    if type(value) is int and 0 <= value <= 2**53:
-                        self.last_metrics[target] = value
             self.last_metrics['done_reason'] = reason
             return text
         finally:
@@ -163,6 +169,11 @@ class _ApiProvider:
 
 
 class OpenAIProvider(_ApiProvider):
+    usage_fields = _ApiProvider.usage_fields + (
+        (('output_tokens_details', 'reasoning_tokens'), 'reasoning_tokens'),
+        (('input_tokens_details', 'cached_tokens'), 'cached_input_tokens'),
+    )
+
     def _headers(self):
         return {'Authorization': 'Bearer ' + self._api_key, 'Content-Type': 'application/json'}
 

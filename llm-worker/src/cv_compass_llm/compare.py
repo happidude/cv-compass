@@ -1,5 +1,6 @@
 """Aggregate-only comparison against explicitly confirmed gold."""
 
+import re
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +16,65 @@ from .gold import (
     normalize_loose,
     result_values,
 )
+
+LEGAL = re.compile(
+    r'\b(công ty|cty|cổ phần|tnhh|co|ltd|jsc|corp|corporation|company|companny|group|vietnam|việt nam|viet nam|vn)\b'
+)
+CUT = re.compile(r'\s[-–—]\s|\s*\|\s*|\(')
+
+
+def _clean(value: str) -> str:
+    return re.sub(r'[^0-9a-zà-ỹđ]+', '', value)
+
+
+def core_company(value: str | None) -> str | None:
+    if not value:
+        return None
+    value = re.sub(r'\(.*?\)', ' ', value)
+    value = CUT.split(value)[0]
+    value = normalize_loose(value) or ''
+    return _clean(LEGAL.sub(' ', value)) or None
+
+
+def core_title(value: str | None) -> str | None:
+    if not value:
+        return None
+    return _clean(normalize_loose(CUT.split(value)[0]) or '') or None
+
+
+def core_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    value = re.sub(r'\(.*?\)', ' ', value)
+    value = re.sub(r'(?i)\b(mr|mrs|ms|miss)\b\.?', ' ', value)
+    return _clean(normalize_loose(value) or '') or None
+
+
+def core_experience_keys(items: list[dict], kind: str) -> Counter:
+    """Score core names without regrouping companies or collapsing duplicates."""
+    keys = []
+    for item in items:
+        company = core_company(item['company'])
+        if company is None:
+            continue
+        if kind == 'companies':
+            keys.append(company)
+            continue
+        period = company_period(item)
+        for position in item['positions']:
+            title = core_title(position['title'])
+            if title is None:
+                continue
+            start, end, ongoing = effective_period(position, period)
+            if kind == 'titles':
+                keys.append((company, title))
+            elif kind == 'positionsYear':
+                keys.append(
+                    (company, title, start[:4] if start else None, end[:4] if end else None)
+                )
+            else:
+                keys.append((company, title, start, end, ongoing))
+    return Counter(keys)
 
 
 def experience_keys(
@@ -60,6 +120,10 @@ def compare(results: str | Path, gold: str | Path) -> dict:
         counts['loose'] = dict.fromkeys(('correct', 'wrong', 'missing', 'extra'), 0)
     for counts in experiences.values():
         counts['loose'] = {'matched': 0, 'predicted': 0, 'gold': 0}
+    personal['fullName']['core'] = dict.fromkeys(('correct', 'wrong', 'missing', 'extra'), 0)
+    for kind in ('companies', 'titles', 'positions'):
+        experiences[kind]['core'] = {'matched': 0, 'predicted': 0, 'gold': 0}
+    experiences['positions']['coreYear'] = {'matched': 0, 'predicted': 0, 'gold': 0}
     summary = {
         'compared': 0,
         'skipped_draft': 0,
@@ -100,10 +164,13 @@ def compare(results: str | Path, gold: str | Path) -> dict:
         records = group_experiences(records)
         summary['average_seconds'] += (seconds - summary['average_seconds']) / summary['compared']
         for key in PERSONAL_FIELDS:
-            for counts, normalizer in (
+            levels = [
                 (personal[key], normalize),
                 (personal[key]['loose'], normalize_loose),
-            ):
+            ]
+            if key == 'fullName':
+                levels.append((personal[key]['core'], core_name))
+            for counts, normalizer in levels:
                 expected = normalizer(reference['personal'][key])
                 actual = normalizer(fields[key])
                 if expected == actual:
@@ -116,14 +183,34 @@ def compare(results: str | Path, gold: str | Path) -> dict:
                     category = 'wrong'
                 counts[category] += 1
         for kind, counts in experiences.items():
-            for level, normalizer in ((counts, normalize), (counts['loose'], normalize_loose)):
-                expected = experience_keys(reference['experiences'], kind, normalizer)
-                actual = experience_keys(records, kind, normalizer)
+            levels = [
+                (
+                    counts,
+                    experience_keys(reference['experiences'], kind),
+                    experience_keys(records, kind),
+                ),
+                (
+                    counts['loose'],
+                    experience_keys(reference['experiences'], kind, normalize_loose),
+                    experience_keys(records, kind, normalize_loose),
+                ),
+            ]
+            for name, core_kind in (('core', kind), ('coreYear', 'positionsYear')):
+                if name in counts:
+                    levels.append(
+                        (
+                            counts[name],
+                            core_experience_keys(reference['experiences'], core_kind),
+                            core_experience_keys(records, core_kind),
+                        )
+                    )
+            for level, expected, actual in levels:
                 level['matched'] += sum((expected & actual).values())
                 level['predicted'] += actual.total()
                 level['gold'] += expected.total()
     for counts in experiences.values():
-        for level in (counts, counts['loose']):
+        levels = [counts, *(counts[key] for key in ('loose', 'core', 'coreYear') if key in counts)]
+        for level in levels:
             level['precision'] = (
                 level['matched'] / level['predicted'] if level['predicted'] else 0.0
             )

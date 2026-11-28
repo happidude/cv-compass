@@ -11,6 +11,9 @@ from uuid import UUID
 METRICS = (
     'prompt_tokens',
     'output_tokens',
+    'reasoning_tokens',
+    'cached_input_tokens',
+    'cache_write_tokens',
     'prompt_s',
     'output_s',
     'load_s',
@@ -30,6 +33,9 @@ def call_metrics(raw: object) -> dict:
     for key in (
         'prompt_tokens',
         'output_tokens',
+        'reasoning_tokens',
+        'cached_input_tokens',
+        'cache_write_tokens',
         'prompt_ns',
         'output_ns',
         'load_ns',

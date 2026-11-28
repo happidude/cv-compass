@@ -116,7 +116,7 @@ class _MetricsProvider:
         try:
             response = self.provider.generate(prompt, json_schema, **options)
         except Exception:
-            self.calls.append({})
+            self.calls.append(call_metrics(getattr(self.provider, 'last_metrics', None)))
             raise
         self.calls.append(call_metrics(getattr(self.provider, 'last_metrics', None)))
         return response
@@ -430,7 +430,7 @@ def print_metrics(metrics: dict, prefix: str = '') -> None:
             print(f'{name}={value}')
 
 
-def create_provider(config: LlmConfig) -> LlmProvider:
+def create_provider(config: LlmConfig, *, default_max_output_tokens: int = 4000) -> LlmProvider:
     """Share run provider construction with the injectable benchmark factory."""
     _ = config.provenance_model
     options = {}
@@ -457,14 +457,19 @@ def create_provider(config: LlmConfig) -> LlmProvider:
             api_key=config.api_key,
             timeout_s=config.timeout_s,
             reasoning_effort=config.reasoning_effort or None,
-            max_output_tokens=config.max_output_tokens,
+            max_output_tokens=(
+                config.max_output_tokens
+                if config.max_output_tokens is not None
+                else default_max_output_tokens
+            ),
         )
     else:
         raise ValueError('INVALID_PROVIDER')
     provider.extraction_config = config
     if config.fallback_model:
         provider.fallback_provider = create_provider(
-            replace(config, model=config.fallback_model, fallback_model='')
+            replace(config, model=config.fallback_model, fallback_model=''),
+            default_max_output_tokens=default_max_output_tokens,
         )
     return provider
 
@@ -508,7 +513,11 @@ def main(argv: list[str] | None = None) -> int:
                 env_file_explicit=args.env_file is not None,
                 cli=vars(args),
             )
-            return run_normalize(config, create_provider(config.transport.llm), once=args.once)
+            return run_normalize(
+                config,
+                create_provider(config.transport.llm, default_max_output_tokens=2000),
+                once=args.once,
+            )
         if args.command == 'bench-norm':
             _require_ollama_bench(args.config)
             report = run_norm_bench(

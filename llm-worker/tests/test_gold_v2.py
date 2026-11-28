@@ -385,6 +385,18 @@ class GroupedCompareTests(DirectoryTests):
                         'precision': matched / count,
                         'recall': matched / count,
                     },
+                    **{
+                        level: {
+                            'matched': matched,
+                            'predicted': count,
+                            'gold': count,
+                            'precision': matched / count,
+                            'recall': matched / count,
+                        }
+                        for level in ('core', 'coreYear')
+                        if (level == 'core' and kind != 'companyPeriods')
+                        or (level == 'coreYear' and kind == 'positions')
+                    },
                 },
             )
         for flag in ([], ['--json']):
@@ -469,6 +481,18 @@ class GroupedCompareTests(DirectoryTests):
                         'gold': matched,
                         'precision': matched / count,
                         'recall': 1,
+                    },
+                    **{
+                        level: {
+                            'matched': matched,
+                            'predicted': count,
+                            'gold': matched,
+                            'precision': matched / count,
+                            'recall': 1,
+                        }
+                        for level in ('core', 'coreYear')
+                        if (level == 'core' and kind != 'companyPeriods')
+                        or (level == 'coreYear' and kind == 'positions')
                     },
                 },
             )

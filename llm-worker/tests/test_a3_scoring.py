@@ -77,7 +77,13 @@ class CompareLooseTests(fixtures.DirectoryTests):
                 'invalid_gold': 0,
                 'invalid_results': 0,
                 'personal': {
-                    'fullName': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
+                    'fullName': {
+                        'correct': 1,
+                        'wrong': 0,
+                        'missing': 1,
+                        'extra': 0,
+                        'core': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
+                    },
                     'gender': {'correct': 1, 'wrong': 1, 'missing': 0, 'extra': 0},
                     'location': {'correct': 1, 'wrong': 0, 'missing': 1, 'extra': 0},
                     'dateOfBirth': {'correct': 0, 'wrong': 1, 'missing': 0, 'extra': 1},
@@ -89,6 +95,18 @@ class CompareLooseTests(fixtures.DirectoryTests):
                         'gold': 3,
                         'precision': 1 / 3,
                         'recall': 1 / 3,
+                        **{
+                            level: {
+                                'matched': 1,
+                                'predicted': 3,
+                                'gold': 3,
+                                'precision': 1 / 3,
+                                'recall': 1 / 3,
+                            }
+                            for level in ('core', 'coreYear')
+                            if (level == 'core' and kind != 'companyPeriods')
+                            or (level == 'coreYear' and kind == 'positions')
+                        },
                     }
                     for kind in ('companies', 'companyPeriods', 'titles', 'positions')
                 },

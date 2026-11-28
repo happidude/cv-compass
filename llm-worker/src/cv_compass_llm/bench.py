@@ -111,7 +111,12 @@ def _aggregate(runs: list[dict], comparisons: list[dict], seconds: list[float]) 
             }
         )
     for kind in ('positions', 'companies', 'titles', 'companyPeriods'):
-        for level in ('', 'loose.'):
+        levels = ['', 'loose.']
+        if kind != 'companyPeriods':
+            levels.append('core.')
+        if kind == 'positions':
+            levels.append('coreYear.')
+        for level in levels:
             prefix = f'experiences.{kind}.' + level
             for metric, denominator in (('precision', 'predicted'), ('recall', 'gold')):
                 counts[prefix + metric] = (
@@ -139,12 +144,21 @@ def _aggregate(runs: list[dict], comparisons: list[dict], seconds: list[float]) 
         for key in ('issues', 'errors'):
             counts.update({f'{key}.{code}': count for code, count in summary[key].items()})
     metrics = dict(counts) | _timing(seconds)
-    for key in ('prompt_tokens', 'output_tokens', 'tok_s'):
+    for key in (
+        'prompt_tokens',
+        'output_tokens',
+        'reasoning_tokens',
+        'cached_input_tokens',
+        'cache_write_tokens',
+        'tok_s',
+    ):
         samples = [summary.get('llm_metrics', {}).get(key, {}) for summary in runs]
         count = sum(sample.get('count', 0) for sample in samples)
         total = sum(sample.get('total', 0) for sample in samples)
         metrics[key + '.count'] = count
         metrics[key + '.average'] = total / count if count else None
+        if key != 'tok_s':
+            metrics[key + '.total'] = total
     return metrics
 
 

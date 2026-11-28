@@ -55,7 +55,7 @@ opener giả lập và dữ liệu tổng hợp, không gọi API thật.
 | `CVC_LLM_PROVIDER` | `openai` | `anthropic` |
 | Key | `OPENAI_API_KEY` | `ANTHROPIC_API_KEY` |
 | `CVC_LLM_REASONING_EFFORT` | `none` (mặc định), `low`, `medium`, `high` | `low` (mặc định), `medium`, `high` |
-| `CVC_LLM_MAX_OUTPUT_TOKENS` | Bỏ khỏi request khi trống | `8192` khi trống |
+| `CVC_LLM_MAX_OUTPUT_TOKENS` | `4000` cho extraction, `2000` cho normalize khi trống | `4000` cho extraction, `2000` cho normalize khi trống |
 
 Ollama yêu cầu `CVC_LLM_REASONING_EFFORT` trống. Giá trị không hợp lệ trả
 `INVALID_REASONING_EFFORT`. Không có cờ CLI cho API key. Chỉ key của provider
@@ -149,9 +149,23 @@ py -3.14 -m cv_compass_llm bench `
 
 Mỗi lượt repeat/warmup gọi API lại và tính phí.
 
-Bench in `prompt_tokens`/`output_tokens` dưới dạng `.count` và `.average`;
-tổng token = count × average. `total_ns` đo toàn lời gọi API, gồm retry và
-backoff; usage chỉ nhận số nguyên không âm tới `2**53`. L7 không đổi bench.py.
+Bench in `prompt_tokens`, `output_tokens`, `reasoning_tokens`,
+`cached_input_tokens`, `cache_write_tokens` dưới dạng `.count`, `.average` và
+`.total`. OpenAI cung cấp reasoning và cached input; Anthropic cung cấp cache
+read và cache creation tương ứng hai metric cache. Chỉ ghi khi API trả số
+nguyên từ 0 tới `2**53`; thiếu số thì không tính vào mẫu số trung bình.
+Không có mẫu thì `.count`/`.total` là 0 và `.average` là `null`.
+Với response không có text hợp lệ, usage chỉ được tính khi response
+incomplete/max_tokens, kể cả text rỗng; refusal/response lỗi không ghi token
+(vẫn có thể bị tính phí).
+`total_ns` đo toàn lời gọi API, gồm retry và backoff.
+
+Bench không đếm được token của lời gọi hết giờ (timeout không có usage), nên
+`.total` có thể thấp hơn số token thực tế bị tính phí. Khuyến nghị đặt rõ
+`CVC_LLM_MAX_OUTPUT_TOKENS` theo ngân sách. Khi trống, factory CLI dùng 4000
+cho extraction (`run`/`bench`), 2000 cho đường `normalize`; cấu hình rõ ràng
+luôn thắng mặc định. Ollama giữ hành vi cũ: không gửi `num_predict` khi trống.
+Quyền dùng API cho normalize vẫn theo giới hạn provider của lệnh hiện tại.
 
 ## O8 — Model dự phòng sau cờ
 
@@ -405,6 +419,25 @@ Grouping và kỳ kinh nghiệm dùng cùng quy tắc ở cả hai mức.
 lượt đo rồi tính lại tỷ lệ. Bảng bench đặt cột loose ngay cạnh cột strict của
 từng cấu hình, mỗi mức có delta riêng. Chỉ số không có mức loose hiển thị `-`
 trong cột loose.
+
+Mức **core** thêm `experiences.{companies,titles,positions}.core`, gồm
+`matched`, `predicted`, `gold`, `precision`, `recall`. Công ty bỏ phần trong
+ngoặc, cắt phần sau ` - `, ` – `, ` — `, `|` hoặc ngoặc mở còn lại, rồi dùng
+loose, bỏ từ pháp lý/địa lý (`công ty`, `cty`, `cổ phần`, `tnhh`, `co`, `ltd`,
+`jsc`, `corp`, `corporation`, `company`, `companny`, `group`, `vietnam`,
+`việt nam`, `viet nam`, `vn`) và giữ chữ/số. Chức danh cắt tại các dấu phân
+cách trên trước khi dùng loose và giữ chữ/số. Công ty lõi rỗng bị bỏ; chức
+danh lõi rỗng không góp vào titles/positions. Các mục còn lại vẫn dùng multiset,
+không gộp thêm công ty theo tên lõi và không tăng matched vì dự đoán trùng.
+
+Positions core so cả `(company, title, start, end, ongoing)` theo kỳ hiệu lực
+và độ chính xác tháng hiện có. `experiences.positions.coreYear` chỉ dùng
+`(company, title, năm start, năm end)`, giữ null và không đưa ongoing vào key.
+`personal.fullName.core` có `correct`, `wrong`, `missing`, `extra`: bỏ ngoặc
+và danh xưng `Mr`, `Mrs`, `Ms`, `Miss` (kèm dấu chấm tùy chọn), dùng loose rồi
+giữ chữ/số. Các metric này chỉ phục vụ đo lường, không sửa kết quả trích xuất.
+Bench cộng số đếm qua các lượt rồi tính lại precision/recall; core/coreYear
+in thành dòng riêng và hiển thị `-` ở cột loose.
 
 Kỳ công ty dùng nguyên bộ `(start, end, ongoing)` đã ghi trong gold nếu có start,
 end hoặc ongoing; nếu chưa có thì suy từ vị trí: start sớm nhất, end muộn nhất,
