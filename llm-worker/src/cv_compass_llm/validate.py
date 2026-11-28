@@ -5,13 +5,18 @@ import re
 from .dates import (
     DATE_TOKEN,
     DATE_TOKEN_V2,
+    DATE_TOKEN_V3,
     ENGLISH_MONTH,
     PRESENT_TOKEN,
+    date_matches_v3,
     find_birth_dates,
     find_dates,
+    has_open_period,
     has_present,
+    is_weak_date_token,
     normalize_date,
     parse_birth_date,
+    parse_date,
 )
 from .evidence import (
     find_personal,
@@ -280,12 +285,21 @@ def _personal(data: dict, block: Block) -> tuple[tuple[FieldValue, ...], tuple[I
     return tuple(fields), tuple(issues)
 
 
+def _period_ends_source_line(evidence: Evidence, block: Block) -> bool:
+    for span in block.spans:
+        if span.page == evidence.page and span.start < evidence.end <= span.end:
+            tail = span.text[evidence.end - span.start :].split('\n', 1)[0]
+            return not tail.strip()
+    return False
+
+
 def validate_period(
     item: dict,
     block: Block,
     issues: list[Issue],
     *,
     dates: str = 'v1',
+    allow_open_period: bool = True,
 ) -> tuple[str | None, str | None, bool, Evidence | None]:
     """Validate quoted dates, ongoing status and chronological order."""
     if item['start'] is None and item['end'] is None and not item['ongoing']:
@@ -295,7 +309,32 @@ def validate_period(
         issues.append(Issue('QUOTE_NOT_FOUND', 'period'))
         return None, None, False, None
     tokens = find_dates(evidence.text, style=dates)
-    explicit_ongoing = has_present(evidence.text)
+    precision_tokens = tokens
+    if dates == 'v3':
+        # Only strong month tokens can remove the legacy year fallback.
+        matches = date_matches_v3(evidence.text)
+        precision_tokens = [
+            value
+            for match in matches
+            if (value := parse_date(match.group(), style=dates)) in tokens
+        ]
+        precision_tokens.extend(
+            value[:4]
+            for match in matches
+            if is_weak_date_token(match.group())
+            and (value := parse_date(match.group(), style=dates)) is not None
+            and value[:4] in tokens
+        )
+    open_period = (
+        dates == 'v3'
+        and allow_open_period
+        and has_open_period(evidence.text)
+        and _period_ends_source_line(evidence, block)
+    )
+    if open_period and item['end'] is not None:
+        issues.append(Issue('QUOTE_NOT_FOUND', 'end'))
+        return None, None, False, None
+    explicit_ongoing = has_present(evidence.text) or (open_period and item['ongoing'])
     normalized_dates = []
     ongoing = item['ongoing']
     for key in ('start', 'end'):
@@ -309,11 +348,11 @@ def validate_period(
             issues.append(Issue('INVALID_DATE', key))
             return None, None, False, None
         if (
-            dates == 'v2'
+            dates in ('v2', 'v3')
             and date is not None
             and len(date) == 7
             and date not in tokens
-            and date[:4] in tokens
+            and date[:4] in precision_tokens
         ):
             date = date[:4]
         if (present and (key != 'end' or not explicit_ongoing)) or (
@@ -471,7 +510,7 @@ def _line_range(
 def _period_continues(text: str, following: str, *, dates: str = 'v1') -> bool:
     """Require an explicit range boundary or an unfinished date before joining lines."""
     text, following = text.strip(), following.strip()
-    date_token = DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
+    date_token = DATE_TOKEN_V3 if dates == 'v3' else DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
     connector = r'(?:[-–—~]|\b(?:to|đến)\b)'
     if (
         re.search(connector + r'$', text, re.IGNORECASE)
@@ -523,10 +562,15 @@ def _line_period(
         and following.page == span.page
         and span.end == following.start
         and (
-            dates != 'v2'
+            dates not in ('v2', 'v3')
             or (
                 number + 1 not in occupied_lines
-                and len(find_dates(following.text, style=dates)) <= 1
+                and len(
+                    date_matches_v3(following.text)
+                    if dates == 'v3'
+                    else find_dates(following.text, style=dates)
+                )
+                <= 1
             )
         )
         and _period_continues(span.text, following.text, dates=dates)
@@ -539,14 +583,21 @@ def _line_period(
         return None, None, False, None
     text = evidence.text
     tokens = find_dates(text, style=dates)
-    date_token = DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
-    matches = list(date_token.finditer(text))
+    date_token = DATE_TOKEN_V3 if dates == 'v3' else DATE_TOKEN_V2 if dates == 'v2' else DATE_TOKEN
+    matches = date_matches_v3(text) if dates == 'v3' else list(date_token.finditer(text))
     for match in matches:
         try:
             normalize_date(match.group(), style=dates)
         except ValueError:
             issues.append(Issue('INVALID_DATE', 'period'))
             return None, None, False, None
+    if dates == 'v3':
+        # Overlapping v2 year fallbacks are support for quotes, not extra endpoints.
+        tokens = [
+            value
+            for match in matches
+            if (value := parse_date(match.group(), style=dates)) in tokens
+        ]
     present = PRESENT_TOKEN.search(text)
     if (
         not tokens
@@ -566,6 +617,7 @@ def _line_period(
         block,
         issues,
         dates=dates,
+        allow_open_period=False,
     )
 
 
@@ -577,7 +629,9 @@ def validate_line_experiences(
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
     rows, issues = [], []
-    item_lines = [_experience_lines(item) for item in data['experiences']] if dates == 'v2' else []
+    item_lines = (
+        [_experience_lines(item) for item in data['experiences']] if dates in ('v2', 'v3') else []
+    )
     for index, item in enumerate(data['experiences']):
         title, title_evidence = _line_value(item['title'], table, 'title', issues)
         company, company_evidence = _line_value(item['company'], table, 'company', issues)
