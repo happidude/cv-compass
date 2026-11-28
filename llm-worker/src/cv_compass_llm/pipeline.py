@@ -142,6 +142,7 @@ def extract(
     dates = config.dates if config is not None else 'v1'
     name_trim = config.name_trim if config is not None else 'off'
     quote_match = config.quote_match if config is not None else 'strict'
+    prompt_rules = config.prompt_rules if config is not None else 'v1'
     use_lines = config is not None and config.evidence == 'lines'
     trim_input = config is not None and config.trim_input
     retained = set()
@@ -297,7 +298,11 @@ def extract(
         block, block_text, block_table, chars_before = experience_input(block)
         prompt = (
             build_lines_prompt(
-                block_text, whole=True, schema_text=schema_text, name_style=name_style
+                block_text,
+                whole=True,
+                schema_text=schema_text,
+                name_style=name_style,
+                prompt_rules=prompt_rules,
             )
             if use_lines
             else build_whole_prompt(
@@ -305,6 +310,7 @@ def extract(
                 schema_text=schema_text,
                 whole_personal=whole_personal,
                 name_style=name_style,
+                prompt_rules=prompt_rules,
             )
         )
         ratio = config.ctx_chars_per_token if config is not None else 2.5
@@ -344,6 +350,7 @@ def extract(
                         dates=dates,
                         name_trim=name_trim,
                         quote_match=quote_match,
+                        prompt_rules=prompt_rules,
                     )
                 else:
                     _, experiences, errors = validate_whole(
@@ -353,6 +360,7 @@ def extract(
                         dates=dates,
                         name_trim=name_trim,
                         quote_match=quote_match,
+                        prompt_rules=prompt_rules,
                     )
                 issues.extend(error for error in errors if error.field not in PERSONAL_KEYS)
             if on_block is not None:
@@ -419,10 +427,18 @@ def extract(
         try:
             response = generate(
                 f'block-{block_number}',
-                build_lines_prompt(block_text, schema_text=schema_text, name_style=name_style)
+                build_lines_prompt(
+                    block_text,
+                    schema_text=schema_text,
+                    name_style=name_style,
+                    prompt_rules=prompt_rules,
+                )
                 if use_lines
                 else build_experience_prompt(
-                    block_text, schema_text=schema_text, name_style=name_style
+                    block_text,
+                    schema_text=schema_text,
+                    name_style=name_style,
+                    prompt_rules=prompt_rules,
                 ),
                 LINES_EXPERIENCE_SCHEMA if use_lines else EXPERIENCE_SCHEMA,
             )
@@ -433,11 +449,21 @@ def extract(
         check_truncated('experiences')
         values, errors = (
             validate_line_experiences(
-                response, block_table, dates=dates, name_trim=name_trim, quote_match=quote_match
+                response,
+                block_table,
+                dates=dates,
+                name_trim=name_trim,
+                quote_match=quote_match,
+                prompt_rules=prompt_rules,
             )
             if use_lines
             else validate_experiences(
-                response, block, dates=dates, name_trim=name_trim, quote_match=quote_match
+                response,
+                block,
+                dates=dates,
+                name_trim=name_trim,
+                quote_match=quote_match,
+                prompt_rules=prompt_rules,
             )
         )
         experiences.extend(values)

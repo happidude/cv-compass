@@ -151,10 +151,13 @@ def _trim_name(
     *,
     company: str | None = None,
     title: bool = False,
+    prompt_rules: str = 'v1',
 ) -> tuple[str | None, Evidence | None]:
     if value is None or evidence is None:
         return value, evidence
-    left, right = trim_title(value, company) if title else trim_company(value)
+    left, right = (
+        trim_title(value, company, prompt_rules=prompt_rules) if title else trim_company(value)
+    )
     trimmed = value[left:right]
     # supported() returns the literal value inside a possibly larger quote.
     start = evidence.start + evidence.text.index(value) + left
@@ -420,12 +423,20 @@ def validate_experiences(
     dates: str = 'v1',
     name_trim: str = 'off',
     quote_match: str = 'strict',
+    prompt_rules: str = 'v1',
 ) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     """Validate experience records and retain their source evidence."""
     data = parse_response(text, EXPERIENCE_SCHEMA)
     if data is None:
         return (), (Issue('LLM_INVALID_JSON'),)
-    return _experiences(data, block, dates=dates, name_trim=name_trim, quote_match=quote_match)
+    return _experiences(
+        data,
+        block,
+        dates=dates,
+        name_trim=name_trim,
+        quote_match=quote_match,
+        prompt_rules=prompt_rules,
+    )
 
 
 def _experiences(
@@ -435,6 +446,7 @@ def _experiences(
     dates: str = 'v1',
     name_trim: str = 'off',
     quote_match: str = 'strict',
+    prompt_rules: str = 'v1',
 ) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     experiences, issues = [], []
     for item in data['experiences']:
@@ -463,7 +475,9 @@ def _experiences(
         )
         if name_trim == 'on':
             company, company_evidence = _trim_name(company, company_evidence)
-            title, title_evidence = _trim_name(title, title_evidence, company=company, title=True)
+            title, title_evidence = _trim_name(
+                title, title_evidence, company=company, title=True, prompt_rules=prompt_rules
+            )
         start, end, ongoing, period = validate_period(
             item, block, issues, dates=dates, quote_match=quote_match
         )
@@ -491,6 +505,7 @@ def validate_whole(
     dates: str = 'v1',
     name_trim: str = 'off',
     quote_match: str = 'strict',
+    prompt_rules: str = 'v1',
 ) -> tuple[tuple[FieldValue, ...], tuple[Experience, ...], tuple[Issue, ...]]:
     """Parse once and apply the same evidence rules as block extraction."""
     data = parse_response(text, WHOLE_SCHEMA if whole_personal else EXPERIENCE_SCHEMA)
@@ -498,7 +513,12 @@ def validate_whole(
         return (), (), (Issue('LLM_INVALID_JSON'),)
     fields, personal_issues = _personal(data, block) if whole_personal else ((), ())
     experiences, experience_issues = _experiences(
-        data, block, dates=dates, name_trim=name_trim, quote_match=quote_match
+        data,
+        block,
+        dates=dates,
+        name_trim=name_trim,
+        quote_match=quote_match,
+        prompt_rules=prompt_rules,
     )
     return fields, experiences, (*personal_issues, *experience_issues)
 
@@ -708,6 +728,7 @@ def validate_line_experiences(
     dates: str = 'v1',
     name_trim: str = 'off',
     quote_match: str = 'strict',
+    prompt_rules: str = 'v1',
 ) -> tuple[tuple[Experience, ...], tuple[Issue, ...]]:
     """Resolve short model values and derive periods from numbered source lines."""
     data = parse_response(text, LINES_EXPERIENCE_SCHEMA)
@@ -726,7 +747,9 @@ def validate_line_experiences(
         )
         if name_trim == 'on':
             company, company_evidence = _trim_name(company, company_evidence)
-            title, title_evidence = _trim_name(title, title_evidence, company=company, title=True)
+            title, title_evidence = _trim_name(
+                title, title_evidence, company=company, title=True, prompt_rules=prompt_rules
+            )
         # An adjacent item's explicit evidence is not a continuation of this period.
         occupied_lines = frozenset(
             number

@@ -1042,6 +1042,35 @@ Mỗi field cần nới so khớp ghi `QUOTE_MATCH_RELAXED` với field title/co
 để đếm trong báo cáo; issue này không gửi trong payload pull và không đổi fallback.
 Không tìm thấy chuỗi có trong nguồn vẫn trả `QUOTE_NOT_FOUND`.
 
+## Prompt tách vai trò và cắt hậu tố công ty (E13 C)
+
+`CVC_LLM_PROMPT_RULES=v1|v3` mặc định `v1`: prompt và `prompt_version` cũ giữ
+nguyên. Dùng `--prompt-rules v3` cho `run`/`pull`, môi trường, `.env` hoặc
+`bench --config` để bật v3; ưu tiên CLI > môi trường > file. Giá trị khác trả
+`INVALID_PROMPT_RULES`; pull kèm tên key `CVC_LLM_PROMPT_RULES`, không in giá trị.
+Run summary và sự kiện pull `worker_start` ghi `prompt_rules`.
+
+V3 thêm một khối chỉ dẫn trước dữ liệu CV cho cả blocks, whole và lines;
+prompt personal giữ nguyên. `prompt_version` thêm `-r3` sau các hậu tố hiện có.
+Chỉ dẫn yêu cầu tách chức danh ghép thành hai record khi đó là hai vai trò khác
+nhau, giữ chung công ty và period; mỗi title vẫn là một đoạn nguyên văn liền mạch.
+Không tách phạm vi/đơn vị/kênh của một vai trò, ví dụ
+`Director, Creative Merchandising`, `Area Sales Manager | Traditional Trade Channel`,
+`Manager, Category Management – Home & Living`, `EAF, LF, CCM supervisor`.
+Company phải là tên tổ chức; với `X at/of Y` chọn Y, không chọn mô tả, địa điểm
+hoặc kỹ năng. Quét toàn bộ CV hai cột, bảng tóm tắt và chi tiết, kể cả đầu trang;
+mỗi vị trí chỉ liệt kê một lần.
+
+Khi đồng thời `name_trim=on` và `prompt_rules=v3`, code cắt hậu tố title sau
+` – `, ` - ` hoặc ` | ` nếu hậu tố khớp tên lõi company sau khi bỏ từ pháp lý,
+dấu câu và khác biệt hoa/thường, với tên lõi còn ít nhất 3 ký tự chữ/số.
+Không coi `Co` trong tên như `Co-op Mart` là từ pháp lý. Quy tắc mới không cắt
+hậu tố phạm vi/kênh; các luật cắt cũ tại ` / ` và ` | ` vẫn chạy. Ví dụ tổng hợp
+`Sales Lead – Northwind Trading Co., Ltd` với company `NORTHWIND TRADING`
+trở thành `Sales Lead`; `Manager, Category Management – Home & Living` giữ nguyên.
+Kết quả rỗng giữ nguyên tên; evidence và offset luôn là lát cắt raw.
+Test tổng hợp và SHA256 v3 ở `tests/test_e13_prompt_rules.py`; SHA256 cũ không sửa.
+
 ## Cắt tên bằng quy tắc sau validation (A4)
 
 `CVC_LLM_NAME_TRIM=off|on` mặc định `off`. Có thể đặt trong môi trường,
