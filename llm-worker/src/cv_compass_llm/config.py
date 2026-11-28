@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 ENV_KEYS = {
     'provider': 'CVC_LLM_PROVIDER',
+    'reasoning_effort': 'CVC_LLM_REASONING_EFFORT',
     'model': 'CVC_LLM_MODEL',
     'fallback_model': 'CVC_LLM_FALLBACK_MODEL',
     'fallback_drop_ratio': 'CVC_LLM_FALLBACK_DROP_RATIO',
@@ -45,6 +46,7 @@ ENV_KEYS = {
     'max_http_attempts': 'CVC_LLM_MAX_HTTP_ATTEMPTS',
     'log_level': 'CVC_LLM_LOG_LEVEL',
 }
+API_KEY_ENV = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY'}
 NORM_BATCH_KEY = 'CVC_NORM_BATCH'
 NORM_MAX_BODY_BYTES = 65536
 NORM_MAX_FIELD_CODEPOINTS = 255
@@ -54,6 +56,7 @@ BENCH_ENV_KEYS = frozenset(
     ENV_KEYS[name]
     for name in (
         'provider',
+        'reasoning_effort',
         'model',
         'fallback_model',
         'fallback_drop_ratio',
@@ -80,7 +83,7 @@ BENCH_ENV_KEYS = frozenset(
         'ctx_fine_tiers',
         'ctx_guard',
     )
-)
+) | frozenset(API_KEY_ENV.values())
 
 
 @dataclass(frozen=True)
@@ -111,6 +114,8 @@ class LlmConfig:
     name_style: str = 'raw'
     dates: str = 'v1'
     name_trim: str = 'off'
+    reasoning_effort: str = ''
+    api_key: str = field(default='', repr=False, compare=False)
 
     @property
     def provenance_model(self) -> str:
@@ -145,8 +150,8 @@ def _read_env(
             raise ValueError
         text = data.decode('utf-8', errors='strict')
         values = {}
-        for line in text.splitlines():
-            line = line.strip()
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
             if not line or line.startswith('#'):
                 continue
             key, separator, value = line.partition('=')
@@ -159,7 +164,15 @@ def _read_env(
                 if len(value) < 2 or value[-1] != value[0]:
                     raise ValueError
                 value = value[1:-1].strip()
-            if key.startswith(('CVC_LLM_', 'CVC_NORM_')):
+            if key in API_KEY_ENV.values():
+                if key in values:
+                    raise ValueError
+                # Preserve credential bytes so whitespace cannot hide an invalid key.
+                value = raw_line.partition('=')[2]
+                if value.startswith(('"', "'")) and value[-1:] == value[:1]:
+                    value = value[1:-1]
+                values[key] = value
+            elif key.startswith(('CVC_LLM_', 'CVC_NORM_')):
                 if key == 'CVC_LLM_WORKER_TOKEN':
                     raise PullConfigError(key, 'TOKEN_IN_ENV_FILE')
                 if (key not in ENV_KEYS.values() and key != NORM_BATCH_KEY) or key in values:
@@ -202,6 +215,18 @@ def validate_keep_alive(value: str | None) -> None:
         raise ValueError('INVALID_KEEP_ALIVE')
 
 
+def validate_api_key(value: str) -> None:
+    """Reject unsafe header values without including the credential in diagnostics."""
+    if value == '':
+        raise ValueError('MISSING_API_KEY')
+    if (
+        not isinstance(value, str)
+        or len(value) > 512
+        or any(not 0x21 <= ord(char) <= 0x7E for char in value)
+    ):
+        raise ValueError('INVALID_API_KEY')
+
+
 def load_config(
     cli: Mapping[str, str | None],
     environ: Mapping[str, str],
@@ -235,8 +260,32 @@ def load_config(
     provider, model = value('provider'), value('model')
     if not provider or not model:
         raise ValueError('MISSING_CONFIG')
-    if provider != 'ollama':
+    if provider not in ('ollama', 'openai', 'anthropic'):
         raise ValueError('INVALID_PROVIDER')
+    api = provider != 'ollama'
+    reasoning_effort = value(
+        'reasoning_effort', {'ollama': '', 'openai': 'none', 'anthropic': 'low'}[provider]
+    )
+    efforts = {
+        'ollama': ('',),
+        'openai': ('none', 'low', 'medium', 'high'),
+        'anthropic': ('low', 'medium', 'high'),
+    }
+    if reasoning_effort not in efforts[provider]:
+        raise ValueError('INVALID_REASONING_EFFORT')
+    api_key = ''
+    if api:
+        key_name = provider + '_api_key'
+        key_env = API_KEY_ENV[provider]
+        for candidate in (
+            cli.get(key_name),
+            environ.get(key_env),
+            file_values.get(key_env),
+        ):
+            if candidate is not None and candidate != '':
+                api_key = candidate
+                break
+        validate_api_key(api_key)
     timeout = _number(value('timeout', '120'), 'INVALID_TIMEOUT', minimum=0, maximum=math.inf)
     if timeout <= 0:
         raise ValueError('INVALID_TIMEOUT')
@@ -275,12 +324,15 @@ def load_config(
         ('trim_input', 'false'),
         ('trim_sections', 'false'),
     ):
+        if api and name == 'ctx_guard':
+            flags[name] = False
+            continue
         flag = value(name, default).lower()
         if flag not in ('true', 'false'):
             raise ValueError('INVALID_' + name.upper())
         flags[name] = flag == 'true'
     max_output_tokens = value('max_output_tokens')
-    keep_alive = value('keep_alive') or None
+    keep_alive = None if api else value('keep_alive') or None
     validate_keep_alive(keep_alive)
     fallback_drop_ratio = _number(
         value('fallback_drop_ratio', '0.3'),
@@ -292,6 +344,8 @@ def load_config(
         raise ValueError('INVALID_FALLBACK_DROP_RATIO')
     config = LlmConfig(
         provider=provider,
+        reasoning_effort=reasoning_effort,
+        api_key=api_key,
         model=model,
         fallback_model=value('fallback_model'),
         fallback_drop_ratio=fallback_drop_ratio,
@@ -300,7 +354,7 @@ def load_config(
         max_blocks=max_blocks,
         temperature=temperature,
         think=think == 'true',
-        num_ctx=_integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
+        num_ctx=None if api else _integer(num_ctx, 'INVALID_NUM_CTX', minimum=1, maximum=1048576),
         mode=mode,
         evidence=evidence,
         name_style=name_style,
@@ -332,7 +386,8 @@ def load_bench_config(env_file: Path, environ: Mapping[str, str]) -> LlmConfig:
     """Overlay extraction-only benchmark settings without reading the default dotenv."""
     values = _read_env(env_file, True, allowed_keys=BENCH_ENV_KEYS)
     return load_config(
-        {name: values.get(key) for name, key in ENV_KEYS.items() if key in BENCH_ENV_KEYS},
+        {name: values.get(key) for name, key in ENV_KEYS.items() if key in BENCH_ENV_KEYS}
+        | {provider + '_api_key': values.get(key) for provider, key in API_KEY_ENV.items()},
         environ,
         env_file,
         env_file_explicit=True,
@@ -435,6 +490,8 @@ def load_pull_config(
             or default
         )
 
+    if value('provider') and value('provider') != 'ollama':
+        raise PullConfigError(ENV_KEYS['provider'], 'INVALID_PROVIDER')
     backend = value('backend_url')
     if not backend:
         raise PullConfigError(ENV_KEYS['backend_url'], 'MISSING_CONFIG')
