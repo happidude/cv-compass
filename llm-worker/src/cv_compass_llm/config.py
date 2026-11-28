@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 ENV_KEYS = {
     'provider': 'CVC_LLM_PROVIDER',
+    'allow_api': 'CVC_LLM_ALLOW_API',
     'reasoning_effort': 'CVC_LLM_REASONING_EFFORT',
     'model': 'CVC_LLM_MODEL',
     'fallback_model': 'CVC_LLM_FALLBACK_MODEL',
@@ -58,6 +59,7 @@ BENCH_ENV_KEYS = frozenset(
     ENV_KEYS[name]
     for name in (
         'provider',
+        'allow_api',
         'reasoning_effort',
         'model',
         'fallback_model',
@@ -122,6 +124,7 @@ class LlmConfig:
     api_key: str = field(default='', repr=False, compare=False)
     quote_match: str = 'strict'
     prompt_rules: str = 'v1'
+    allow_api: bool = False
 
     @property
     def provenance_model(self) -> str:
@@ -329,6 +332,7 @@ def load_config(
     num_ctx = value('num_ctx', '8192')
     flags = {}
     for name, default in (
+        ('allow_api', 'false'),
         ('prompt_schema_text', 'true'),
         ('whole_personal', 'true'),
         ('ctx_fine_tiers', 'false'),
@@ -491,7 +495,7 @@ def load_pull_config(
     cli: Mapping[str, str | None] | None = None,
     _file_values: Mapping[str, str] | None = None,
 ) -> PullConfig:
-    """Extend the shared dotenv parser; credentials come only from the process."""
+    """Reuse shared settings; the backend worker token comes only from the process."""
     path = env_file if env_file is not None else default_env_file()
     values = _read_env(path, env_file_explicit) if _file_values is None else _file_values
 
@@ -504,7 +508,11 @@ def load_pull_config(
             or default
         )
 
-    if value('provider') and value('provider') != 'ollama':
+    allow_api = value('allow_api', 'false').lower()
+    if allow_api not in ('true', 'false'):
+        raise PullConfigError(ENV_KEYS['allow_api'], 'INVALID_ALLOW_API')
+    providers = ('ollama', 'openai', 'anthropic') if allow_api == 'true' else ('ollama',)
+    if value('provider') and value('provider') not in providers:
         raise PullConfigError(ENV_KEYS['provider'], 'INVALID_PROVIDER')
     backend = value('backend_url')
     if not backend:
@@ -548,6 +556,7 @@ def load_pull_config(
             'INVALID_FALLBACK_MODEL': 'fallback_model',
             'INVALID_FALLBACK_DROP_RATIO': 'fallback_drop_ratio',
             'INVALID_PROVIDER': 'provider',
+            'INVALID_ALLOW_API': 'allow_api',
             'INVALID_TIMEOUT': 'timeout',
             'INVALID_MAX_BLOCKS': 'max_blocks',
             'INVALID_TEMPERATURE': 'temperature',

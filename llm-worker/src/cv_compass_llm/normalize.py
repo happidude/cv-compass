@@ -232,6 +232,8 @@ def run_normalize(config, provider, *, once=False):
     counts = Counter(claimed=0, accepted=0, rejected=0, idle=0, lease_lost=0, dropped_batches=0)
     exit_code = 0
     with command_logging(transport.log_level):
+        if transport.llm.provider in ('openai', 'anthropic'):
+            event('worker_start', provider=transport.llm.provider)
         try:
             while True:
                 submitting = False

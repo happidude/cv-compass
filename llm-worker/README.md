@@ -43,8 +43,13 @@ Nếu Ruff đã được provision, dùng `ruff format --check src tests` và
 `CVC_LLM_PROVIDER` nhận `ollama`, `openai`, `anthropic`. Cấu hình Ollama hiện có
 giữ nguyên hành vi. `CVC_LLM_MODEL` vẫn bắt buộc; `gpt-6-luna` và
 `claude-haiku-5-5` chỉ là model ví dụ trong các file cấu hình mẫu.
-Provider API chỉ được dùng cho `run` và `bench`; `pull`, `normalize`,
-`bench-norm`, `check` từ chối bằng `INVALID_PROVIDER`.
+`pull`, `normalize`, `bench-norm`, `check` chỉ nhận API khi
+`CVC_LLM_ALLOW_API=true`; mặc định `false` giữ lỗi `INVALID_PROVIDER` cũ.
+Chỉ chủ dự án bật cờ này: bật là gửi nội dung CV tới OpenAI/Anthropic.
+Cờ nhận `true`/`false` không phân biệt hoa thường; giá trị khác trả `INVALID_ALLOW_API`.
+Thứ tự ưu tiên cùng các key khác: CLI → môi trường → dotenv; `bench-norm` dùng
+snapshot `--config` → môi trường, không đọc dotenv mặc định.
+`run` và `bench` giữ quyền dùng API hiện có, không yêu cầu cờ này.
 
 **Cảnh báo: lệnh bench dưới đây gửi toàn văn CV tới dịch vụ ngoài.
 Chỉ chủ dự án chạy trên dữ liệu đã duyệt.** Trong phát triển/test chỉ dùng
@@ -61,6 +66,8 @@ Ollama yêu cầu `CVC_LLM_REASONING_EFFORT` trống. Giá trị không hợp l�
 `INVALID_REASONING_EFFORT`. Không có cờ CLI cho API key. Chỉ key của provider
 đang chọn được giữ trong config; key không xuất hiện trong repr hay thông báo lỗi.
 Key chỉ nhận ký tự ASCII `0x21–0x7E`, dài tối đa 512 ký tự, không có khoảng trắng.
+Key nhận từ môi trường hoặc dotenv như `run`/`bench`; môi trường thắng dotenv,
+snapshot bench ghi đè môi trường. Không commit key hay file `.env` thật.
 
 Đặt key qua biến môi trường tiến trình, tương thích Windows PowerShell 5.1:
 
@@ -251,7 +258,8 @@ và nhanh hơn. Test kỹ thuật không thay thế phép đo này.
 
 Chỉ dùng fixture tổng hợp, không tên/người/công ty thật. Không print/log CV,
 prompt, model output, exception của provider hay đường dẫn nguồn. Chỉ gửi dữ liệu
-tới provider loopback và backend nội bộ được cấu hình cho `pull`. Ollama chỉ dùng
+tới provider đã chọn và backend nội bộ được cấu hình cho `pull`; API của
+`pull`/`normalize` cần chủ dự án bật `CVC_LLM_ALLOW_API=true`. Ollama chỉ dùng
 HTTP loopback, không proxy và không theo redirect.
 FakeProvider giữ prompt trong bộ nhớ chỉ để test. Bên gọi chịu trách nhiệm
 giới hạn vòng đời dữ liệu và không ghi/public hóa prompt đã ghi nhận. OCR gốc không
@@ -486,7 +494,7 @@ không tồn tại trả `ENV_FILE_NOT_FOUND`.
 
 | Biến | Tham số CLI | Mặc định / giới hạn |
 | --- | --- | --- |
-| `CVC_LLM_PROVIDER` | `--provider` | Bắt buộc, chỉ `ollama` |
+| `CVC_LLM_PROVIDER` | `--provider` | Bắt buộc; `ollama`, hoặc `openai`/`anthropic` khi `CVC_LLM_ALLOW_API=true` |
 | `CVC_LLM_MODEL` | `--model` | Bắt buộc, tag model đã chuẩn bị |
 | `CVC_LLM_BASE_URL` | `--base-url` | `http://127.0.0.1:11434`, chỉ HTTP loopback như trên |
 | `CVC_LLM_TIMEOUT_S` | `--timeout` | 120, số hữu hạn lớn hơn 0 |
@@ -698,6 +706,13 @@ py -3.14 -m cv_compass_llm check --env-file .env
 
 `check` chỉ đọc: kiểm cấu hình pull (token bắt buộc trong môi trường tiến trình),
 gửi `GET /internal/mapping/v1/check` tới backend và `GET /api/tags` tới Ollama.
+Với API đã bật cờ, không dựng Ollama: sau `OK config` và kiểm backend, gửi đúng
+một `GET https://api.openai.com/v1/models` (Bearer) hoặc
+`GET https://api.anthropic.com/v1/models` (`x-api-key`, `anthropic-version=2023-06-01`).
+Probe không gửi CV/prompt, không retry, không theo redirect/proxy; giới hạn response 4 MiB.
+Chỉ HTTP 200 in `OK api <provider>`; còn lại `FAIL api <provider> code=API_HTTP_<status>`,
+`API_UNREACHABLE` hoặc `API_RESPONSE_TOO_LARGE`. Không in body/header/key;
+luôn bỏ kiểm model cho API và in `SKIP model`.
 Không claim, tải input, gia hạn lease, gửi result/failure hay gọi model.
 Filter `MappingWorkerAuthenticationFilter` và provider L4 chỉ kiểm cấu hình/token,
 không ghi DB; security chain áp dụng cho toàn `/internal/mapping/**`.
@@ -1346,7 +1361,8 @@ Token dự trữ dùng `CVC_LLM_MAX_OUTPUT_TOKENS`, mặc định 4096. Chỉ t�
 Không dùng cascade model của extraction. Log chỉ gồm mã lỗi, số đếm và thời gian;
 không chứa tên công ty/chức danh, raw, prompt hay response.
 
-Đo offline (không kết nối backend, provider vẫn là Ollama local):
+Đo không kết nối backend; mặc định Ollama local, API chỉ khi chủ dự án bật
+`CVC_LLM_ALLOW_API=true` trong snapshot hoặc môi trường:
 
 ```text
 python -m cv_compass_llm bench-norm --gold <gold-dir> --config local=<file.env> --repeat 2 --json
@@ -1362,7 +1378,14 @@ theo vị trí repo, không phụ thuộc thư mục chạy; `--taxonomy` nhận
 Đây chỉ là nguồn cho benchmark; `normalize` luôn lấy taxonomy từ claim.
 
 `--config name=env` lặp được, cho phép khóa provider/extraction và `CVC_NORM_BATCH`,
-không cho credential/backend; bỏ `--config` thì dùng môi trường tiến trình, không đọc dotenv.
+cho API key của provider, không cho token worker/cấu hình backend; bỏ `--config`
+thì dùng môi trường tiến trình, không đọc dotenv.
+Normalize và bench-norm mặc định giới hạn output API 2000 token khi cấu hình trống.
+Prompt/schema norm-1 giữ nguyên; OpenAI chỉ điều chỉnh bản sao schema gửi đi
+(`oneOf` → `anyOf` cho hai nhánh object loại trừ nhau, bỏ `uniqueItems`), theo
+[strict Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses).
+Mọi object đều cấm property ngoài schema và yêu cầu đủ property; local vẫn kiểm
+đủ cấu trúc, function trùng/số lượng, taxonomy và nguồn theo schema gốc.
 `--repeat` mặc định 1. Mỗi run xuất các số tổng hợp: tên strict (exact) và loose
 (không phân biệt hoa thường/khoảng trắng/dấu, kể cả đ), parent exact, ngành, chức năng
 micro precision/recall, cấp bậc, scope, mã lỗi item, số call và thời gian giây.

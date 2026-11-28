@@ -15,12 +15,18 @@ BACKEND_PROBE = PREFIX + '/check'
 
 
 def _get(
-    url: str, timeout: float, *, token: str | None = None, limit: int = MAX_RESPONSE_BYTES
+    url: str,
+    timeout: float,
+    *,
+    token: str | None = None,
+    limit: int = MAX_RESPONSE_BYTES,
+    headers: dict[str, str] | None = None,
+    _opener=None,
 ) -> tuple[int, bytes]:
-    headers = {'Accept': 'application/json'}
+    headers = {'Accept': 'application/json'} | (headers or {})
     if token is not None:
         headers['Authorization'] = 'Bearer ' + token
-    opener = build_opener(ProxyHandler({}), _NoRedirect())
+    opener = build_opener(ProxyHandler({}), _NoRedirect()) if _opener is None else _opener
     try:
         response = opener.open(Request(url, headers=headers, method='GET'), timeout=timeout)
     except HTTPError as error:
@@ -51,19 +57,22 @@ def _backend_code(data: bytes) -> str | None:
         return None
 
 
-def run_check(environ, env_file: Path | None, *, env_file_explicit: bool, cli=None) -> int:
+def run_check(
+    environ, env_file: Path | None, *, env_file_explicit: bool, cli=None, _opener=None
+) -> int:
     """Never call claim/input/lease/result/failure or generate a model response."""
     try:
         config = load_pull_config(environ, env_file, env_file_explicit=env_file_explicit, cli=cli)
         llm = config.llm
-        OllamaProvider(
-            llm.model,
-            base_url=llm.base_url,
-            timeout_s=llm.timeout_s,
-            temperature=llm.temperature,
-            think=llm.think,
-            num_ctx=llm.num_ctx,
-        )
+        if llm.provider == 'ollama':
+            OllamaProvider(
+                llm.model,
+                base_url=llm.base_url,
+                timeout_s=llm.timeout_s,
+                temperature=llm.temperature,
+                think=llm.think,
+                num_ctx=llm.num_ctx,
+            )
     except PullConfigError as error:
         print('FAIL config code=' + str(error).split()[-1])
         return 2
@@ -87,6 +96,7 @@ def run_check(environ, env_file: Path | None, *, env_file_explicit: bool, cli=No
             config.http_timeout_s,
             token=config.worker_token,
             limit=CONTROL_LIMIT,
+            **({'_opener': _opener} if _opener is not None else {}),
         )
         if 300 <= status < 400:
             fail(backend, 'BACKEND_REDIRECT')
@@ -108,6 +118,27 @@ def run_check(environ, env_file: Path | None, *, env_file_explicit: bool, cli=No
         fail(backend, 'BACKEND_RESPONSE_TOO_LARGE')
     except OSError, URLError, HTTPException:
         fail(backend, 'BACKEND_UNREACHABLE')
+
+    if llm.provider in ('openai', 'anthropic'):
+        api = 'api ' + llm.provider
+        if llm.provider == 'openai':
+            url = 'https://api.openai.com/v1/models'
+            headers = {'Authorization': 'Bearer ' + llm.api_key}
+        else:
+            url = 'https://api.anthropic.com/v1/models'
+            headers = {'x-api-key': llm.api_key, 'anthropic-version': '2023-06-01'}
+        try:
+            status, _ = _get(url, llm.timeout_s, headers=headers, _opener=_opener)
+            if status == 200:
+                print('OK ' + api)
+            else:
+                fail(api, f'API_HTTP_{status}')
+        except ValueError:
+            fail(api, 'API_RESPONSE_TOO_LARGE')
+        except OSError, URLError, HTTPException:
+            fail(api, 'API_UNREACHABLE')
+        print('SKIP model')
+        return 2 if failed else 0
 
     ollama = 'ollama ' + endpoint(llm.base_url)
     try:

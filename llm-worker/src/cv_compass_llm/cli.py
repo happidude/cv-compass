@@ -63,6 +63,7 @@ CLI_ERRORS = (
         'INVALID_TIMEOUT',
         'MISSING_CONFIG',
         'INVALID_PROVIDER',
+        'INVALID_ALLOW_API',
         'MISSING_API_KEY',
         'INVALID_API_KEY',
         'API_HOST_NOT_ALLOWED',
@@ -475,10 +476,12 @@ def create_provider(config: LlmConfig, *, default_max_output_tokens: int = 4000)
 
 
 def _create_ollama_provider(config: LlmConfig) -> LlmProvider:
-    """Keep normalization benchmarks from sending source data to external APIs."""
-    if config.provider != 'ollama':
+    """Require explicit API consent for normalization benchmarks."""
+    if config.provider == 'ollama':
+        return create_provider(config)
+    if not config.allow_api:
         raise ValueError('INVALID_PROVIDER')
-    return create_provider(config)
+    return create_provider(config, default_max_output_tokens=2000)
 
 
 def _require_ollama_bench(configurations) -> None:
@@ -494,11 +497,19 @@ def _require_ollama_bench(configurations) -> None:
                 _read_env(Path(path), True, allowed_keys=BENCH_ENV_KEYS | {NORM_BATCH_KEY})
             )
     for values in snapshots:
+        allow_api = (
+            values.get(ENV_KEYS['allow_api'], '').strip()
+            or os.environ.get(ENV_KEYS['allow_api'], '').strip()
+            or 'false'
+        ).lower()
+        if allow_api not in ('true', 'false'):
+            raise ValueError('INVALID_ALLOW_API')
         provider = (
             values.get(ENV_KEYS['provider'], '').strip()
             or os.environ.get(ENV_KEYS['provider'], '').strip()
         )
-        if provider and provider != 'ollama':
+        providers = ('ollama', 'openai', 'anthropic') if allow_api == 'true' else ('ollama',)
+        if provider and provider not in providers:
             raise ValueError('INVALID_PROVIDER')
 
 
@@ -578,7 +589,9 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 provider = create_provider(llm)
             except ValueError:
-                raise PullConfigError(ENV_KEYS['base_url'], 'OLLAMA_HOST_NOT_LOCAL') from None
+                if llm.provider == 'ollama':
+                    raise PullConfigError(ENV_KEYS['base_url'], 'OLLAMA_HOST_NOT_LOCAL') from None
+                raise PullConfigError(ENV_KEYS['provider'], 'INVALID_CONFIG') from None
             return run_pull(config, provider, once=args.once)
         elif args.command == 'run':
             config = load_config(
