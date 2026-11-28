@@ -335,6 +335,8 @@ function CompanyField({
   function select(index: number) {
     const item = items[index];
     setActive(-1);
+    // Forget the typed text so Back to it does not reopen the list.
+    setTyped(undefined);
     onSelect(item.id, item.name);
   }
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {

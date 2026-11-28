@@ -271,7 +271,7 @@
 }
 /* The live region stays mounted; when empty it takes no room. */
 .search-form__pending:empty {
-  margin-top: calc(-1 * var(--sp-3));
+  position: absolute;
 }
 .search-form__groups {
   display: flex;
@@ -473,6 +473,10 @@
 .combobox__option[aria-selected="true"] {
   background: var(--c-accent-soft);
   color: var(--c-accent-ink);
+}
+/* Mounted live region; when empty it adds no gap under the input. */
+.combobox__status:empty {
+  position: absolute;
 }
 .combobox__hint {
   display: flex;
