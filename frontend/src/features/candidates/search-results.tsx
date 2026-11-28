@@ -93,16 +93,8 @@ function SearchResultRow({ row }: { row: SearchResult }) {
     </tr>
   );
 }
-export function CandidateSearchResults({
-  filters,
-  valid,
-  invalidMessage = "Điều chỉnh khoảng kinh nghiệm để tìm kiếm.",
-}: {
-  filters: string;
-  valid: boolean;
-  invalidMessage?: string;
-}) {
-  const query = useCandidateSearch(filters, valid);
+export function CandidateSearchResults({ filters }: { filters: string }) {
+  const query = useCandidateSearch(filters);
   const seenIds = new Set<string>();
   const rows =
     query.data?.pages
@@ -116,7 +108,6 @@ export function CandidateSearchResults({
     <Panel
       title="Kết quả tìm kiếm"
       footer={
-        valid &&
         !query.isPlaceholderData &&
         query.hasNextPage && (
           <Button
@@ -129,48 +120,41 @@ export function CandidateSearchResults({
         )
       }
     >
-      {!valid ? (
-        <Empty>{invalidMessage}</Empty>
-      ) : (
-        <>
-          {query.error && (
-            <ErrorNotice
-              error={query.error}
-              retry={() => void query.refetch()}
-            />
-          )}
-          {query.isPending ? (
-            <Loading rows={6} />
+      <>
+        {query.error && (
+          <ErrorNotice error={query.error} retry={() => void query.refetch()} />
+        )}
+        {query.isPending ? (
+          <Loading rows={6} />
+        ) : (
+          query.data &&
+          (rows.length === 0 ? (
+            <Empty>Không tìm thấy ứng viên phù hợp.</Empty>
           ) : (
-            query.data &&
-            (rows.length === 0 ? (
-              <Empty>Không tìm thấy ứng viên phù hợp.</Empty>
-            ) : (
-              <div className="table-scroll">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Ứng viên</th>
-                      <th>Chức danh hiện tại</th>
-                      <th>Công ty hiện tại</th>
-                      <th>Tỉnh/thành</th>
-                      <th title={estimatedExperienceHint}>
-                        Kinh nghiệm (dự tính)
-                      </th>
-                      <th>Lý do khớp</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row) => (
-                      <SearchResultRow key={row.id} row={row} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))
-          )}
-        </>
-      )}
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Ứng viên</th>
+                    <th>Chức danh hiện tại</th>
+                    <th>Công ty hiện tại</th>
+                    <th>Tỉnh/thành</th>
+                    <th title={estimatedExperienceHint}>
+                      Kinh nghiệm (dự tính)
+                    </th>
+                    <th>Lý do khớp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <SearchResultRow key={row.id} row={row} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))
+        )}
+      </>
     </Panel>
   );
 }

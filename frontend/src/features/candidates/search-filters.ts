@@ -5,13 +5,14 @@ export const multiFilters = [
   { name: "industry", kind: "INDUSTRY", label: "Ngành" },
   { name: "province", kind: "provinces", label: "Tỉnh/thành" },
 ] as const;
-export const textFilters = [
-  "q",
-  "company",
-  "companyId",
-  "title",
-  "minYears",
-  "maxYears",
+export const textFilters = ["q", "company", "companyId", "title"] as const;
+/** Retired experience range filters: old links may still carry them. */
+export const retiredFilters = ["minYears", "maxYears"] as const;
+/** Every URL parameter owned by the search form, display-only name included. */
+export const searchParamNames = [
+  ...textFilters,
+  "companyName",
+  ...multiFilters.map((filter) => filter.name),
 ] as const;
 
 export function isCompanyId(value: string) {
@@ -22,7 +23,8 @@ export function isCompanyId(value: string) {
   );
 }
 
-// Whitelist only filters: list pagination and stale cursors never enter search.
+// Whitelist only filters: list pagination, stale cursors and retired filters
+// never enter search.
 export function searchFilters(params: URLSearchParams) {
   const filters = new URLSearchParams();
   const validCompanyId = isCompanyId(params.get("companyId") ?? "");
@@ -41,18 +43,16 @@ export function searchFilters(params: URLSearchParams) {
   return filters;
 }
 
-export function experienceFilterError(params: URLSearchParams) {
-  const min = params.get("minYears") ?? "";
-  const max = params.get("maxYears") ?? "";
-  if (
-    [min, max].some(
-      (value) =>
-        value !== "" &&
-        (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))),
-    )
-  )
-    return "Số năm kinh nghiệm phải là số nguyên lớn hơn hoặc bằng 0.";
-  if (min !== "" && max !== "" && Number(min) > Number(max))
-    return "Số năm tối thiểu phải nhỏ hơn hoặc bằng số năm tối đa.";
-  return undefined;
+/**
+ * Search used to live on /candidates. Returns the /search URL an old filter
+ * link should be replaced with, or undefined for a plain list URL.
+ */
+export function legacySearchRedirect(params: URLSearchParams) {
+  const names = [...searchParamNames, ...retiredFilters];
+  if (!names.some((name) => params.has(name))) return undefined;
+  const next = new URLSearchParams();
+  for (const name of searchParamNames)
+    for (const value of params.getAll(name)) next.append(name, value);
+  const query = next.toString();
+  return query ? `/search?${query}` : "/search";
 }

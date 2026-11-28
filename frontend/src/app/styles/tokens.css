@@ -21,6 +21,7 @@
   --c-ink: #17211f;
   --c-ink-2: #46544f;
   --c-ink-3: #5a6863;
+  --c-placeholder: #6b7772; /* 4.6:1 on white */
   --c-on-accent: #ffffff;
 
   /* Contour lines */

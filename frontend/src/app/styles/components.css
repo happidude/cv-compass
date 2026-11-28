@@ -457,7 +457,7 @@
 }
 .input::placeholder,
 .textarea::placeholder {
-  color: #7a8782;
+  color: var(--c-placeholder);
 }
 .checkbox {
   display: inline-flex;

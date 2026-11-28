@@ -7,10 +7,13 @@ related_targets: ["src/features"]
 
 # App shell và các màn hình làm việc
 
-Phạm vi: toàn bộ app sau đăng nhập (Tổng quan, Hồ sơ ứng viên, Quản lý CV, Upload, Lịch sử nhập) và màn đăng nhập. Mode: Operate.
+Phạm vi: toàn bộ app sau đăng nhập (Tổng quan, Hồ sơ ứng viên, Tìm kiếm & xếp hạng, Quản lý CV, Upload, Lịch sử nhập) và màn đăng nhập. Mode: Operate.
 Người dùng: 1–3 HR/admin, ban ngày, desktop/laptop. Việc: nhập CV, theo dõi OCR, review hồ sơ có bằng chứng.
 Ràng buộc: không thêm dependency, giữ text/role mà test dựa vào, không hiện số liệu không đến từ API, chỉ giao diện sáng.
-Module chưa có (Review queue, Tìm kiếm & xếp hạng, Xuất PDF) hiện mờ "Sắp có", không bấm được.
+Module chưa có (Review queue, Xuất PDF) hiện mờ "Sắp có", không bấm được.
+"Tìm kiếm & xếp hạng" (`/search`) đã là module thật trong nhóm Làm việc, ngay sau Hồ sơ ứng viên:
+hàng ô chữ + nút Tìm kiếm (chữ chỉ áp dụng khi bấm/Enter), 5 nhóm lọc dạng nút mở popover (tick là áp dụng ngay),
+chip bộ lọc đang áp dụng; chưa có điều kiện thì chỉ hiện hướng dẫn, không gọi API liệt kê toàn bộ.
 
 ## Direction contract
 
