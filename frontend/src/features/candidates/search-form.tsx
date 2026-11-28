@@ -98,17 +98,14 @@ export function CandidateSearchForm() {
   const dirty = textGroupNames.some((group) => isDirty(draft, applied, group));
 
   function update(change: (next: URLSearchParams) => void) {
-    setParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        // Any filter change restarts pagination; retired filters are dropped.
-        next.delete("cursor");
-        for (const name of retiredFilters) next.delete(name);
-        change(next);
-        return next;
-      },
-      { flushSync: true },
-    );
+    const next = new URLSearchParams(params);
+    // Any filter change restarts pagination; retired filters are dropped.
+    next.delete("cursor");
+    for (const name of retiredFilters) next.delete(name);
+    change(next);
+    // Re-submitting the same search must not stack duplicate history entries.
+    if (next.toString() === params.toString()) return;
+    setParams(next, { flushSync: true });
   }
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -321,10 +318,15 @@ function CompanyField({
     const timer = setTimeout(() => setDebounced(suggestionText), 300);
     return () => clearTimeout(timer);
   }, [suggestionText]);
-  const suggestions = useCompanySuggestions(debounced);
+  // Suggest only for text the user typed here, so a shared link or
+  // Back/Forward never pops the list open (or fetches) by itself.
+  const [typed, setTyped] = useState<string>();
+  const live = !!suggestionText && suggestionText === typed;
+  const current = live && suggestionText === debounced;
+  const suggestions = useCompanySuggestions(current ? debounced : "");
   const [dismissed, setDismissed] = useState(false);
   const [active, setActive] = useState(-1);
-  const current = !!suggestionText && suggestionText === debounced;
+  const loading = current && !dismissed && suggestions.isFetching;
   const available = current ? (suggestions.data ?? []) : [];
   const items = dismissed ? [] : available;
   const expanded = items.length > 0;
@@ -354,6 +356,10 @@ function CompanyField({
       // Enter picks the highlighted suggestion instead of submitting.
       event.preventDefault();
       select(activeIndex);
+    } else if (event.key === "Enter") {
+      // Enter submits the form; the suggestion list closes with it.
+      setDismissed(true);
+      setActive(-1);
     } else if (event.key === "Escape" && expanded) {
       event.preventDefault();
       setDismissed(true);
@@ -383,6 +389,7 @@ function CompanyField({
           onChange={(event) => {
             setDismissed(false);
             setActive(-1);
+            setTyped(event.target.value);
             onType(event.target.value);
           }}
           onKeyDown={handleKeyDown}
@@ -423,12 +430,11 @@ function CompanyField({
           </Button>
         </span>
       )}
-      {current && suggestions.isFetching && (
-        <span className="field__hint" role="status">
-          Đang tải gợi ý…
-        </span>
-      )}
-      {current && suggestions.error && (
+      {/* Mounted for good: live regions inserted on the fly are often missed. */}
+      <span className="field__hint combobox__status" role="status">
+        {loading ? "Đang tải gợi ý…" : ""}
+      </span>
+      {current && !dismissed && suggestions.error && (
         <ErrorNotice
           error={suggestions.error}
           retry={() => void suggestions.refetch()}
@@ -462,6 +468,8 @@ function FilterGroup({
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLFieldSetElement>(null);
   const [query, setQuery] = useState("");
+  // A reopened group starts unfiltered so no choice looks missing.
+  if (!open && query) setQuery("");
   const [flipped, setFlipped] = useState(false);
   useLayoutEffect(() => {
     if (!open || !panel.current || !trigger.current) return;
@@ -490,6 +498,11 @@ function FilterGroup({
     <div
       ref={wrapper}
       className="filter-group"
+      onBlur={(event) => {
+        // Tabbing out closes the popover; pointer clicks are handled above.
+        const next = event.relatedTarget;
+        if (open && next && !wrapper.current?.contains(next)) onClose();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.preventDefault();

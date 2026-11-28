@@ -348,6 +348,39 @@ describe("company combobox", () => {
     expect(urlParams(router).has("companyName")).toBe(false);
   });
 
+  it("never opens or fetches suggestions for text it did not see typed, and closes on Enter submit", async () => {
+    const suggestions: string[] = [];
+    const { searches } = recordRequests();
+    server.use(
+      http.get("/api/candidates/search/companies", ({ request }) => {
+        suggestions.push(new URL(request.url).searchParams.get("q")!);
+        return HttpResponse.json(candidateCompanySuggestions.slice(0, 2));
+      }),
+    );
+    const { router, user } = renderPage("/search?company=Synthetic");
+    await screen.findByRole("link", { name: "Synthetic An Nguyen" });
+    await settle();
+    expect(suggestions).toEqual([]);
+    expect(companyInput()).toHaveAttribute("aria-expanded", "false");
+    await user.type(companyInput(), " Lo");
+    await screen.findByRole("listbox", { name: "Gợi ý công ty" });
+    expect(suggestions).toEqual(["Synthetic Lo"]);
+    await user.keyboard("{Enter}");
+    expect(companyInput()).toHaveAttribute("aria-expanded", "false");
+    expect(urlParams(router).get("company")).toBe("Synthetic Lo");
+    await waitFor(() =>
+      expect(searches.at(-1)?.searchParams.get("company")).toBe("Synthetic Lo"),
+    );
+    // Submitting the same search again adds no history entry.
+    const key = router.state.location.key;
+    await user.click(screen.getByRole("button", { name: "Tìm kiếm" }));
+    expect(router.state.location.key).toBe(key);
+    await act(() => router.navigate(-1));
+    expect(companyInput()).toHaveValue("Synthetic");
+    await settle();
+    expect(companyInput()).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("restores a shared selection, sends only the ID and deselects at once", async () => {
     const { searches } = recordRequests();
     const { router, user } = renderPage(
@@ -468,7 +501,7 @@ describe("filter groups, chips and clearing", () => {
   });
 
   it("filters a long group by accent-insensitive text and wraps long labels", async () => {
-    const { user } = renderPage();
+    const { router, user } = renderPage();
     await openGroup(user, "Nhóm nghề");
     expect(screen.queryByLabelText("Lọc nhanh Nhóm nghề")).toBeNull();
     await openGroup(user, "Tỉnh/thành");
@@ -483,6 +516,29 @@ describe("filter groups, chips and clearing", () => {
     await user.clear(quick);
     await user.type(quick, "zzz");
     expect(panel.getByText("Không có lựa chọn phù hợp.")).toBeVisible();
+    // Enter in the quick filter never submitted; reopening starts unfiltered.
+    expect(router.state.location.search).toBe("");
+    await user.keyboard("{Escape}");
+    await openGroup(user, "Tỉnh/thành");
+    expect(screen.getByLabelText("Lọc nhanh Tỉnh/thành")).toHaveValue("");
+    expect(
+      within(screen.getByRole("group", { name: "Tỉnh/thành" })).getAllByRole(
+        "checkbox",
+      ),
+    ).toHaveLength(10);
+  });
+
+  it("closes a group popover when focus tabs out of it", async () => {
+    const { user } = renderPage();
+    const trigger = await openGroup(user, "Phạm vi");
+    await user.tab();
+    expect(
+      screen.getByRole("checkbox", { name: "Toàn công ty/tập đoàn" }),
+    ).toHaveFocus();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.tab();
+    await user.tab();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
   it("opens one group at a time; Escape and an outside click close it", async () => {
