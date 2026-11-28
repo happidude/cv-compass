@@ -101,6 +101,47 @@ NUMERIC_RANGE_V2 = re.compile(
 )
 
 
+def _tolerant_months() -> dict[str, int]:
+    candidates: dict[str, set[int]] = {}
+    for number, names in enumerate(MONTHS, 1):
+        name = names[0]
+        variants = {name[:length] for length in range(3, len(name) + 1)}
+        short = name[:3]
+        for index in range(2):
+            variants.add(short[:index] + short[index + 1] + short[index] + short[index + 2 :])
+        for variant in variants:
+            candidates.setdefault(variant, set()).add(number)
+    return {name: next(iter(numbers)) for name, numbers in candidates.items() if len(numbers) == 1}
+
+
+MONTH_NUMBERS_V3 = _tolerant_months()
+ENGLISH_V3 = (
+    '('
+    + '|'.join(sorted(MONTH_NUMBERS_V3, key=lambda name: (-len(name), name)))
+    + r')\.?[,]?[\x27’]?(?:\s*[-–—]\s*|\s+)([0-9]{4})'
+)
+SPACED_MONTH_YEAR = r'([0-9]{1,2})[ \t]*[/.–—-][ \t]*([0-9]{4})'
+VIETNAMESE_V3 = r'(?:tháng\s+|t)' + SPACED_MONTH_YEAR
+DATE_TOKEN_V3 = re.compile(
+    DATE_TOKEN_V2.pattern
+    + r'|(?<![\w/])(?<![0-9][.,:])(?:'
+    + '|'.join((VIETNAMESE_V3, ENGLISH_V3, SPACED_MONTH_YEAR))
+    + r')(?!\w|[/.][0-9]|,[0-9])',
+    re.IGNORECASE,
+)
+NUMERIC_RANGE_V3 = re.compile(
+    r'(?P<start>'
+    + SPACED_MONTH_YEAR
+    + '|'
+    + NUMERIC
+    + r')\s*[-–—]\s*(?P<end>'
+    + SPACED_MONTH_YEAR
+    + '|'
+    + NUMERIC
+    + ')'
+)
+
+
 def _parts(text: str) -> tuple[int, int | None, int | None, bool] | None:
     text = text.strip().casefold()
     year, month, day, day_first = 0, None, None, False
@@ -149,7 +190,14 @@ def parse_birth_date(text: str) -> tuple[str | None, bool]:
 
 def parse_date(text: str, *, style: str = 'v1', current_year: int | None = None) -> str | None:
     """Parse one explicit date, retaining only year or year-month precision."""
-    if style == 'v2':
+    if style == 'v3':
+        if match := re.fullmatch(ENGLISH_V3, text.strip(), re.IGNORECASE):
+            return parse_date(f'{match[2]}-{MONTH_NUMBERS_V3[match[1].casefold()]:02d}')
+        if match := re.fullmatch(
+            r'(?:tháng\s+|t)?' + SPACED_MONTH_YEAR, text.strip(), re.IGNORECASE
+        ):
+            return parse_date(f'{match[2]}-{int(match[1]):02d}')
+    if style in ('v2', 'v3'):
         if match := re.fullmatch(ENGLISH_SHORT_YEAR, text.strip(), re.IGNORECASE):
             pivot = (date.today().year if current_year is None else current_year) % 100 + 1
             year = int(match[2])
@@ -179,16 +227,18 @@ def _tokens(quote: str) -> list[str]:
     ]
 
 
-def _tokens_v2(quote: str) -> list[str]:
+def _token_matches_v2(quote: str, *, style: str = 'v2') -> list[re.Match[str]]:
     excluded = []
     explicit_year = FOUR_DIGIT_YEAR.search(quote) is not None
+    numeric_range = NUMERIC_RANGE_V3 if style == 'v3' else NUMERIC_RANGE_V2
+    date_token = DATE_TOKEN_V3 if style == 'v3' else DATE_TOKEN_V2
     for match in PHONE.finditer(quote):
         digits = sum(char.isdigit() for char in match.group())
-        date_range = NUMERIC_RANGE_V2.fullmatch(match.group())
+        date_range = numeric_range.fullmatch(match.group())
         if 9 <= digits <= 15 and not (
             date_range
-            and parse_date(date_range['start'], style='v2')
-            and parse_date(date_range['end'], style='v2')
+            and parse_date(date_range['start'], style=style)
+            and parse_date(date_range['end'], style=style)
         ):
             excluded.append((match.start(), match.end()))
     for match in NUMERIC_CHAIN.finditer(quote):
@@ -200,8 +250,8 @@ def _tokens_v2(quote: str) -> list[str]:
         ):
             excluded.append((match.start(), match.end()))
     return [
-        match.group()
-        for match in DATE_TOKEN_V2.finditer(quote)
+        match
+        for match in date_token.finditer(quote)
         if not (
             re.fullmatch(DOTTED_MONTH_YEAR, match.group())
             and PAGE_MARKER.search(quote[: match.start()])
@@ -211,8 +261,21 @@ def _tokens_v2(quote: str) -> list[str]:
     ]
 
 
+def _tokens_v2(quote: str, *, style: str = 'v2') -> list[str]:
+    return [match.group() for match in _token_matches_v2(quote, style=style)]
+
+
 def find_dates(quote: str, *, style: str = 'v1', current_year: int | None = None) -> list[str]:
     """Collect normalized dates in source order, never nested numeric fragments."""
+    if style == 'v3':
+        # Keep legacy tokens (including bare years) as well as richer overlapping tokens.
+        positioned = {}
+        for token_style in ('v3', 'v2'):
+            for match in _token_matches_v2(quote, style=token_style):
+                value = parse_date(match.group(), style=token_style, current_year=current_year)
+                if value is not None:
+                    positioned[(match.start(), -match.end(), value)] = value
+        return [positioned[key] for key in sorted(positioned)]
     if style == 'v2':
         return [
             value
@@ -232,6 +295,23 @@ def find_birth_dates(quote: str) -> list[tuple[str, bool]]:
 def has_present(quote: str) -> bool:
     """Detect a standalone ongoing marker without inferring current employment."""
     return PRESENT_TOKEN.search(quote) is not None
+
+
+def has_open_period(quote: str) -> bool:
+    """Require a valid source date immediately before the final range separator."""
+    separator = re.search(r'[-–—~→]\s*\Z', quote)
+    if separator is None:
+        return False
+    prefix = quote[: separator.start()].rstrip()
+    tokens = _tokens_v2(prefix, style='v3')
+    if len(tokens) != 1:
+        return False
+    return any(
+        match.end() == len(prefix)
+        and match.group() in tokens
+        and parse_date(match.group(), style='v3') is not None
+        for match in DATE_TOKEN_V3.finditer(prefix)
+    )
 
 
 def normalize_date(

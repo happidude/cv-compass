@@ -941,7 +941,7 @@ Test tổng hợp A1 nằm ở `tests/test_a1_clean_names.py`, gồm khóa SHA-2
 
 ## Định dạng ngày kinh nghiệm mở rộng (A2)
 
-`CVC_LLM_DATES=v1|v2` mặc định `v1`, giữ nguyên cách đọc ngày hiện có.
+`CVC_LLM_DATES=v1|v2|v3` mặc định `v1`, giữ nguyên cách đọc ngày hiện có.
 Bật `v2` qua `--dates v2` cho `run`/`pull`, môi trường hoặc `.env`, theo thứ tự
 ưu tiên CLI > môi trường > `.env`; `bench --config` nhận cùng key qua
 `BENCH_ENV_KEYS`. Giá trị khác trả `INVALID_DATES`; `pull` thêm tên key
@@ -988,6 +988,32 @@ payload backend hay event khởi động pull. Luồng pull đã truyền config
 pipeline nên không cần sửa `pull.py`. Ngày kinh nghiệm giữ giới hạn năm
 1950–2100 của backend, kể cả sau khi chuyển năm hai chữ số bằng pivot.
 Test tổng hợp ở `tests/test_a2_dates.py`; kiểm tra parser dùng `current_year=2026`.
+
+### Parse ngày chịu lỗi (E13 A)
+
+Bật `CVC_LLM_DATES=v3` hoặc `--dates v3` để bổ sung token vào v2; token cũ,
+kể cả năm đứng riêng, vẫn được chấp nhận. V1/v2 giữ nguyên hành vi; ngày sinh
+và segmenter vẫn dùng v1. V3 chỉ đọc phần ngày có trong nguồn, không đoán phần thiếu:
+
+- Tiền tố duy nhất từ ba chữ của tên tháng tiếng Anh ngay trước năm bốn chữ số:
+  `Decem 2020` → `2020-12`, `Septem 2020` → `2020-09`, `Febr 2020` → `2020-02`,
+  `Novem 2020` → `2020-11`. Cho phép dấu chấm, phẩy, nháy, khoảng trắng hoặc
+  dấu `-`/`–`/`—` như v2 giữa tháng và năm.
+- Hoán đổi đúng một cặp chữ liền kề trong viết tắt ba chữ, chỉ nhận ánh xạ duy nhất:
+  `Arp 2020` → `2020-04`, `Mya 2020` → `2020-05`, `Jna 2020` → `2020-01`.
+  Không sửa `Arm`, `Ram`, `Mayor`, không ăn giữa từ và không nhận `Decem` thiếu năm.
+- Khoảng trắng quanh dấu phân cách tháng/năm: `Tháng 3/ 2020`, `T3/ 2020`,
+  `03/ 2020`, `3 - 2020` → `2020-03`; `tháng 12 / 2019` → `2019-12`.
+  Không tạo ngày lồng trong `2018 - 2020` hoặc `03/2019 - 05/2020`.
+- Riêng evidence `quote`, ngày bắt đầu theo sau ngay bằng dấu cuối kỳ
+  `-`/`–`/`—`/`~`/`→` (có thể có khoảng trắng) được coi là đang làm khi model
+  trả `ongoing=true` và `end=null`. Ví dụ `08.2022 -`, `03/2021 –`;
+  `end` khác `null` bị từ chối bằng `QUOTE_NOT_FOUND`. `08.2022 - 2023` là
+  kỳ đóng. Evidence `lines` không suy ra đang làm từ dấu cuối kỳ.
+
+Nếu nguồn chỉ chứng minh năm, v3 hạ tháng model trả về xuống năm như v2;
+nếu token đã chứng minh tháng thì không nhận tháng khác. Test tổng hợp ở
+`tests/test_e13_dates.py`.
 
 ## Cắt tên bằng quy tắc sau validation (A4)
 

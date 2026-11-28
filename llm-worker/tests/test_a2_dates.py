@@ -358,7 +358,7 @@ class DateConfigPipelineTests(unittest.TestCase):
         self.assertEqual(ENV_KEYS['dates'], 'CVC_LLM_DATES')
         self.assertIn('CVC_LLM_DATES', BENCH_ENV_KEYS)
         self.assertIn('INVALID_DATES', CLI_ERRORS)
-        for value in ('v3', 'V2', 'raw'):
+        for value in ('v4', 'V2', 'raw'):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, '^INVALID_DATES$'):
                 configured(CVC_LLM_DATES=value)
 

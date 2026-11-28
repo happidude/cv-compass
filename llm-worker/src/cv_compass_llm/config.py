@@ -302,7 +302,7 @@ def load_config(
     if name_trim not in ('off', 'on'):
         raise ValueError('INVALID_NAME_TRIM')
     dates = value('dates', 'v1')
-    if dates not in ('v1', 'v2'):
+    if dates not in ('v1', 'v2', 'v3'):
         raise ValueError('INVALID_DATES')
     whole_timeout = _number(
         value('whole_timeout', '900'), 'INVALID_WHOLE_TIMEOUT', minimum=0, maximum=math.inf
