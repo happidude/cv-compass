@@ -1015,6 +1015,33 @@ Nếu nguồn chỉ chứng minh năm, v3 hạ tháng model trả về xuống n
 nếu token đã chứng minh tháng thì không nhận tháng khác. Test tổng hợp ở
 `tests/test_e13_dates.py`.
 
+## So khớp trích dẫn chịu lỗi (E13 B)
+
+`CVC_LLM_QUOTE_MATCH=strict|tolerant` mặc định `strict`, giữ nguyên hành vi cũ.
+Dùng `--quote-match tolerant` cho `run`/`pull`, môi trường, `.env` hoặc
+`bench --config`; ưu tiên CLI > môi trường > `.env`. Giá trị khác báo
+`INVALID_QUOTE_MATCH`; pull kèm tên key `CVC_LLM_QUOTE_MATCH`, không in giá trị.
+Run summary ghi `quote_match`; sự kiện pull `worker_start` ghi cùng cờ.
+
+`tolerant` chỉ áp dụng title/company/period kinh nghiệm, luôn thử strict trước:
+
+- NFC theo cụm Unicode, dấu nháy cong `‘’`/`“”` tương đương nháy thẳng,
+  `–`/`—`/`‐` tương đương `-`, gộp khoảng trắng/NBSP và casefold không tăng độ dài.
+- Chỉ quote mode: nếu quote không tìm thấy hoặc không chứa value, tìm span của
+  value trong block. Nhiều lần xuất hiện thì chọn lần gần period quote nhất,
+  ưu tiên cùng trang; không có period thì chọn lần đầu. Không áp dụng bước này
+  khi value sau NFC và strip dưới 3 ký tự hoặc title chỉ có một từ. Span được
+  chọn phải có ranh giới chữ/số ở hai đầu, không lấy phần giữa của một từ.
+- Lines mode chỉ dùng NFC/dấu câu trên những dòng đã tham chiếu, không tìm value
+  ở dòng khác. Personal fields không đổi. Kiểm ngày/ongoing của period dùng
+  bản NFC khi tolerant; evidence và offset vẫn lấy từ raw.
+
+Evidence luôn là một lát cắt raw liên tục, offset theo code point, không cắt giữa
+cụm Unicode; value tên lấy nguyên chuỗi raw (kể cả NFD), tương thích `name_trim=on`.
+Mỗi field cần nới so khớp ghi `QUOTE_MATCH_RELAXED` với field title/company/period
+để đếm trong báo cáo; issue này không gửi trong payload pull và không đổi fallback.
+Không tìm thấy chuỗi có trong nguồn vẫn trả `QUOTE_NOT_FOUND`.
+
 ## Cắt tên bằng quy tắc sau validation (A4)
 
 `CVC_LLM_NAME_TRIM=off|on` mặc định `off`. Có thể đặt trong môi trường,
